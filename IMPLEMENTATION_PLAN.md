@@ -514,16 +514,16 @@ pub enum ComplianceStandard {
 
 #### 1.1 Basic File Operations
 
-- [ ] Store initialization
-- [ ] Collection CRUD
-- [ ] Document CRUD (insert, get, update, delete)
-- [ ] Basic error handling
+- [x] Store initialization
+- [x] Collection CRUD
+- [x] Document CRUD (insert, get, update, delete)
+- [x] Basic error handling
 
 **Deliverables:**
 
-- Rusty Postgres-like CLI
-- Simple JSON storage format
-- Tests for basic operations
+- [x] Rusty Postgres-like CLI
+- [x] Simple JSON storage format
+- [x] Tests for basic operations
 
 **Example Code:**
 
@@ -532,14 +532,14 @@ pub enum ComplianceStandard {
 mod tests {
     #[tokio::test]
     async fn test_insert_and_retrieve() {
-        let store = Store::new("/tmp/test").unwrap();
-        let users = store.collection("users").unwrap();
+        let store = Store::new("/tmp/test").await.unwrap();
+        let users = store.collection("users").await.unwrap();
 
         let doc = json!({ "name": "Alice", "email": "alice@example.com" });
         users.insert("user-123", doc.clone()).await.unwrap();
 
         let retrieved = users.get("user-123").await.unwrap();
-        assert_eq!(retrieved.data, doc);
+        assert_eq!(retrieved.unwrap().data, doc);
     }
 }
 ```
