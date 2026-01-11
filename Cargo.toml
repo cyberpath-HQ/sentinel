@@ -22,6 +22,9 @@ panic = "abort"             # Abort on panic, no unwinding, smaller binary and b
 overflow-checks = false     # Disable integer overflow checks to enhance performance
 strip = true                # Strip symbols to reduce binary size
 
+[profile.bench]
+debug = true
+
 [workspace.lints.clippy]
 alloc_instead_of_core = "deny"
 allow_attributes = "allow"
