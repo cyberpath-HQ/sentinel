@@ -1,0 +1,47 @@
+name: Profiling
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install flamegraph
+        run: cargo install flamegraph
+
+      - name: Install perf
+        run: sudo apt-get update && sudo apt-get install -y linux-tools-common linux-tools-generic
+
+      - name: Adjust perf permissions
+        run: |
+          echo 'kernel.perf_event_paranoid = -1' | sudo tee -a /etc/sysctl.conf
+          sudo sysctl -p
+
+      - name: Build with debug symbols
+        run: RUSTFLAGS="-g" cargo build --release --bench collection_ops
+
+      - name: Run flamegraph on benchmarks
+        run:
+          sudo -E flamegraph --output flamegraph.svg --no-inline --
+          ./target/release/deps/collection_ops-*/collection_ops-* --bench
+
+      - name: Upload flamegraph
+        uses: actions/upload-artifact@v4
+        with:
+          name: flamegraph
+          path: flamegraph.svg

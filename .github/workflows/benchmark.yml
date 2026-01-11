@@ -1,0 +1,56 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmarks
+        run: cargo bench --workspace
+
+      - name: Store benchmark results
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p .github/benchmarks/main
+          cargo bench --workspace --save-baseline main
+          cp -r target/criterion .github/benchmarks/main/
+
+      - name: Commit benchmark results
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: GitHub Actions
+          author_email: actions@github.com
+          message: "Update benchmark baselines"
+          add: ".github/benchmarks"
+
+      - name: Compare benchmarks
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -d .github/benchmarks/main ]; then
+            cargo bench --workspace --load-baseline main --baseline pr
+          else
+            echo "No baseline found, skipping comparison"
+          fi
