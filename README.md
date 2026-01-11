@@ -1,12 +1,19 @@
-# 🛡️ Cyberpath Sentinel - Secure, Auditable Document DBMS
+<p align="center">
+  <picture>
+    <source srcset="./.assets/logo-white.svg" media="(prefers-color-scheme: dark)" />
+    <source srcset="./.assets/logo.svg" media="(prefers-color-scheme: light)" />
+    <img src="./.assets/logo.svg" alt="Sentinel Logo" height="64"/>
+  </picture>
+</p>
 
-> **Guardian of Compliance.** Built for Enterprise Security Teams, Compliance Officers, and Organizations That Can't Afford to Lose Accountability.
+[![Cyberpath](https://img.shields.io/badge/Cyberpath-project-blue)](https://cyberpath-hq.com)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE.md)
 
 A document-based DBMS written in Rust that stores all data as files on disk, where tables are represented by folders and each document's primary key is the filename. Every piece of data is inspectable, auditable, and compliant by design.
 
 ---
 
-## 🎯 Why Cyberpath Sentinel?
+## Why Cyberpath Sentinel?
 
 Modern databases prioritize speed. Cyberpath Sentinel prioritizes **trust, transparency, and compliance**.
 
@@ -27,7 +34,7 @@ Modern databases prioritize speed. Cyberpath Sentinel prioritizes **trust, trans
 
 ---
 
-## 🟢 Massive Advantages
+## Massive Advantages
 
 ### **Auditability & Security**
 - Every document is inspectable with `cat` or your favorite editor
@@ -61,7 +68,7 @@ Modern databases prioritize speed. Cyberpath Sentinel prioritizes **trust, trans
 
 ---
 
-## 🔴 Real Trade-offs (We're Honest)
+## Real Trade-offs (We're Honest)
 
 ### **Concurrency Complexity**
 - Multi-writer scenarios require file locks or Write-Ahead Logging (WAL)
@@ -199,7 +206,7 @@ data/
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ### Design Principles
 1. **Filesystem is the Database** - Leverage OS reliability and tooling
@@ -228,7 +235,7 @@ data/
 
 ---
 
-## 🔐 Security & Compliance
+## Security & Compliance
 
 ### Built-In Security
 - **Filesystem Permissions** - Leverage OS ACLs for access control
@@ -246,7 +253,7 @@ data/
 
 ---
 
-## 📊 Performance Characteristics
+## Performance Characteristics
 
 ### Best Case Scenarios
 | Operation | Time Complexity | Notes |
@@ -267,7 +274,7 @@ data/
 
 ---
 
-## 🚀 Deployment Options
+## Deployment Options
 
 ### Single Machine
 ```bash
@@ -297,7 +304,7 @@ cyberpath-sentinel backup --path /data --s3-bucket compliance-backups --encrypti
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 - **[Implementation Plan](./IMPLEMENTATION_PLAN.md)** - Detailed architecture, pain points, solutions, and roadmap
 - **[API Reference](./docs/api.md)** - Complete API documentation
@@ -307,7 +314,7 @@ cyberpath-sentinel backup --path /data --s3-bucket compliance-backups --encrypti
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! This is an ambitious project, and we need help with:
 - Core DBMS features (transactions, indexing, caching)
@@ -320,13 +327,13 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the **MIT License** - see the [LICENSE](./LICENSE) file for details.
 
 ---
 
-## 🎯 Vision
+## Vision
 
 Cyberpath Sentinel is building the **gold standard for transparent, auditable data storage**. We're not trying to replace PostgreSQL or MongoDB, we're creating something new for organizations that choose accountability over speed, and transparency over convenience.
 
@@ -338,7 +345,7 @@ In five years, we want Cyberpath Sentinel to be synonymous with:
 
 ---
 
-## 📞 Contact & Community
+## Contact & Community
 
 - **GitHub** - [cyberpath-sentinel](https://github.com/cyberpath-HQ/sentinel)
 - **Discussions** - [GitHub Discussions](https://github.com/cyberpath-HQ/sentinel/discussions)
