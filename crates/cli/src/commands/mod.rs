@@ -153,8 +153,14 @@ mod tests {
 
         // Test create-collection command
         let cli_parsed = Cli::try_parse_from([
-            "test", "create-collection", "--store-path", "/tmp/store", "--name", "users"
-        ]).unwrap();
+            "test",
+            "create-collection",
+            "--store-path",
+            "/tmp/store",
+            "--name",
+            "users",
+        ])
+        .unwrap();
         match cli_parsed.command {
             Commands::CreateCollection(args) => {
                 assert_eq!(args.store_path, "/tmp/store");
@@ -165,9 +171,18 @@ mod tests {
 
         // Test insert command
         let cli_parsed = Cli::try_parse_from([
-            "test", "insert", "--store-path", "/tmp/store", "--collection", "users",
-            "--id", "user1", "--data", "{}"
-        ]).unwrap();
+            "test",
+            "insert",
+            "--store-path",
+            "/tmp/store",
+            "--collection",
+            "users",
+            "--id",
+            "user1",
+            "--data",
+            "{}",
+        ])
+        .unwrap();
         match cli_parsed.command {
             Commands::Insert(args) => {
                 assert_eq!(args.store_path, "/tmp/store");
@@ -220,7 +235,10 @@ mod tests {
 
         // Create-collection without name
         let result = Cli::try_parse_from(["test", "create-collection", "--store-path", "/tmp"]);
-        assert!(result.is_err(), "Create-collection should require name argument");
+        assert!(
+            result.is_err(),
+            "Create-collection should require name argument"
+        );
     }
 
     /// Test run_command with Init command.
@@ -256,12 +274,15 @@ mod tests {
 
         let args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
         let command = Commands::CreateCollection(args);
 
         let result = run_command(command).await;
-        assert!(result.is_ok(), "run_command should succeed for valid CreateCollection");
+        assert!(
+            result.is_ok(),
+            "run_command should succeed for valid CreateCollection"
+        );
     }
 
     /// Test run_command with Insert command.
@@ -280,20 +301,25 @@ mod tests {
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        run_command(Commands::CreateCollection(create_args)).await.unwrap();
+        run_command(Commands::CreateCollection(create_args))
+            .await
+            .unwrap();
 
         let args = super::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice"}"#.to_string(),
         };
         let command = Commands::Insert(args);
 
         let result = run_command(command).await;
-        assert!(result.is_ok(), "run_command should succeed for valid Insert");
+        assert!(
+            result.is_ok(),
+            "run_command should succeed for valid Insert"
+        );
     }
 
     /// Test run_command with Get command.
@@ -312,19 +338,24 @@ mod tests {
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        run_command(Commands::CreateCollection(create_args)).await.unwrap();
+        run_command(Commands::CreateCollection(create_args))
+            .await
+            .unwrap();
 
         let args = super::get::GetArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
+            id:         "doc1".to_string(),
         };
         let command = Commands::Get(args);
 
         let result = run_command(command).await;
-        assert!(result.is_ok(), "run_command should succeed for Get (even if not found)");
+        assert!(
+            result.is_ok(),
+            "run_command should succeed for Get (even if not found)"
+        );
     }
 
     /// Test run_command with Update command.
@@ -343,15 +374,17 @@ mod tests {
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        run_command(Commands::CreateCollection(create_args)).await.unwrap();
+        run_command(Commands::CreateCollection(create_args))
+            .await
+            .unwrap();
 
         let args = super::update::UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Bob"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Bob"}"#.to_string(),
         };
         let command = Commands::Update(args);
 
@@ -375,14 +408,16 @@ mod tests {
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        run_command(Commands::CreateCollection(create_args)).await.unwrap();
+        run_command(Commands::CreateCollection(create_args))
+            .await
+            .unwrap();
 
         let args = super::delete::DeleteArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
+            id:         "doc1".to_string(),
         };
         let command = Commands::Delete(args);
 

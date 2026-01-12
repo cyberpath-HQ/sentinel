@@ -58,8 +58,10 @@ pub async fn run(args: GetArgs) -> sentinel::Result<()> {
                 },
                 Err(e) => {
                     error!("Failed to serialize document to JSON: {}", e);
-                    Err(sentinel::SentinelError::Json { source: e })
-                }
+                    Err(sentinel::SentinelError::Json {
+                        source: e,
+                    })
+                },
             }
         },
         Ok(None) => {
@@ -78,8 +80,9 @@ pub async fn run(args: GetArgs) -> sentinel::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     /// Test successful document retrieval.
     ///
@@ -97,15 +100,17 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice", "age": 30}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice", "age": 30}"#.to_string(),
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
@@ -114,7 +119,7 @@ mod tests {
             let args = GetArgs {
                 store_path: store_path.to_string_lossy().to_string(),
                 collection: "test_collection".to_string(),
-                id: "doc1".to_string(),
+                id:         "doc1".to_string(),
             };
 
             // Since run prints to stdout, we need to capture it
@@ -141,18 +146,23 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         let args = GetArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "non_existent".to_string(),
+            id:         "non_existent".to_string(),
         };
 
         let result = run(args).await;
-        assert!(result.is_ok(), "Get should succeed (but warn) for non-existent document");
+        assert!(
+            result.is_ok(),
+            "Get should succeed (but warn) for non-existent document"
+        );
     }
 
     /// Test get from non-existent collection.
@@ -172,7 +182,7 @@ mod tests {
         let args = GetArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "non_existent".to_string(),
-            id: "doc1".to_string(),
+            id:         "doc1".to_string(),
         };
 
         let result = run(args).await;
@@ -195,14 +205,16 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         let args = GetArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "".to_string(),
+            id:         "".to_string(),
         };
 
         let result = run(args).await;
@@ -226,16 +238,18 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         // Insert a document first
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "test"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "test"}"#.to_string(),
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
@@ -252,7 +266,7 @@ mod tests {
         let args = GetArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
+            id:         "doc1".to_string(),
         };
 
         let result = run(args).await;

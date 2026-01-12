@@ -5,5 +5,5 @@ pub mod store;
 
 pub use collection::Collection;
 pub use document::Document;
-pub use error::{SentinelError, Result};
+pub use error::{Result, SentinelError};
 pub use store::Store;

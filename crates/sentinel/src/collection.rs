@@ -29,7 +29,11 @@ impl Collection {
                 }))
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(SentinelError::Io { source: e }),
+            Err(e) => {
+                Err(SentinelError::Io {
+                    source: e,
+                })
+            },
         }
     }
 
@@ -43,7 +47,11 @@ impl Collection {
         match tokio_fs::remove_file(&file_path).await {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()), // Already deleted
-            Err(e) => Err(SentinelError::Io { source: e }),
+            Err(e) => {
+                Err(SentinelError::Io {
+                    source: e,
+                })
+            },
         }
     }
 }

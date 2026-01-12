@@ -9,7 +9,6 @@ pub struct InitArgs {
     pub path: String,
 }
 
-
 /// Initialize a new Sentinel store at the specified path.
 ///
 /// This function creates the necessary directory structure and metadata
@@ -48,8 +47,9 @@ pub async fn run(args: InitArgs) -> sentinel::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     /// Test successful store initialization.
     ///
@@ -68,7 +68,10 @@ mod tests {
         assert!(result.is_ok(), "Init should succeed for valid path");
 
         // Verify store directory was created
-        assert!(store_path.exists(), "Store directory should exist after init");
+        assert!(
+            store_path.exists(),
+            "Store directory should exist after init"
+        );
     }
 
     /// Test init with invalid path.

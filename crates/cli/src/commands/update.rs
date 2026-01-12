@@ -57,7 +57,9 @@ pub async fn run(args: UpdateArgs) -> sentinel::Result<()> {
         Ok(v) => v,
         Err(e) => {
             error!("Invalid JSON data: {}", e);
-            return Err(sentinel::SentinelError::Json { source: e });
+            return Err(sentinel::SentinelError::Json {
+                source: e,
+            });
         },
     };
     match coll.update(&id, value).await {
@@ -77,8 +79,9 @@ pub async fn run(args: UpdateArgs) -> sentinel::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     /// Test successful document update.
     ///
@@ -96,15 +99,17 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice", "age": 30}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice", "age": 30}"#.to_string(),
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
@@ -112,12 +117,15 @@ mod tests {
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice", "age": 31}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice", "age": 31}"#.to_string(),
         };
 
         let result = run(args).await;
-        assert!(result.is_ok(), "Update should succeed for existing document");
+        assert!(
+            result.is_ok(),
+            "Update should succeed for existing document"
+        );
     }
 
     /// Test update with invalid JSON.
@@ -136,23 +144,25 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice"}"#.to_string(),
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice", "age": }"#.to_string(), // Invalid
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice", "age": }"#.to_string(), // Invalid
         };
 
         let result = run(args).await;
@@ -176,15 +186,17 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "non_existent".to_string(),
-            data: r#"{"name": "Bob"}"#.to_string(),
+            id:         "non_existent".to_string(),
+            data:       r#"{"name": "Bob"}"#.to_string(),
         };
 
         let result = run(args).await;
@@ -209,8 +221,8 @@ mod tests {
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "non_existent".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Bob"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Bob"}"#.to_string(),
         };
 
         let result = run(args).await;
@@ -234,9 +246,11 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         // Make the collection directory read-only
         let collection_path = store_path.join("data").join("test_collection");
@@ -247,12 +261,15 @@ mod tests {
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Bob"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Bob"}"#.to_string(),
         };
 
         let result = run(args).await;
-        assert!(result.is_err(), "Update should fail on read-only collection");
+        assert!(
+            result.is_err(),
+            "Update should fail on read-only collection"
+        );
 
         // Restore permissions for cleanup
         let mut perms = std::fs::metadata(&collection_path).unwrap().permissions();

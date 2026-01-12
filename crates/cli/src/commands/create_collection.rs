@@ -12,7 +12,6 @@ pub struct CreateCollectionArgs {
     pub name:       String,
 }
 
-
 /// Create a new collection within an existing Sentinel store.
 ///
 /// This function creates a logical grouping for documents within the specified store.
@@ -59,8 +58,9 @@ pub async fn run(args: CreateCollectionArgs) -> sentinel::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     /// Test successful collection creation.
     ///
@@ -80,7 +80,7 @@ mod tests {
 
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
 
         let result = run(args).await;
@@ -97,11 +97,14 @@ mod tests {
 
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
 
         let result = run(args).await;
-        assert!(result.is_ok(), "Create collection should create store if needed");
+        assert!(
+            result.is_ok(),
+            "Create collection should create store if needed"
+        );
     }
 
     /// Test create collection with invalid collection name.
@@ -122,13 +125,16 @@ mod tests {
         // Test with empty name
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "".to_string(),
+            name:       "".to_string(),
         };
 
         let result = run(args).await;
         // Depending on implementation, might succeed or fail
         // For now, assume it succeeds as collection creation might handle empty names
-        assert!(result.is_ok(), "Create collection with empty name should be handled");
+        assert!(
+            result.is_ok(),
+            "Create collection with empty name should be handled"
+        );
     }
 
     /// Test create collection with read-only store.
@@ -153,11 +159,14 @@ mod tests {
 
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
 
         let result = run(args).await;
-        assert!(result.is_err(), "Create collection should fail on read-only store");
+        assert!(
+            result.is_err(),
+            "Create collection should fail on read-only store"
+        );
 
         // Restore permissions for cleanup
         let mut perms = std::fs::metadata(&store_path).unwrap().permissions();

@@ -15,7 +15,6 @@ pub struct DeleteArgs {
     pub id:         String,
 }
 
-
 /// Delete a document from a Sentinel collection.
 ///
 /// This function removes the document with the specified ID from the given collection.
@@ -65,8 +64,9 @@ pub async fn run(args: DeleteArgs) -> sentinel::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     /// Test successful document deletion.
     ///
@@ -84,15 +84,17 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice"}"#.to_string(),
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
@@ -100,11 +102,14 @@ mod tests {
         let args = DeleteArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
+            id:         "doc1".to_string(),
         };
 
         let result = run(args).await;
-        assert!(result.is_ok(), "Delete should succeed for existing document");
+        assert!(
+            result.is_ok(),
+            "Delete should succeed for existing document"
+        );
     }
 
     /// Test delete non-existent document.
@@ -124,20 +129,25 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         let args = DeleteArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "non_existent".to_string(),
+            id:         "non_existent".to_string(),
         };
 
         let result = run(args).await;
         // Depending on implementation, deleting non-existent might succeed or fail
         // Assume it succeeds for idempotency
-        assert!(result.is_ok(), "Delete should handle non-existent document gracefully");
+        assert!(
+            result.is_ok(),
+            "Delete should handle non-existent document gracefully"
+        );
     }
 
     /// Test delete from non-existent collection.
@@ -157,7 +167,7 @@ mod tests {
         let args = DeleteArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "non_existent".to_string(),
-            id: "doc1".to_string(),
+            id:         "doc1".to_string(),
         };
 
         let result = run(args).await;
@@ -180,14 +190,16 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         let args = DeleteArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "".to_string(),
+            id:         "".to_string(),
         };
 
         let result = run(args).await;
@@ -212,16 +224,18 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
-        crate::commands::create_collection::run(create_args).await.unwrap();
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
 
         // Insert a document first
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "test"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "test"}"#.to_string(),
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
@@ -234,11 +248,14 @@ mod tests {
         let args = DeleteArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
+            id:         "doc1".to_string(),
         };
 
         let result = run(args).await;
-        assert!(result.is_err(), "Delete should fail on read-only collection");
+        assert!(
+            result.is_err(),
+            "Delete should fail on read-only collection"
+        );
 
         // Restore permissions for cleanup
         let mut perms = std::fs::metadata(&collection_path).unwrap().permissions();
