@@ -8,7 +8,7 @@
 
 [![Cyberpath](https://img.shields.io/badge/Cyberpath-project-blue)](https://cyberpath-hq.com)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE.md)
-[![codecov](https://codecov.io/gh/cyberpath-HQ/sentinel/branch/main/graph/badge.svg?token=YOUR_TOKEN)](https://codecov.io/gh/cyberpath-HQ/sentinel)
+[![codecov](https://codecov.io/github/cyberpath-HQ/sentinel/graph/badge.svg?token=27DAIYXTTB)](https://codecov.io/github/cyberpath-HQ/sentinel)
 
 A document-based DBMS written in Rust that stores all data as files on disk, where tables are represented by folders and
 each document's primary key is the filename. Every piece of data is inspectable, auditable, and compliant by design.
