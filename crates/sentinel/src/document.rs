@@ -3,7 +3,7 @@ use serde_json::Value;
 /// Represents a document in the database.
 pub struct Document {
     /// The unique identifier of the document.
-    pub id:   String,
+    pub id: String,
     /// The JSON data of the document.
     pub data: Value,
 }
@@ -18,7 +18,7 @@ mod tests {
     fn test_document_creation() {
         let data = json!({"name": "Test", "value": 42});
         let doc = Document {
-            id:   "test-id".to_string(),
+            id: "test-id".to_string(),
             data: data.clone(),
         };
 
@@ -48,7 +48,7 @@ mod tests {
             "object": {"nested": "value"}
         });
         let doc = Document {
-            id:   "complex".to_string(),
+            id: "complex".to_string(),
             data: data.clone(),
         };
 
