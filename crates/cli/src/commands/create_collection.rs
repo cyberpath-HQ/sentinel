@@ -8,10 +8,11 @@ pub struct CreateCollectionArgs {
     pub store_path: String,
     /// Collection name
     #[arg(short, long)]
-    pub name: String,
+    pub name:       String,
 }
 
 use std::io;
+
 use tracing::{error, info};
 
 /// Create a new collection within an existing Sentinel store.
@@ -27,11 +28,14 @@ use tracing::{error, info};
 ///
 /// # Examples
 /// ```rust,no_run
-/// use sentinel_cli::commands::create_collection::{CreateCollectionArgs, run};
+/// use sentinel_cli::commands::create_collection::{
+///     run,
+///     CreateCollectionArgs,
+/// };
 ///
 /// let args = CreateCollectionArgs {
 ///     store_path: "/tmp/my_store".to_string(),
-///     name: "users".to_string(),
+///     name:       "users".to_string(),
 /// };
 /// run(args).await?;
 /// ```
@@ -44,10 +48,13 @@ pub async fn run(args: CreateCollectionArgs) -> io::Result<()> {
         Ok(_) => {
             info!("Collection '{}' created successfully", name);
             Ok(())
-        }
+        },
         Err(e) => {
-            error!("Failed to create collection '{}' in store {}: {}", name, store_path, e);
+            error!(
+                "Failed to create collection '{}' in store {}: {}",
+                name, store_path, e
+            );
             Err(e)
-        }
+        },
     }
 }

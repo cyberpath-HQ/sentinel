@@ -1,7 +1,11 @@
-use crate::commands::{run_command, Cli};
-use crate::logging::init_tracing;
-use clap::Parser;
 use std::io;
+
+use clap::Parser;
+
+use crate::{
+    commands::{run_command, Cli},
+    logging::init_tracing,
+};
 
 /// Run the Sentinel CLI application.
 ///

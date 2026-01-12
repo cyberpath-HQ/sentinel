@@ -11,11 +11,11 @@ mod init;
 mod insert;
 mod update;
 
-
 /// The main CLI structure for the Sentinel document DBMS.
 ///
 /// This CLI provides commands to interact with Sentinel stores, collections, and documents.
-/// It supports various operations like initializing stores, managing collections, and CRUD operations on documents.
+/// It supports various operations like initializing stores, managing collections, and CRUD
+/// operations on documents.
 ///
 /// # Examples
 ///
@@ -51,7 +51,8 @@ pub struct Cli {
 pub enum Commands {
     /// Initialize a new store at the specified path.
     ///
-    /// This command creates the necessary directory structure and metadata for a new Sentinel store.
+    /// This command creates the necessary directory structure and metadata for a new Sentinel
+    /// store.
     ///
     /// # Arguments
     /// * `--path` - The filesystem path where the store should be created.
@@ -115,9 +116,11 @@ pub enum Commands {
 ///
 /// # Examples
 /// ```rust,no_run
-/// use sentinel_cli::commands::{Commands, run_command};
+/// use sentinel_cli::commands::{run_command, Commands};
 ///
-/// let cmd = Commands::Init(init::InitArgs { path: "/tmp/store".to_string() });
+/// let cmd = Commands::Init(init::InitArgs {
+///     path: "/tmp/store".to_string(),
+/// });
 /// run_command(cmd).await?;
 /// ```
 pub async fn run_command(command: Commands) -> std::io::Result<()> {

@@ -11,14 +11,15 @@ pub struct UpdateArgs {
     pub collection: String,
     /// Document ID
     #[arg(short, long)]
-    pub id: String,
+    pub id:         String,
     /// JSON data (as string)
     #[arg(short, long)]
-    pub data: String,
+    pub data:       String,
 }
 
-use serde_json::Value;
 use std::io;
+
+use serde_json::Value;
 use tracing::{error, info};
 
 /// Update an existing document in a Sentinel collection.
@@ -34,13 +35,13 @@ use tracing::{error, info};
 ///
 /// # Examples
 /// ```rust,no_run
-/// use sentinel_cli::commands::update::{UpdateArgs, run};
+/// use sentinel_cli::commands::update::{run, UpdateArgs};
 ///
 /// let args = UpdateArgs {
 ///     store_path: "/tmp/my_store".to_string(),
 ///     collection: "users".to_string(),
-///     id: "user1".to_string(),
-///     data: r#"{"name": "Bob"}"#.to_string(),
+///     id:         "user1".to_string(),
+///     data:       r#"{"name": "Bob"}"#.to_string(),
 /// };
 /// run(args).await?;
 /// ```
@@ -49,7 +50,10 @@ pub async fn run(args: UpdateArgs) -> io::Result<()> {
     let collection = args.collection;
     let id = args.id;
     let data = args.data;
-    info!("Updating document '{}' in collection '{}' in store {}", id, collection, store_path);
+    info!(
+        "Updating document '{}' in collection '{}' in store {}",
+        id, collection, store_path
+    );
     let store = sentinel::Store::new(&store_path).await?;
     let coll = store.collection(&collection).await?;
     let value: Value = match serde_json::from_str(&data) {
@@ -57,16 +61,19 @@ pub async fn run(args: UpdateArgs) -> io::Result<()> {
         Err(e) => {
             error!("Invalid JSON data: {}", e);
             return Err(io::Error::new(io::ErrorKind::InvalidInput, e));
-        }
+        },
     };
     match coll.update(&id, value).await {
         Ok(_) => {
             info!("Document '{}' updated successfully", id);
             Ok(())
-        }
+        },
         Err(e) => {
-            error!("Failed to update document '{}' in collection '{}' in store {}: {}", id, collection, store_path, e);
+            error!(
+                "Failed to update document '{}' in collection '{}' in store {}: {}",
+                id, collection, store_path, e
+            );
             Err(e)
-        }
+        },
     }
 }

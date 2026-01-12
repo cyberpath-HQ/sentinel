@@ -11,10 +11,11 @@ pub struct GetArgs {
     pub collection: String,
     /// Document ID
     #[arg(short, long)]
-    pub id: String,
+    pub id:         String,
 }
 
 use std::io;
+
 use tracing::{error, info, warn};
 
 /// Retrieve a document from a Sentinel collection.
@@ -31,12 +32,12 @@ use tracing::{error, info, warn};
 ///
 /// # Examples
 /// ```rust,no_run
-/// use sentinel_cli::commands::get::{GetArgs, run};
+/// use sentinel_cli::commands::get::{run, GetArgs};
 ///
 /// let args = GetArgs {
 ///     store_path: "/tmp/my_store".to_string(),
 ///     collection: "users".to_string(),
-///     id: "user1".to_string(),
+///     id:         "user1".to_string(),
 /// };
 /// run(args).await?;
 /// ```
@@ -44,7 +45,10 @@ pub async fn run(args: GetArgs) -> io::Result<()> {
     let store_path = args.store_path;
     let collection = args.collection;
     let id = args.id;
-    info!("Getting document '{}' from collection '{}' in store {}", id, collection, store_path);
+    info!(
+        "Getting document '{}' from collection '{}' in store {}",
+        id, collection, store_path
+    );
     let store = sentinel::Store::new(&store_path).await?;
     let coll = store.collection(&collection).await?;
     match coll.get(&id).await {
@@ -52,14 +56,17 @@ pub async fn run(args: GetArgs) -> io::Result<()> {
             info!("Document '{}' retrieved successfully", id);
             println!("{}", serde_json::to_string_pretty(&doc.data)?);
             Ok(())
-        }
+        },
         Ok(None) => {
             warn!("Document '{}' not found", id);
             Ok(())
-        }
+        },
         Err(e) => {
-            error!("Failed to get document '{}' from collection '{}' in store {}: {}", id, collection, store_path, e);
+            error!(
+                "Failed to get document '{}' from collection '{}' in store {}: {}",
+                id, collection, store_path, e
+            );
             Err(e)
-        }
+        },
     }
 }

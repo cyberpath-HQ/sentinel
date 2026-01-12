@@ -1,8 +1,9 @@
-use std::path::PathBuf;
-use std::io;
+use std::{io, path::PathBuf};
+
 use serde_json::Value;
 use tokio::fs as tokio_fs;
-use crate::{Document};
+
+use crate::Document;
 
 pub struct Collection {
     pub(crate) name: String,
@@ -25,7 +26,7 @@ impl Collection {
                     id: id.to_string(),
                     data,
                 }))
-            }
+            },
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e),
         }
@@ -48,9 +49,10 @@ impl Collection {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
     use tempfile::tempdir;
+
+    use super::*;
     use crate::Store;
 
     /// Helper function to set up a temporary collection for testing
@@ -95,7 +97,10 @@ mod tests {
                 }
             }
         });
-        collection.insert("large", large_data.clone()).await.unwrap();
+        collection
+            .insert("large", large_data.clone())
+            .await
+            .unwrap();
 
         let retrieved = collection.get("large").await.unwrap();
         assert_eq!(retrieved.unwrap().data, large_data);
@@ -106,7 +111,10 @@ mod tests {
         let (collection, _temp_dir) = setup_collection().await;
 
         let doc = json!({ "data": "test" });
-        collection.insert("user_123-special!", doc.clone()).await.unwrap();
+        collection
+            .insert("user_123-special!", doc.clone())
+            .await
+            .unwrap();
 
         let retrieved = collection.get("user_123-special!").await.unwrap();
         assert_eq!(retrieved.unwrap().data, doc);
@@ -174,8 +182,14 @@ mod tests {
         let (collection, _temp_dir) = setup_collection().await;
 
         // Insert multiple
-        collection.insert("user1", json!({"name": "User1"})).await.unwrap();
-        collection.insert("user2", json!({"name": "User2"})).await.unwrap();
+        collection
+            .insert("user1", json!({"name": "User1"}))
+            .await
+            .unwrap();
+        collection
+            .insert("user2", json!({"name": "User2"}))
+            .await
+            .unwrap();
 
         // Get both
         let user1 = collection.get("user1").await.unwrap().unwrap();
@@ -184,7 +198,10 @@ mod tests {
         assert_eq!(user2.data["name"], "User2");
 
         // Update one
-        collection.update("user1", json!({"name": "Updated"})).await.unwrap();
+        collection
+            .update("user1", json!({"name": "Updated"}))
+            .await
+            .unwrap();
         let updated = collection.get("user1").await.unwrap().unwrap();
         assert_eq!(updated.data["name"], "Updated");
 

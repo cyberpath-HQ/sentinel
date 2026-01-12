@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use sentinel::{Store, Collection};
+use sentinel::{Collection, Store};
 use serde_json::json;
 use tempfile::tempdir;
 
@@ -29,16 +29,20 @@ fn bench_get(c: &mut Criterion) {
 
     c.bench_function("collection_get", |b| {
         b.iter_batched(
-            || rt.block_on(async {
-                let (collection, temp_dir) = setup_collection().await;
-                let doc = json!({"name": "test", "value": black_box(42)});
-                collection.insert("test-id", doc).await.unwrap();
-                (collection, temp_dir)
-            }),
-            |(collection, _temp_dir)| rt.block_on(async move {
-                black_box(collection.get("test-id").await.unwrap());
-            }),
-            criterion::BatchSize::SmallInput
+            || {
+                rt.block_on(async {
+                    let (collection, temp_dir) = setup_collection().await;
+                    let doc = json!({"name": "test", "value": black_box(42)});
+                    collection.insert("test-id", doc).await.unwrap();
+                    (collection, temp_dir)
+                })
+            },
+            |(collection, _temp_dir)| {
+                rt.block_on(async move {
+                    black_box(collection.get("test-id").await.unwrap());
+                })
+            },
+            criterion::BatchSize::SmallInput,
         )
     });
 }
@@ -48,17 +52,21 @@ fn bench_update(c: &mut Criterion) {
 
     c.bench_function("collection_update", |b| {
         b.iter_batched(
-            || rt.block_on(async {
-                let (collection, temp_dir) = setup_collection().await;
-                let doc = json!({"name": "test", "value": black_box(42)});
-                collection.insert("test-id", doc).await.unwrap();
-                (collection, temp_dir)
-            }),
-            |(collection, _temp_dir)| rt.block_on(async move {
-                let doc = json!({"name": "updated", "value": black_box(43)});
-                collection.update("test-id", doc).await.unwrap();
-            }),
-            criterion::BatchSize::SmallInput
+            || {
+                rt.block_on(async {
+                    let (collection, temp_dir) = setup_collection().await;
+                    let doc = json!({"name": "test", "value": black_box(42)});
+                    collection.insert("test-id", doc).await.unwrap();
+                    (collection, temp_dir)
+                })
+            },
+            |(collection, _temp_dir)| {
+                rt.block_on(async move {
+                    let doc = json!({"name": "updated", "value": black_box(43)});
+                    collection.update("test-id", doc).await.unwrap();
+                })
+            },
+            criterion::BatchSize::SmallInput,
         )
     });
 }
@@ -68,16 +76,20 @@ fn bench_delete(c: &mut Criterion) {
 
     c.bench_function("collection_delete", |b| {
         b.iter_batched(
-            || rt.block_on(async {
-                let (collection, temp_dir) = setup_collection().await;
-                let doc = json!({"name": "test", "value": black_box(42)});
-                collection.insert("test-id", doc).await.unwrap();
-                (collection, temp_dir)
-            }),
-            |(collection, _temp_dir)| rt.block_on(async move {
-                collection.delete("test-id").await.unwrap();
-            }),
-            criterion::BatchSize::SmallInput
+            || {
+                rt.block_on(async {
+                    let (collection, temp_dir) = setup_collection().await;
+                    let doc = json!({"name": "test", "value": black_box(42)});
+                    collection.insert("test-id", doc).await.unwrap();
+                    (collection, temp_dir)
+                })
+            },
+            |(collection, _temp_dir)| {
+                rt.block_on(async move {
+                    collection.delete("test-id").await.unwrap();
+                })
+            },
+            criterion::BatchSize::SmallInput,
         )
     });
 }

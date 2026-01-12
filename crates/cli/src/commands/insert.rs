@@ -11,14 +11,15 @@ pub struct InsertArgs {
     pub collection: String,
     /// Document ID
     #[arg(short, long)]
-    pub id: String,
+    pub id:         String,
     /// JSON data (as string)
     #[arg(short, long)]
-    pub data: String,
+    pub data:       String,
 }
 
-use serde_json::Value;
 use std::io;
+
+use serde_json::Value;
 use tracing::{error, info};
 
 /// Insert a new document into a Sentinel collection.
@@ -35,13 +36,13 @@ use tracing::{error, info};
 ///
 /// # Examples
 /// ```rust,no_run
-/// use sentinel_cli::commands::insert::{InsertArgs, run};
+/// use sentinel_cli::commands::insert::{run, InsertArgs};
 ///
 /// let args = InsertArgs {
 ///     store_path: "/tmp/my_store".to_string(),
 ///     collection: "users".to_string(),
-///     id: "user1".to_string(),
-///     data: r#"{"name": "Alice"}"#.to_string(),
+///     id:         "user1".to_string(),
+///     data:       r#"{"name": "Alice"}"#.to_string(),
 /// };
 /// run(args).await?;
 /// ```
@@ -50,7 +51,10 @@ pub async fn run(args: InsertArgs) -> io::Result<()> {
     let collection = args.collection;
     let id = args.id;
     let data = args.data;
-    info!("Inserting document '{}' into collection '{}' in store {}", id, collection, store_path);
+    info!(
+        "Inserting document '{}' into collection '{}' in store {}",
+        id, collection, store_path
+    );
     let store = sentinel::Store::new(&store_path).await?;
     let coll = store.collection(&collection).await?;
     let value: Value = match serde_json::from_str(&data) {
@@ -58,16 +62,19 @@ pub async fn run(args: InsertArgs) -> io::Result<()> {
         Err(e) => {
             error!("Invalid JSON data: {}", e);
             return Err(io::Error::new(io::ErrorKind::InvalidInput, e));
-        }
+        },
     };
     match coll.insert(&id, value).await {
         Ok(_) => {
             info!("Document '{}' inserted successfully", id);
             Ok(())
-        }
+        },
         Err(e) => {
-            error!("Failed to insert document '{}' into collection '{}' in store {}: {}", id, collection, store_path, e);
+            error!(
+                "Failed to insert document '{}' into collection '{}' in store {}: {}",
+                id, collection, store_path, e
+            );
             Err(e)
-        }
+        },
     }
 }

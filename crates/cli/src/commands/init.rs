@@ -9,6 +9,7 @@ pub struct InitArgs {
 }
 
 use std::io;
+
 use tracing::{error, info};
 
 /// Initialize a new Sentinel store at the specified path.
@@ -25,9 +26,11 @@ use tracing::{error, info};
 ///
 /// # Examples
 /// ```rust,no_run
-/// use sentinel_cli::commands::init::{InitArgs, run};
+/// use sentinel_cli::commands::init::{run, InitArgs};
 ///
-/// let args = InitArgs { path: "/tmp/my_store".to_string() };
+/// let args = InitArgs {
+///     path: "/tmp/my_store".to_string(),
+/// };
 /// run(args).await?;
 /// ```
 pub async fn run(args: InitArgs) -> io::Result<()> {
@@ -37,10 +40,10 @@ pub async fn run(args: InitArgs) -> io::Result<()> {
         Ok(_) => {
             info!("Store initialized successfully at {}", path);
             Ok(())
-        }
+        },
         Err(e) => {
             error!("Failed to initialize store at {}: {}", path, e);
             Err(e)
-        }
+        },
     }
 }

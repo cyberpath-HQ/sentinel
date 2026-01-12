@@ -13,7 +13,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 /// # Examples
 /// ```rust,no_run
 /// init_tracing(false, 0); // INFO level, human-readable
-/// init_tracing(true, 1);  // DEBUG level, JSON
+/// init_tracing(true, 1); // DEBUG level, JSON
 /// ```
 pub fn init_tracing(json: bool, verbose: u8) {
     let level = match verbose {
@@ -30,7 +30,8 @@ pub fn init_tracing(json: bool, verbose: u8) {
         registry
             .with(fmt::layer().json().flatten_event(true))
             .init();
-    } else {
+    }
+    else {
         registry.with(fmt::layer()).init();
     }
 }
