@@ -290,11 +290,11 @@ mod tests {
         Collection::validate_document_id("1").unwrap();
         Collection::validate_document_id("-").unwrap();
         Collection::validate_document_id("_").unwrap();
-        
+
         // Long IDs
         let long_id = "a".repeat(255);
         Collection::validate_document_id(&long_id).unwrap();
-        
+
         // Unicode (should be rejected as it's not alphanumeric ASCII)
         assert!(Collection::validate_document_id("user-caf\u{e9}").is_err());
         assert!(Collection::validate_document_id("\u{7528}\u{6237}123").is_err());
