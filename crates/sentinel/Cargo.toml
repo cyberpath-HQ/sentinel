@@ -23,7 +23,3 @@ workspace = true
 [[bench]]
 name = "collection_ops"
 harness = false
-
-[[bin]]
-name = "sentinel-cli"
-path = "src/main.rs"
