@@ -3,7 +3,7 @@ use serde_json::Value;
 /// Represents a document in the database.
 pub struct Document {
     /// The unique identifier of the document.
-    pub id:   String,
+    pub id: String,
     /// The JSON data of the document.
     pub data: Value,
 }
@@ -18,7 +18,7 @@ mod tests {
     fn test_document_creation() {
         let data = json!({"name": "Test", "value": 42});
         let doc = Document {
-            id:   "test-id".to_string(),
+            id: "test-id".to_string(),
             data: data.clone(),
         };
 
@@ -48,7 +48,7 @@ mod tests {
             "object": {"nested": "value"}
         });
         let doc = Document {
-            id:   "complex".to_string(),
+            id: "complex".to_string(),
             data: data.clone(),
         };
 
@@ -60,13 +60,27 @@ mod tests {
     }
 
     #[test]
-    fn test_document_id_with_special_characters() {
-        let data = json!({"data": "test"});
-        let doc = Document {
-            id: "user_123-special!".to_string(),
-            data,
-        };
+    fn test_document_with_valid_filename_safe_ids() {
+        // Test various valid filename-safe document IDs
+        let valid_ids = vec![
+            "user-123",
+            "user_456",
+            "user123",
+            "123",
+            "a",
+            "user-123_test",
+            "CamelCaseID",
+        ];
 
-        assert_eq!(doc.id, "user_123-special!");
+        for id in valid_ids {
+            let data = json!({"data": "test"});
+            let doc = Document {
+                id: id.to_owned(),
+                data: data.clone(),
+            };
+
+            assert_eq!(doc.id, id);
+            assert_eq!(doc.data, data);
+        }
     }
 }
