@@ -86,12 +86,8 @@ impl Collection {
     }
 
     pub async fn update(&self, id: &str, data: Value) -> Result<()> {
-        Self::validate_document_id(id)?;
-        // For update, just insert (overwrite)
-        let file_path = self.path.join(format!("{}.json", id));
-        let json = serde_json::to_string_pretty(&data)?;
-        tokio_fs::write(&file_path, json).await?;
-        Ok(())
+        // For update, just insert (overwrite). Validation happens in insert.
+        self.insert(id, data).await
     }
 
     pub async fn delete(&self, id: &str) -> Result<()> {
