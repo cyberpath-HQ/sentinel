@@ -203,11 +203,8 @@ mod tests {
         };
 
         let result = run(args).await;
-        // Empty ID should now be rejected by validation
-        assert!(
-            result.is_err(),
-            "Delete with empty ID should fail validation"
-        );
+        // Empty ID should be rejected
+        assert!(result.is_err(), "Delete with empty ID should fail validation");
     }
 
     /// Test delete with read-only collection.

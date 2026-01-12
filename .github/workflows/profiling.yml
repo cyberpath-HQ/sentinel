@@ -37,11 +37,7 @@ jobs:
 
       - name: Run flamegraph on benchmarks
         run:
-          sudo -E /home/runner/.cargo/bin/flamegraph \
-            --output flamegraph.svg \
-            --
-            ./target/release/deps/collection_ops-* \
-            --bench
+          sudo /home/runner/.cargo/bin/flamegraph --output flamegraph.svg -- ./target/release/deps/collection_ops-* --bench
 
       - name: Upload flamegraph
         uses: actions/upload-artifact@v4

@@ -129,11 +129,10 @@ mod tests {
         };
 
         let result = run(args).await;
-        // Depending on implementation, might succeed or fail
-        // For now, assume it succeeds as collection creation might handle empty names
+        // Empty name should be rejected
         assert!(
-            result.is_ok(),
-            "Create collection with empty name should be handled"
+            result.is_err(),
+            "Create collection with empty name should fail validation"
         );
     }
 

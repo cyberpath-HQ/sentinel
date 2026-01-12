@@ -218,7 +218,7 @@ mod tests {
         };
 
         let result = run(args).await;
-        // Empty ID should now be rejected by validation
+        // Empty ID should be rejected
         assert!(result.is_err(), "Get with empty ID should fail validation");
     }
 

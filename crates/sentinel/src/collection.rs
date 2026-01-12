@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tokio::fs as tokio_fs;
 
-use crate::{Document, Result, SentinelError};
+use crate::{validation::{is_reserved_name, is_valid_name_chars}, Document, Result, SentinelError};
 
+#[derive(Debug)]
 pub struct Collection {
     pub(crate) name: String,
     pub(crate) path: PathBuf,
@@ -95,6 +96,47 @@ impl Collection {
             }),
         }
     }
+}
+
+/// Validates that a document ID is filesystem-safe across all platforms.
+///
+/// # Rules
+/// - Must not be empty
+/// - Must not contain path separators (`/` or `\`)
+/// - Must not contain control characters (0x00-0x1F, 0x7F)
+/// - Must not be a Windows reserved name (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+/// - Must not contain Windows reserved characters (< > : " | ? *)
+/// - Must only contain valid filename characters
+///
+/// # Parameters
+/// - `id`: The document ID to validate
+///
+/// # Returns
+/// - `Ok(())` if the ID is valid
+/// - `Err(SentinelError::InvalidDocumentId)` if the ID is invalid
+pub(crate) fn validate_document_id(id: &str) -> Result<()> {
+    // Check if id is empty
+    if id.is_empty() {
+        return Err(SentinelError::InvalidDocumentId {
+            id: id.to_owned(),
+        });
+    }
+
+    // Check for valid characters
+    if !is_valid_name_chars(id) {
+        return Err(SentinelError::InvalidDocumentId {
+            id: id.to_owned(),
+        });
+    }
+
+    // Check for Windows reserved names
+    if is_reserved_name(id) {
+        return Err(SentinelError::InvalidDocumentId {
+            id: id.to_owned(),
+        });
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -361,5 +403,120 @@ mod tests {
         collection.delete("user2").await.unwrap();
         assert!(collection.get("user2").await.unwrap().is_none());
         assert!(collection.get("user1").await.unwrap().is_some());
+    }
+
+    #[test]
+    fn test_validate_document_id_valid() {
+        // Valid IDs
+        assert!(validate_document_id("user-123").is_ok());
+        assert!(validate_document_id("user_456").is_ok());
+        assert!(validate_document_id("data.item").is_ok());
+        assert!(validate_document_id("test_collection_123").is_ok());
+        assert!(validate_document_id("file.txt").is_ok());
+        assert!(validate_document_id("a").is_ok());
+        assert!(validate_document_id("123").is_ok());
+    }
+
+    #[test]
+    fn test_validate_document_id_invalid_empty() {
+        assert!(validate_document_id("").is_err());
+    }
+
+    #[test]
+    fn test_validate_document_id_invalid_path_separators() {
+        assert!(validate_document_id("path/traversal").is_err());
+        assert!(validate_document_id("path\\traversal").is_err());
+    }
+
+    #[test]
+    fn test_validate_document_id_invalid_control_characters() {
+        assert!(validate_document_id("file\nname").is_err());
+        assert!(validate_document_id("file\x00name").is_err());
+    }
+
+    #[test]
+    fn test_validate_document_id_invalid_windows_reserved_characters() {
+        assert!(validate_document_id("file<name>").is_err());
+        assert!(validate_document_id("file>name").is_err());
+        assert!(validate_document_id("file:name").is_err());
+        assert!(validate_document_id("file\"name").is_err());
+        assert!(validate_document_id("file|name").is_err());
+        assert!(validate_document_id("file?name").is_err());
+        assert!(validate_document_id("file*name").is_err());
+    }
+
+    #[test]
+    fn test_validate_document_id_invalid_other_characters() {
+        assert!(validate_document_id("file name").is_err()); // space
+        assert!(validate_document_id("file@name").is_err()); // @
+        assert!(validate_document_id("file!name").is_err()); // !
+    }
+
+    #[test]
+    fn test_validate_document_id_invalid_windows_reserved_names() {
+        // Test reserved names (case-insensitive)
+        assert!(validate_document_id("CON").is_err());
+        assert!(validate_document_id("con").is_err());
+        assert!(validate_document_id("Con").is_err());
+        assert!(validate_document_id("PRN").is_err());
+        assert!(validate_document_id("AUX").is_err());
+        assert!(validate_document_id("NUL").is_err());
+        assert!(validate_document_id("COM1").is_err());
+        assert!(validate_document_id("LPT9").is_err());
+
+        // Test with extensions
+        assert!(validate_document_id("CON.txt").is_err());
+        assert!(validate_document_id("prn.backup").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_insert_invalid_document_id() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({ "data": "test" });
+
+        // Test empty ID
+        assert!(collection.insert("", doc.clone()).await.is_err());
+
+        // Test Windows reserved name
+        assert!(collection.insert("CON", doc.clone()).await.is_err());
+
+        // Test invalid character
+        assert!(collection.insert("file name", doc.clone()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_invalid_document_id() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Test empty ID
+        assert!(collection.get("").await.is_err());
+
+        // Test Windows reserved name
+        assert!(collection.get("CON").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_update_invalid_document_id() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({ "data": "test" });
+
+        // Test empty ID
+        assert!(collection.update("", doc.clone()).await.is_err());
+
+        // Test Windows reserved name
+        assert!(collection.update("CON", doc.clone()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_delete_invalid_document_id() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Test empty ID
+        assert!(collection.delete("").await.is_err());
+
+        // Test Windows reserved name
+        assert!(collection.delete("CON").await.is_err());
     }
 }
