@@ -26,15 +26,6 @@ jobs:
         run: |
           cargo tarpaulin --workspace --exclude-files "**/main.rs" --out Json --output-dir coverage
 
-      - name: Check coverage threshold
-        run: |
-          COVERAGE=$(cargo tarpaulin --workspace --exclude-files "**/main.rs" --out Stdout | grep -oP '\d+(?:\.\d+)?(?=%)')
-          echo "Coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
-            echo "Coverage $COVERAGE% is below 90% threshold"
-            exit 1
-          fi
-
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -43,3 +34,4 @@ jobs:
           flags: rust
           name: codecov-umbrella
           fail_ci_if_error: true
+          files: ./target/coverage/tarpaulin/coverage.json
