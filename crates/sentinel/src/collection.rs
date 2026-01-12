@@ -11,7 +11,54 @@ pub struct Collection {
 }
 
 impl Collection {
+    /// Validates that a document ID is filename-safe across platforms.
+    ///
+    /// Document IDs must:
+    /// - Not be empty
+    /// - Not contain path separators (/, \)
+    /// - Not contain special filesystem characters (?, *, :, |, <, >, ")
+    /// - Not contain control characters
+    /// - Not be "." or ".."
+    /// - Only contain alphanumeric characters, hyphens, underscores, and periods
+    ///
+    /// # Arguments
+    /// * `id` - The document ID to validate
+    ///
+    /// # Returns
+    /// * `Ok(())` if the ID is valid
+    /// * `Err(SentinelError::InvalidDocumentId)` if the ID contains unsafe characters
+    #[doc(hidden)]
+    pub fn validate_document_id(id: &str) -> Result<()> {
+        // Check if empty
+        if id.is_empty() {
+            return Err(SentinelError::InvalidDocumentId {
+                id: id.to_owned(),
+            });
+        }
+
+        // Check for reserved names
+        if id == "." || id == ".." {
+            return Err(SentinelError::InvalidDocumentId {
+                id: id.to_owned(),
+            });
+        }
+
+        // Check for unsafe characters
+        // Only allow: ASCII alphanumeric, hyphen, underscore, period
+        if !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+        {
+            return Err(SentinelError::InvalidDocumentId {
+                id: id.to_owned(),
+            });
+        }
+
+        Ok(())
+    }
+
     pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
+        Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
         let json = serde_json::to_string_pretty(&data)?;
         tokio_fs::write(&file_path, json).await?;
@@ -19,6 +66,7 @@ impl Collection {
     }
 
     pub async fn get(&self, id: &str) -> Result<Option<Document>> {
+        Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
         match tokio_fs::read_to_string(&file_path).await {
             Ok(content) => {
@@ -43,6 +91,7 @@ impl Collection {
     }
 
     pub async fn delete(&self, id: &str) -> Result<()> {
+        Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
         match tokio_fs::remove_file(&file_path).await {
             Ok(()) => Ok(()),
@@ -116,17 +165,139 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_insert_with_special_characters_in_id() {
+    async fn test_insert_with_valid_special_characters_in_id() {
         let (collection, _temp_dir) = setup_collection().await;
 
         let doc = json!({ "data": "test" });
+        // These characters are allowed: alphanumeric, hyphen, underscore, period
         collection
-            .insert("user_123-special!", doc.clone())
+            .insert("user_123-special.v1", doc.clone())
             .await
             .unwrap();
 
-        let retrieved = collection.get("user_123-special!").await.unwrap();
+        let retrieved = collection.get("user_123-special.v1").await.unwrap();
         assert_eq!(retrieved.unwrap().data, doc);
+    }
+
+    #[tokio::test]
+    async fn test_insert_with_invalid_characters_rejected() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({ "data": "test" });
+
+        // Test various unsafe characters
+        let unsafe_ids = vec![
+            "user!123",       // exclamation mark
+            "user?123",       // question mark
+            "user*123",       // asterisk
+            "user/123",       // forward slash
+            "user\\123",      // backslash
+            "user:123",       // colon
+            "user|123",       // pipe
+            "user<123",       // less than
+            "user>123",       // greater than
+            "user\"123",      // double quote
+            "user 123",       // space
+            "",               // empty
+            ".",              // dot
+            "..",             // double dot
+        ];
+
+        for unsafe_id in unsafe_ids {
+            let result = collection.insert(unsafe_id, doc.clone()).await;
+            assert!(
+                result.is_err(),
+                "Expected error for unsafe ID: '{}'",
+                unsafe_id
+            );
+            assert!(
+                matches!(result, Err(SentinelError::InvalidDocumentId { .. })),
+                "Expected InvalidDocumentId error for: '{}'",
+                unsafe_id
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_with_invalid_id_rejected() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let result = collection.get("user!123").await;
+        assert!(result.is_err());
+        assert!(matches!(result, Err(SentinelError::InvalidDocumentId { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_update_with_invalid_id_rejected() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({ "data": "test" });
+        let result = collection.update("user!123", doc).await;
+        assert!(result.is_err());
+        assert!(matches!(result, Err(SentinelError::InvalidDocumentId { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_delete_with_invalid_id_rejected() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let result = collection.delete("user!123").await;
+        assert!(result.is_err());
+        assert!(matches!(result, Err(SentinelError::InvalidDocumentId { .. })));
+    }
+
+    /// Unit test for validate_document_id with valid IDs
+    #[test]
+    fn test_validate_document_id_valid() {
+        // Valid IDs
+        Collection::validate_document_id("user-123").unwrap();
+        Collection::validate_document_id("user_123").unwrap();
+        Collection::validate_document_id("user.123").unwrap();
+        Collection::validate_document_id("abc").unwrap();
+        Collection::validate_document_id("ABC").unwrap();
+        Collection::validate_document_id("123").unwrap();
+        Collection::validate_document_id("a-b_c.d").unwrap();
+        Collection::validate_document_id("user-123-special.v1").unwrap();
+    }
+
+    /// Unit test for validate_document_id with invalid IDs
+    #[test]
+    fn test_validate_document_id_invalid() {
+        // Invalid IDs
+        assert!(Collection::validate_document_id("").is_err());
+        assert!(Collection::validate_document_id(".").is_err());
+        assert!(Collection::validate_document_id("..").is_err());
+        assert!(Collection::validate_document_id("user!123").is_err());
+        assert!(Collection::validate_document_id("user?123").is_err());
+        assert!(Collection::validate_document_id("user*123").is_err());
+        assert!(Collection::validate_document_id("user/123").is_err());
+        assert!(Collection::validate_document_id("user\\123").is_err());
+        assert!(Collection::validate_document_id("user:123").is_err());
+        assert!(Collection::validate_document_id("user|123").is_err());
+        assert!(Collection::validate_document_id("user<123").is_err());
+        assert!(Collection::validate_document_id("user>123").is_err());
+        assert!(Collection::validate_document_id("user\"123").is_err());
+        assert!(Collection::validate_document_id("user 123").is_err());
+        assert!(Collection::validate_document_id("user\t123").is_err());
+        assert!(Collection::validate_document_id("user\n123").is_err());
+    }
+
+    /// Unit test for validate_document_id edge cases
+    #[test]
+    fn test_validate_document_id_edge_cases() {
+        // Single characters
+        Collection::validate_document_id("a").unwrap();
+        Collection::validate_document_id("1").unwrap();
+        Collection::validate_document_id("-").unwrap();
+        Collection::validate_document_id("_").unwrap();
+        
+        // Long IDs
+        let long_id = "a".repeat(255);
+        Collection::validate_document_id(&long_id).unwrap();
+        
+        // Unicode (should be rejected as it's not alphanumeric ASCII)
+        assert!(Collection::validate_document_id("user-caf\u{e9}").is_err());
+        assert!(Collection::validate_document_id("\u{7528}\u{6237}123").is_err());
     }
 
     #[tokio::test]

@@ -94,5 +94,43 @@ fn bench_delete(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_insert, bench_get, bench_update, bench_delete);
+fn bench_validate_document_id_valid(c: &mut Criterion) {
+    c.bench_function("validate_document_id_valid", |b| {
+        b.iter(|| {
+            // Best case: simple valid ID
+            black_box(Collection::validate_document_id("user-123").unwrap());
+        })
+    });
+}
+
+fn bench_validate_document_id_invalid(c: &mut Criterion) {
+    c.bench_function("validate_document_id_invalid", |b| {
+        b.iter(|| {
+            // Worst case: ID with invalid character
+            let _ = black_box(Collection::validate_document_id("user!123"));
+        })
+    });
+}
+
+fn bench_validate_document_id_long(c: &mut Criterion) {
+    let long_id = "a".repeat(255);
+    
+    c.bench_function("validate_document_id_long", |b| {
+        b.iter(|| {
+            // Best case with long ID
+            black_box(Collection::validate_document_id(&long_id).unwrap());
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_insert,
+    bench_get,
+    bench_update,
+    bench_delete,
+    bench_validate_document_id_valid,
+    bench_validate_document_id_invalid,
+    bench_validate_document_id_long
+);
 criterion_main!(benches);

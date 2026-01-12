@@ -218,9 +218,8 @@ mod tests {
         };
 
         let result = run(args).await;
-        // Depending on implementation, might succeed or fail
-        // Assume it succeeds as empty ID might be allowed
-        assert!(result.is_ok(), "Get with empty ID should be handled");
+        // Empty IDs are now rejected by validation
+        assert!(result.is_err(), "Get with empty ID should fail");
     }
 
     /// This test verifies that get fails when the collection directory
