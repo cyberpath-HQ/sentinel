@@ -37,7 +37,7 @@ jobs:
 
       - name: Run flamegraph on benchmarks
         run:
-          sudo -E flamegraph --output flamegraph.svg --no-inline --
+          sudo -E /home/runner/.cargo/bin/flamegraph --output flamegraph.svg --no-inline --
           ./target/release/deps/collection_ops-*/collection_ops-* --bench
 
       - name: Upload flamegraph
