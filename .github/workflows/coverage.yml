@@ -24,7 +24,7 @@ jobs:
 
       - name: Generate coverage reports
         run: |
-          cargo tarpaulin --workspace --exclude-files "**/main.rs" --out Json --output-dir coverage
+          cargo tarpaulin --workspace --exclude-files "**/main.rs" --exclude-files "crates/sentinel/benches/**" --out Json --output-dir ./target/tarpaulin/
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -34,4 +34,4 @@ jobs:
           flags: rust
           name: codecov-umbrella
           fail_ci_if_error: true
-          files: ./target/coverage/tarpaulin/coverage.json
+          files: ./target/tarpaulin/tarpaulin-report.json
