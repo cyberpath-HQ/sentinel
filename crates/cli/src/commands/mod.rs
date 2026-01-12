@@ -133,3 +133,93 @@ pub async fn run_command(command: Commands) -> sentinel::Result<()> {
         Commands::Delete(args) => delete::run(args).await,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test CLI command parsing.
+    ///
+    /// This test verifies that the CLI correctly parses various commands
+    /// and their arguments using clap's testing utilities.
+    #[test]
+    fn test_cli_parsing() {
+        // Test init command
+        let cli_parsed = Cli::try_parse_from(["test", "init", "--path", "/tmp/store"]).unwrap();
+        match cli_parsed.command {
+            Commands::Init(args) => assert_eq!(args.path, "/tmp/store"),
+            _ => panic!("Expected Init command"),
+        }
+
+        // Test create-collection command
+        let cli_parsed = Cli::try_parse_from([
+            "test", "create-collection", "--store-path", "/tmp/store", "--name", "users"
+        ]).unwrap();
+        match cli_parsed.command {
+            Commands::CreateCollection(args) => {
+                assert_eq!(args.store_path, "/tmp/store");
+                assert_eq!(args.name, "users");
+            },
+            _ => panic!("Expected CreateCollection command"),
+        }
+
+        // Test insert command
+        let cli_parsed = Cli::try_parse_from([
+            "test", "insert", "--store-path", "/tmp/store", "--collection", "users",
+            "--id", "user1", "--data", "{}"
+        ]).unwrap();
+        match cli_parsed.command {
+            Commands::Insert(args) => {
+                assert_eq!(args.store_path, "/tmp/store");
+                assert_eq!(args.collection, "users");
+                assert_eq!(args.id, "user1");
+                assert_eq!(args.data, "{}");
+            },
+            _ => panic!("Expected Insert command"),
+        }
+    }
+
+    /// Test CLI with verbose flag.
+    ///
+    /// This test checks that the verbose flag is parsed correctly.
+    #[test]
+    fn test_cli_verbose_parsing() {
+        let cli_parsed = Cli::try_parse_from(["test", "-v", "init", "--path", "/tmp/store"]).unwrap();
+        assert_eq!(cli_parsed.verbose, 1);
+
+        let cli_parsed = Cli::try_parse_from(["test", "-vv", "init", "--path", "/tmp/store"]).unwrap();
+        assert_eq!(cli_parsed.verbose, 2);
+    }
+
+    /// Test CLI with JSON flag.
+    ///
+    /// This test verifies that the JSON output flag is parsed correctly.
+    #[test]
+    fn test_cli_json_parsing() {
+        let cli_parsed = Cli::try_parse_from(["test", "--json", "init", "--path", "/tmp/store"]).unwrap();
+        assert!(cli_parsed.json);
+    }
+
+    /// Test invalid command.
+    ///
+    /// This test ensures that invalid commands are rejected.
+    #[test]
+    fn test_invalid_command() {
+        let result = Cli::try_parse_from(["test", "invalid-command"]);
+        assert!(result.is_err(), "Invalid command should be rejected");
+    }
+
+    /// Test missing required arguments.
+    ///
+    /// This test checks that commands fail when required arguments are missing.
+    #[test]
+    fn test_missing_required_args() {
+        // Init without path
+        let result = Cli::try_parse_from(["test", "init"]);
+        assert!(result.is_err(), "Init should require path argument");
+
+        // Create-collection without name
+        let result = Cli::try_parse_from(["test", "create-collection", "--store-path", "/tmp"]);
+        assert!(result.is_err(), "Create-collection should require name argument");
+    }
+}

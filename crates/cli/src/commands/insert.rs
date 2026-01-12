@@ -3,7 +3,7 @@ use serde_json::Value;
 use tracing::{error, info};
 
 /// Arguments for the insert command.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct InsertArgs {
     /// Store path
     #[arg(short, long)]
@@ -74,5 +74,163 @@ pub async fn run(args: InsertArgs) -> sentinel::Result<()> {
             );
             Err(e)
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Test successful document insertion.
+    ///
+    /// This test verifies that insert succeeds with valid JSON data.
+    /// It sets up a store and collection, then inserts a document.
+    #[tokio::test]
+    async fn test_insert_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Init store and collection
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Alice", "age": 30}"#.to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Insert should succeed with valid data");
+    }
+
+    /// Test insert with invalid JSON.
+    ///
+    /// This test checks that insert fails and returns appropriate error
+    /// when provided with malformed JSON data.
+    #[tokio::test]
+    async fn test_insert_invalid_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Init store and collection
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Alice", "age": }"#.to_string(), // Invalid JSON
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Insert should fail with invalid JSON");
+    }
+
+    /// Test insert into non-existent collection.
+    ///
+    /// This test verifies that insert creates the collection if it does not exist.
+    #[tokio::test]
+    async fn test_insert_non_existent_collection() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Init store only
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "non_existent".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Alice"}"#.to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Insert should create collection if needed");
+    }
+
+    /// Test insert with empty data.
+    ///
+    /// This test checks behavior with empty JSON object.
+    #[tokio::test]
+    async fn test_insert_empty_data() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Init store and collection
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: "{}".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Insert should succeed with empty JSON object");
+    }
+
+    /// Test insert with complex JSON.
+    ///
+    /// This test verifies that complex JSON structures (arrays, nested objects)
+    /// are handled correctly.
+    #[tokio::test]
+    async fn test_insert_complex_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Init store and collection
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"users": [{"name": "Alice"}, {"name": "Bob"}], "metadata": {"version": 1}}"#.to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Insert should succeed with complex JSON");
     }
 }

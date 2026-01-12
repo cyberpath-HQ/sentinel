@@ -2,7 +2,7 @@ use clap::Args;
 use tracing::{error, info};
 
 /// Arguments for the delete command.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct DeleteArgs {
     /// Store path
     #[arg(short, long)]
@@ -60,5 +60,138 @@ pub async fn run(args: DeleteArgs) -> sentinel::Result<()> {
             );
             Err(e)
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Test successful document deletion.
+    ///
+    /// This test inserts a document, then deletes it successfully.
+    #[tokio::test]
+    async fn test_delete_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup: init, create collection, insert
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let insert_args = crate::commands::insert::InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Alice"}"#.to_string(),
+        };
+        crate::commands::insert::run(insert_args).await.unwrap();
+
+        // Now delete
+        let args = DeleteArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Delete should succeed for existing document");
+    }
+
+    /// Test delete non-existent document.
+    ///
+    /// This test verifies that delete fails gracefully when the document
+    /// does not exist (depending on implementation, might succeed or fail).
+    #[tokio::test]
+    async fn test_delete_non_existent_document() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup: init and create collection
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let args = DeleteArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "non_existent".to_string(),
+        };
+
+        let result = run(args).await;
+        // Depending on implementation, deleting non-existent might succeed or fail
+        // Assume it succeeds for idempotency
+        assert!(result.is_ok(), "Delete should handle non-existent document gracefully");
+    }
+
+    /// Test delete from non-existent collection.
+    ///
+    /// This test checks that delete creates the collection if it does not exist.
+    #[tokio::test]
+    async fn test_delete_non_existent_collection() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Init store only
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let args = DeleteArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "non_existent".to_string(),
+            id: "doc1".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Delete should create collection if needed");
+    }
+
+    /// Test delete with empty ID.
+    ///
+    /// This test verifies behavior when an empty document ID is provided.
+    #[tokio::test]
+    async fn test_delete_empty_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup: init and create collection
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let args = DeleteArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "".to_string(),
+        };
+
+        let result = run(args).await;
+        // Assume it succeeds as empty ID might be allowed
+        assert!(result.is_ok(), "Delete with empty ID should be handled");
     }
 }

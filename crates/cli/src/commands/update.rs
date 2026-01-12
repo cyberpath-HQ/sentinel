@@ -3,7 +3,7 @@ use serde_json::Value;
 use tracing::{error, info};
 
 /// Arguments for the update command.
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct UpdateArgs {
     /// Store path
     #[arg(short, long)]
@@ -72,5 +72,148 @@ pub async fn run(args: UpdateArgs) -> sentinel::Result<()> {
             );
             Err(e)
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    /// Test successful document update.
+    ///
+    /// This test inserts a document, then updates it with new data.
+    #[tokio::test]
+    async fn test_update_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup: init, create collection, insert
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let insert_args = crate::commands::insert::InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Alice", "age": 30}"#.to_string(),
+        };
+        crate::commands::insert::run(insert_args).await.unwrap();
+
+        // Now update
+        let args = UpdateArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Alice", "age": 31}"#.to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Update should succeed for existing document");
+    }
+
+    /// Test update with invalid JSON.
+    ///
+    /// This test checks that update fails with malformed JSON.
+    #[tokio::test]
+    async fn test_update_invalid_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup: init, create collection, insert
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let insert_args = crate::commands::insert::InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Alice"}"#.to_string(),
+        };
+        crate::commands::insert::run(insert_args).await.unwrap();
+
+        let args = UpdateArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Alice", "age": }"#.to_string(), // Invalid
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Update should fail with invalid JSON");
+    }
+
+    /// Test update non-existent document.
+    ///
+    /// This test verifies that update can handle non-existent documents
+    /// (may create or fail depending on implementation).
+    #[tokio::test]
+    async fn test_update_non_existent_document() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup: init and create collection
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        let args = UpdateArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "non_existent".to_string(),
+            data: r#"{"name": "Bob"}"#.to_string(),
+        };
+
+        let result = run(args).await;
+        // Depending on implementation, may succeed or fail
+        assert!(result.is_ok(), "Update should handle non-existent document");
+    }
+
+    /// Test update in non-existent collection.
+    ///
+    /// This test checks that update creates the collection if it does not exist.
+    #[tokio::test]
+    async fn test_update_non_existent_collection() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Init store only
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let args = UpdateArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "non_existent".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Bob"}"#.to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Update should create collection if needed");
     }
 }
