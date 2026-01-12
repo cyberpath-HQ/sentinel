@@ -11,6 +11,48 @@ pub struct Collection {
     pub(crate) path: PathBuf,
 }
 
+/// Validates that a document ID is filename-safe.
+///
+/// Document IDs must contain only alphanumeric characters, hyphens, and underscores.
+/// This ensures compatibility across all major filesystems (ext4, NTFS, APFS, etc.).
+///
+/// # Arguments
+///
+/// * `id` - The document ID to validate
+///
+/// # Returns
+///
+/// * `Ok(())` if the ID is valid
+/// * `Err(SentinelError::InvalidDocumentId)` if the ID contains invalid characters
+///
+/// # Examples
+///
+/// ```
+/// # use sentinel::validate_document_id;
+/// assert!(validate_document_id("user-123").is_ok());
+/// assert!(validate_document_id("user_456").is_ok());
+/// assert!(validate_document_id("user!789").is_err());
+/// ```
+pub fn validate_document_id(id: &str) -> Result<()> {
+    if id.is_empty() {
+        return Err(SentinelError::InvalidDocumentId {
+            id: id.to_string(),
+        });
+    }
+
+    // Check if all characters are alphanumeric, hyphen, or underscore
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(SentinelError::InvalidDocumentId {
+            id: id.to_string(),
+        });
+    }
+
+    Ok(())
+}
+
 impl Collection {
     pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
         validate_document_id(id)?;
@@ -157,17 +199,100 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_insert_with_special_characters_in_id() {
+    async fn test_insert_with_invalid_special_characters_in_id() {
         let (collection, _temp_dir) = setup_collection().await;
 
         let doc = json!({ "data": "test" });
-        collection
-            .insert("user_123-special", doc.clone())
-            .await
-            .unwrap();
+        let result = collection.insert("user_123-special!", doc.clone()).await;
 
-        let retrieved = collection.get("user_123-special").await.unwrap();
-        assert_eq!(retrieved.unwrap().data, doc);
+        // Should return an error for invalid document ID with special characters
+        assert!(result.is_err());
+        match result {
+            Err(SentinelError::InvalidDocumentId {
+                id,
+            }) => {
+                assert_eq!(id, "user_123-special!");
+            },
+            _ => panic!("Expected InvalidDocumentId error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_insert_with_valid_document_ids() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Test various valid document IDs
+        let valid_ids = vec![
+            "user-123",
+            "user_456",
+            "user123",
+            "123",
+            "a",
+            "user-123_test",
+            "user_123-test",
+            "CamelCaseID",
+            "lower_case_id",
+            "UPPER_CASE_ID",
+        ];
+
+        for id in valid_ids {
+            let doc = json!({ "data": "test" });
+            let result = collection.insert(id, doc).await;
+            assert!(
+                result.is_ok(),
+                "Expected ID '{}' to be valid but got error: {:?}",
+                id,
+                result
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_insert_with_various_invalid_document_ids() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Test various invalid document IDs
+        let invalid_ids = vec![
+            "user!123",    // exclamation mark
+            "user@domain", // at sign
+            "user#123",    // hash
+            "user$123",    // dollar sign
+            "user%123",    // percent
+            "user^123",    // caret
+            "user&123",    // ampersand
+            "user*123",    // asterisk
+            "user(123)",   // parentheses
+            "user.123",    // period
+            "user/123",    // forward slash
+            "user\\123",   // backslash
+            "user:123",    // colon
+            "user;123",    // semicolon
+            "user<123",    // less than
+            "user>123",    // greater than
+            "user?123",    // question mark
+            "user|123",    // pipe
+            "user\"123",   // quote
+            "user'123",    // single quote
+            "",            // empty string
+        ];
+
+        for id in invalid_ids {
+            let doc = json!({ "data": "test" });
+            let result = collection.insert(id, doc).await;
+            assert!(
+                result.is_err(),
+                "Expected ID '{}' to be invalid but insertion succeeded",
+                id
+            );
+            match result {
+                Err(SentinelError::InvalidDocumentId {
+                    ..
+                }) => {
+                    // Expected error type
+                },
+                _ => panic!("Expected InvalidDocumentId error for ID '{}'", id),
+            }
+        }
     }
 
     #[tokio::test]
@@ -201,6 +326,25 @@ mod tests {
 
         let retrieved = collection.get("new-user").await.unwrap();
         assert_eq!(retrieved.unwrap().data, doc);
+    }
+
+    #[tokio::test]
+    async fn test_update_with_invalid_id() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({ "name": "Bob" });
+        let result = collection.update("user!invalid", doc).await;
+
+        // Should return an error for invalid document ID
+        assert!(result.is_err());
+        match result {
+            Err(SentinelError::InvalidDocumentId {
+                id,
+            }) => {
+                assert_eq!(id, "user!invalid");
+            },
+            _ => panic!("Expected InvalidDocumentId error"),
+        }
     }
 
     #[tokio::test]
