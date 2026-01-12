@@ -5,6 +5,42 @@ use tokio::fs as tokio_fs;
 
 use crate::{validation::{is_reserved_name, is_valid_name_chars}, Document, Result, SentinelError};
 
+/// A collection represents a namespace for documents in the Sentinel database.
+///
+/// Collections are backed by filesystem directories, where each document is stored
+/// as a JSON file. The collection provides CRUD operations (Create, Read, Update, Delete)
+/// for managing documents asynchronously using tokio.
+///
+/// # Structure
+///
+/// Each collection is stored in a directory with the following structure:
+/// - `{collection_name}/` - Root directory for the collection
+/// - `{collection_name}/{id}.json` - Individual document files
+///
+/// # Example
+///
+/// ```rust
+/// use sentinel::{Store, Collection};
+/// use serde_json::json;
+///
+/// # async fn example() -> sentinel::Result<()> {
+/// // Create a store and get a collection
+/// let store = Store::new("/path/to/data").await?;
+/// let collection = store.collection("users").await?;
+///
+/// // Insert a document
+/// let user_data = json!({
+///     "name": "Alice",
+///     "email": "alice@example.com"
+/// });
+/// collection.insert("user-123", user_data).await?;
+///
+/// // Retrieve the document
+/// let doc = collection.get("user-123").await?;
+/// assert!(doc.is_some());
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct Collection {
     pub(crate) name: String,
@@ -54,6 +90,43 @@ pub fn validate_document_id(id: &str) -> Result<()> {
 }
 
 impl Collection {
+    /// Inserts a new document into the collection or overwrites an existing one.
+    ///
+    /// The document is serialized to pretty-printed JSON and written to a file named
+    /// `{id}.json` within the collection's directory. If a document with the same ID
+    /// already exists, it will be overwritten.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - A unique identifier for the document. This will be used as the filename
+    ///          (with `.json` extension). Must be filesystem-safe.
+    /// * `data` - The JSON data to store. Can be any valid `serde_json::Value`.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `SentinelError` if the operation fails
+    /// (e.g., filesystem errors, serialization errors).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel::Result<()> {
+    /// let store = Store::new("/path/to/data").await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// let user = json!({
+    ///     "name": "Alice",
+    ///     "email": "alice@example.com",
+    ///     "age": 30
+    /// });
+    ///
+    /// collection.insert("user-123", user).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
@@ -62,6 +135,46 @@ impl Collection {
         Ok(())
     }
 
+    /// Retrieves a document from the collection by its ID.
+    ///
+    /// Reads the JSON file corresponding to the given ID and deserializes it into
+    /// a `Document` struct. If the document doesn't exist, returns `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique identifier of the document to retrieve.
+    ///
+    /// # Returns
+    ///
+    /// Returns:
+    /// - `Ok(Some(Document))` if the document exists and was successfully read
+    /// - `Ok(None)` if the document doesn't exist (file not found)
+    /// - `Err(SentinelError)` if there was an error reading or parsing the document
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel::Result<()> {
+    /// let store = Store::new("/path/to/data").await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert a document first
+    /// collection.insert("user-123", json!({"name": "Alice"})).await?;
+    ///
+    /// // Retrieve the document
+    /// let doc = collection.get("user-123").await?;
+    /// assert!(doc.is_some());
+    /// assert_eq!(doc.unwrap().id, "user-123");
+    ///
+    /// // Try to get a non-existent document
+    /// let missing = collection.get("user-999").await?;
+    /// assert!(missing.is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn get(&self, id: &str) -> Result<Option<Document>> {
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
@@ -80,11 +193,89 @@ impl Collection {
         }
     }
 
+    /// Updates an existing document or creates a new one if it doesn't exist.
+    ///
+    /// This method is semantically equivalent to `insert` in the current implementation,
+    /// as it overwrites the entire document. Future versions may implement partial updates
+    /// or version tracking.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique identifier of the document to update.
+    /// * `data` - The new JSON data that will replace the existing document.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `SentinelError` if the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel::Result<()> {
+    /// let store = Store::new("/path/to/data").await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert initial document
+    /// collection.insert("user-123", json!({"name": "Alice", "age": 30})).await?;
+    ///
+    /// // Update the document with new data
+    /// collection.update("user-123", json!({"name": "Alice", "age": 31})).await?;
+    ///
+    /// // Verify the update
+    /// let doc = collection.get("user-123").await?.unwrap();
+    /// assert_eq!(doc.data["age"], 31);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn update(&self, id: &str, data: Value) -> Result<()> {
         // For update, just insert (overwrite)
         self.insert(id, data).await
     }
 
+    /// Deletes a document from the collection.
+    ///
+    /// Removes the JSON file corresponding to the given ID from the filesystem.
+    /// If the document doesn't exist, the operation succeeds silently (idempotent).
+    /// Future versions may implement soft deletes by moving files to a `.deleted/`
+    /// subdirectory.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique identifier of the document to delete.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success (including when the document doesn't exist),
+    /// or a `SentinelError` if the operation fails due to filesystem errors.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel::Result<()> {
+    /// let store = Store::new("/path/to/data").await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert a document
+    /// collection.insert("user-123", json!({"name": "Alice"})).await?;
+    ///
+    /// // Delete the document
+    /// collection.delete("user-123").await?;
+    ///
+    /// // Verify deletion
+    /// let doc = collection.get("user-123").await?;
+    /// assert!(doc.is_none());
+    ///
+    /// // Deleting again is safe (idempotent)
+    /// collection.delete("user-123").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn delete(&self, id: &str) -> Result<()> {
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
