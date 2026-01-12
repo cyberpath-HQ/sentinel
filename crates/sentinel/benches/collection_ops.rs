@@ -114,7 +114,7 @@ fn bench_validate_document_id_invalid(c: &mut Criterion) {
 
 fn bench_validate_document_id_long(c: &mut Criterion) {
     let long_id = "a".repeat(255);
-    
+
     c.bench_function("validate_document_id_long", |b| {
         b.iter(|| {
             // Best case with long ID
