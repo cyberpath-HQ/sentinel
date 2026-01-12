@@ -1,12 +1,12 @@
 use clap::{Parser, Subcommand};
-use sentinel::{Store, Collection};
+use sentinel::{Store};
 use serde_json::Value;
-use std::io::{self, Write};
+use std::io::{self};
 use tokio;
 
 #[derive(Parser)]
 #[command(name = "sentinel-cli")]
-#[command(about = "A simple document DBMS CLI")]
+#[command(about = "A document DBMS CLI")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
