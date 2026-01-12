@@ -34,4 +34,4 @@ jobs:
           flags: rust
           name: codecov-umbrella
           fail_ci_if_error: true
-          files: ./target/tarpaulin/tarpaulin-report.json
+          files: ./target/tarpaulin/coverage.json
