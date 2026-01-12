@@ -73,18 +73,22 @@ mod tests {
 
     /// Test init with invalid path.
     ///
-    /// This test checks that init handles invalid paths gracefully.
-    /// Empty string may be handled as current directory or something.
+    /// This test checks that init fails when the path is a file instead of a directory.
     #[tokio::test]
     async fn test_init_invalid_path() {
-        // Use a path that should be handled
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("not_a_dir");
+
+        // Create a file at the path
+        std::fs::write(&file_path, "not a dir").unwrap();
+
         let args = InitArgs {
-            path: "".to_string(),
+            path: file_path.to_string_lossy().to_string(),
         };
 
         let result = run(args).await;
-        // Depending on implementation, may succeed
-        assert!(result.is_ok(), "Init should handle empty path");
+        // Should fail because path is a file
+        assert!(result.is_err(), "Init should fail when path is a file");
     }
 
     /// Test init with existing directory.

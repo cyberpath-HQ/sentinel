@@ -222,4 +222,171 @@ mod tests {
         let result = Cli::try_parse_from(["test", "create-collection", "--store-path", "/tmp"]);
         assert!(result.is_err(), "Create-collection should require name argument");
     }
+
+    /// Test run_command with Init command.
+    ///
+    /// This test verifies that run_command correctly dispatches to init::run.
+    #[tokio::test]
+    async fn test_run_command_init() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        let args = super::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        let command = Commands::Init(args);
+
+        let result = run_command(command).await;
+        assert!(result.is_ok(), "run_command should succeed for valid Init");
+    }
+
+    /// Test run_command with CreateCollection command.
+    ///
+    /// This test verifies that run_command correctly dispatches to create_collection::run.
+    #[tokio::test]
+    async fn test_run_command_create_collection() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store
+        let init_args = super::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        run_command(Commands::Init(init_args)).await.unwrap();
+
+        let args = super::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        let command = Commands::CreateCollection(args);
+
+        let result = run_command(command).await;
+        assert!(result.is_ok(), "run_command should succeed for valid CreateCollection");
+    }
+
+    /// Test run_command with Insert command.
+    ///
+    /// This test verifies that run_command correctly dispatches to insert::run.
+    #[tokio::test]
+    async fn test_run_command_insert() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let init_args = super::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        run_command(Commands::Init(init_args)).await.unwrap();
+
+        let create_args = super::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        run_command(Commands::CreateCollection(create_args)).await.unwrap();
+
+        let args = super::insert::InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Alice"}"#.to_string(),
+        };
+        let command = Commands::Insert(args);
+
+        let result = run_command(command).await;
+        assert!(result.is_ok(), "run_command should succeed for valid Insert");
+    }
+
+    /// Test run_command with Get command.
+    ///
+    /// This test verifies that run_command correctly dispatches to get::run.
+    #[tokio::test]
+    async fn test_run_command_get() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let init_args = super::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        run_command(Commands::Init(init_args)).await.unwrap();
+
+        let create_args = super::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        run_command(Commands::CreateCollection(create_args)).await.unwrap();
+
+        let args = super::get::GetArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+        };
+        let command = Commands::Get(args);
+
+        let result = run_command(command).await;
+        assert!(result.is_ok(), "run_command should succeed for Get (even if not found)");
+    }
+
+    /// Test run_command with Update command.
+    ///
+    /// This test verifies that run_command correctly dispatches to update::run.
+    #[tokio::test]
+    async fn test_run_command_update() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let init_args = super::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        run_command(Commands::Init(init_args)).await.unwrap();
+
+        let create_args = super::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        run_command(Commands::CreateCollection(create_args)).await.unwrap();
+
+        let args = super::update::UpdateArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "Bob"}"#.to_string(),
+        };
+        let command = Commands::Update(args);
+
+        let result = run_command(command).await;
+        assert!(result.is_ok(), "run_command should succeed for Update");
+    }
+
+    /// Test run_command with Delete command.
+    ///
+    /// This test verifies that run_command correctly dispatches to delete::run.
+    #[tokio::test]
+    async fn test_run_command_delete() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let init_args = super::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        run_command(Commands::Init(init_args)).await.unwrap();
+
+        let create_args = super::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        run_command(Commands::CreateCollection(create_args)).await.unwrap();
+
+        let args = super::delete::DeleteArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+        };
+        let command = Commands::Delete(args);
+
+        let result = run_command(command).await;
+        assert!(result.is_ok(), "run_command should succeed for Delete");
+    }
 }
