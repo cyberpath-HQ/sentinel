@@ -2,15 +2,7 @@ use std::path::{Path, PathBuf};
 
 use tokio::fs as tokio_fs;
 
-use crate::{Collection, Result, SentinelError};
-
-/// Windows reserved names that cannot be used as filenames.
-/// These names are reserved by the Windows operating system and will cause
-/// filesystem errors if used as directory or file names.
-const WINDOWS_RESERVED_NAMES: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
-];
+use crate::{validation::{is_reserved_name, is_valid_name_chars}, Collection, Result, SentinelError};
 
 /// The top-level manager for document collections in Cyberpath Sentinel.
 ///
@@ -234,45 +226,15 @@ fn validate_collection_name(name: &str) -> Result<()> {
         });
     }
 
-    // Check for path separators and invalid characters
-    for ch in name.chars() {
-        match ch {
-            // Path separators
-            '/' | '\\' => {
-                return Err(SentinelError::InvalidCollectionName {
-                    name: name.to_owned(),
-                });
-            },
-            // Control characters
-            '\0'..='\x1F' | '\x7F' => {
-                return Err(SentinelError::InvalidCollectionName {
-                    name: name.to_owned(),
-                });
-            },
-            // Windows reserved characters
-            '<' | '>' | ':' | '"' | '|' | '?' | '*' => {
-                return Err(SentinelError::InvalidCollectionName {
-                    name: name.to_owned(),
-                });
-            },
-            // Valid characters: alphanumeric, underscore, hyphen, dot
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' | '.' => {},
-            // Any other character is invalid
-            _ => {
-                return Err(SentinelError::InvalidCollectionName {
-                    name: name.to_owned(),
-                });
-            },
-        }
+    // Check for valid characters
+    if !is_valid_name_chars(name) {
+        return Err(SentinelError::InvalidCollectionName {
+            name: name.to_owned(),
+        });
     }
 
-    // Check for Windows reserved names (case-insensitive)
-    let name_upper = name.to_uppercase();
-    // Check both the full name and the base name (before first dot)
-    let base_name = name_upper.split('.').next().unwrap_or(&name_upper);
-    if WINDOWS_RESERVED_NAMES.contains(&name_upper.as_str())
-        || WINDOWS_RESERVED_NAMES.contains(&base_name)
-    {
+    // Check for Windows reserved names
+    if is_reserved_name(name) {
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
