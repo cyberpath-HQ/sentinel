@@ -4,6 +4,14 @@ use tokio::fs as tokio_fs;
 
 use crate::{Collection, Result, SentinelError};
 
+/// Windows reserved names that cannot be used as filenames.
+/// These names are reserved by the Windows operating system and will cause
+/// filesystem errors if used as directory or file names.
+const WINDOWS_RESERVED_NAMES: &[&str] = &[
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
 pub struct Store {
     root_path: PathBuf,
 }
@@ -123,17 +131,10 @@ fn validate_collection_name(name: &str) -> Result<()> {
 
     // Check for Windows reserved names (case-insensitive)
     let name_upper = name.to_uppercase();
-    let reserved_names = [
-        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1",
-        "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
-    ];
-
-    // Check exact match or match with extension (e.g., CON.txt)
-    if reserved_names.contains(&name_upper.as_str())
-        || name_upper
-            .split('.')
-            .next()
-            .is_some_and(|base| reserved_names.contains(&base))
+    // Check both the full name and the base name (before first dot)
+    let base_name = name_upper.split('.').next().unwrap_or(&name_upper);
+    if WINDOWS_RESERVED_NAMES.contains(&name_upper.as_str())
+        || WINDOWS_RESERVED_NAMES.contains(&base_name)
     {
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
