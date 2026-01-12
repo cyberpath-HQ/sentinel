@@ -42,7 +42,7 @@ pub fn validate_document_id(id: &str) -> Result<()> {
     // Check if all characters are alphanumeric, hyphen, or underscore
     if !id
         .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err(SentinelError::InvalidDocumentId {
             id: id.to_string(),
