@@ -107,7 +107,7 @@ fn bench_validate_document_id_invalid(c: &mut Criterion) {
     c.bench_function("validate_document_id_invalid", |b| {
         b.iter(|| {
             // Worst case: ID with invalid character
-            black_box(Collection::validate_document_id("user!123").is_err())
+            let _ = black_box(Collection::validate_document_id("user!123").unwrap_err());
         })
     });
 }
