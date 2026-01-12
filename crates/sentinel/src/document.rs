@@ -60,13 +60,27 @@ mod tests {
     }
 
     #[test]
-    fn test_document_id_with_special_characters() {
-        let data = json!({"data": "test"});
-        let doc = Document {
-            id: "user_123-special!".to_string(),
-            data,
-        };
+    fn test_document_with_valid_filename_safe_ids() {
+        // Test various valid filename-safe document IDs
+        let valid_ids = vec![
+            "user-123",
+            "user_456",
+            "user123",
+            "123",
+            "a",
+            "user-123_test",
+            "CamelCaseID",
+        ];
 
-        assert_eq!(doc.id, "user_123-special!");
+        for id in valid_ids {
+            let data = json!({"data": "test"});
+            let doc = Document {
+                id: id.to_owned(),
+                data: data.clone(),
+            };
+
+            assert_eq!(doc.id, id);
+            assert_eq!(doc.data, data);
+        }
     }
 }
