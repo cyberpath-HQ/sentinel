@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tokio::fs as tokio_fs;
 
-use crate::{validation::{is_reserved_name, is_valid_name_chars}, Document, Result, SentinelError};
+use crate::{validation::{is_reserved_name, is_valid_document_id_chars}, Document, Result, SentinelError};
 
 /// A collection represents a namespace for documents in the Sentinel database.
 ///
@@ -272,7 +272,7 @@ pub(crate) fn validate_document_id(id: &str) -> Result<()> {
     }
 
     // Check for valid characters
-    if !is_valid_name_chars(id) {
+    if !is_valid_document_id_chars(id) {
         return Err(SentinelError::InvalidDocumentId {
             id: id.to_owned(),
         });
@@ -559,9 +559,9 @@ mod tests {
         // Valid IDs
         assert!(validate_document_id("user-123").is_ok());
         assert!(validate_document_id("user_456").is_ok());
-        assert!(validate_document_id("data.item").is_ok());
+        assert!(validate_document_id("data-item").is_ok());
         assert!(validate_document_id("test_collection_123").is_ok());
-        assert!(validate_document_id("file.txt").is_ok());
+        assert!(validate_document_id("file-txt").is_ok());
         assert!(validate_document_id("a").is_ok());
         assert!(validate_document_id("123").is_ok());
     }

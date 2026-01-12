@@ -28,6 +28,26 @@ pub fn is_valid_name_chars(name: &str) -> bool {
     true
 }
 
+/// Checks if a string contains valid characters for a document ID.
+/// Document IDs disallow dots to avoid confusion with file extensions.
+pub fn is_valid_document_id_chars(name: &str) -> bool {
+    for ch in name.chars() {
+        match ch {
+            // Path separators
+            '/' | '\\' => return false,
+            // Control characters
+            '\0'..='\x1F' | '\x7F' => return false,
+            // Windows reserved characters
+            '<' | '>' | ':' | '"' | '|' | '?' | '*' => return false,
+            // Valid characters: alphanumeric, underscore, hyphen
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' => {},
+            // Any other character is invalid
+            _ => return false,
+        }
+    }
+    true
+}
+
 /// Checks if a name is a Windows reserved name (case-insensitive).
 ///
 /// Reserved names include CON, PRN, AUX, NUL, COM1-9, LPT1-9.
