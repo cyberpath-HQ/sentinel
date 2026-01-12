@@ -47,48 +47,6 @@ pub struct Collection {
     pub(crate) path: PathBuf,
 }
 
-/// Validates that a document ID is filename-safe.
-///
-/// Document IDs must contain only alphanumeric characters, hyphens, and underscores.
-/// This ensures compatibility across all major filesystems (ext4, NTFS, APFS, etc.).
-///
-/// # Arguments
-///
-/// * `id` - The document ID to validate
-///
-/// # Returns
-///
-/// * `Ok(())` if the ID is valid
-/// * `Err(SentinelError::InvalidDocumentId)` if the ID contains invalid characters
-///
-/// # Examples
-///
-/// ```
-/// # use sentinel::validate_document_id;
-/// assert!(validate_document_id("user-123").is_ok());
-/// assert!(validate_document_id("user_456").is_ok());
-/// assert!(validate_document_id("user!789").is_err());
-/// ```
-pub fn validate_document_id(id: &str) -> Result<()> {
-    if id.is_empty() {
-        return Err(SentinelError::InvalidDocumentId {
-            id: id.to_string(),
-        });
-    }
-
-    // Check if all characters are alphanumeric, hyphen, or underscore
-    if !id
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(SentinelError::InvalidDocumentId {
-            id: id.to_string(),
-        });
-    }
-
-    Ok(())
-}
-
 impl Collection {
     /// Inserts a new document into the collection or overwrites an existing one.
     ///
