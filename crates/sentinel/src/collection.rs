@@ -27,7 +27,7 @@ pub struct Collection {
 /// # Examples
 ///
 /// ```
-/// # use sentinel::collection::validate_document_id;
+/// # use sentinel::validate_document_id;
 /// assert!(validate_document_id("user-123").is_ok());
 /// assert!(validate_document_id("user_456").is_ok());
 /// assert!(validate_document_id("user!789").is_err());
@@ -284,6 +284,25 @@ mod tests {
 
         let retrieved = collection.get("new-user").await.unwrap();
         assert_eq!(retrieved.unwrap().data, doc);
+    }
+
+    #[tokio::test]
+    async fn test_update_with_invalid_id() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({ "name": "Bob" });
+        let result = collection.update("user!invalid", doc).await;
+
+        // Should return an error for invalid document ID
+        assert!(result.is_err());
+        match result {
+            Err(SentinelError::InvalidDocumentId {
+                id,
+            }) => {
+                assert_eq!(id, "user!invalid");
+            },
+            _ => panic!("Expected InvalidDocumentId error"),
+        }
     }
 
     #[tokio::test]
