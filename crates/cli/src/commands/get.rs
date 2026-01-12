@@ -210,4 +210,61 @@ mod tests {
         // Assume it succeeds as empty ID might be allowed
         assert!(result.is_ok(), "Get with empty ID should be handled");
     }
+
+    /// This test verifies that get fails when the collection directory
+    /// is unreadable, covering the coll.get error branch.
+    #[tokio::test]
+    async fn test_get_unreadable_collection() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup: init store and create collection
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        // Insert a document first
+        let insert_args = crate::commands::insert::InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "test"}"#.to_string(),
+        };
+        crate::commands::insert::run(insert_args).await.unwrap();
+
+        // Make the collection directory unreadable (no read permission)
+        let collection_path = store_path.join("data").join("test_collection");
+        let mut perms = std::fs::metadata(&collection_path).unwrap().permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o000); // No permissions
+        }
+        std::fs::set_permissions(&collection_path, perms).unwrap();
+
+        let args = GetArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Get should fail on unreadable collection");
+
+        // Restore permissions for cleanup
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&collection_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&collection_path, perms).unwrap();
+        }
+    }
 }

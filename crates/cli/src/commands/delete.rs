@@ -194,4 +194,55 @@ mod tests {
         // Assume it succeeds as empty ID might be allowed
         assert!(result.is_ok(), "Delete with empty ID should be handled");
     }
+
+    /// Test delete with read-only collection.
+    ///
+    /// This test verifies that delete fails when the collection directory
+    /// is read-only, covering the error branch.
+    #[tokio::test]
+    async fn test_delete_readonly_collection() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup: init store and create collection
+        let init_args = crate::commands::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+        };
+        crate::commands::create_collection::run(create_args).await.unwrap();
+
+        // Insert a document first
+        let insert_args = crate::commands::insert::InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+            data: r#"{"name": "test"}"#.to_string(),
+        };
+        crate::commands::insert::run(insert_args).await.unwrap();
+
+        // Make the collection directory read-only
+        let collection_path = store_path.join("data").join("test_collection");
+        let mut perms = std::fs::metadata(&collection_path).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&collection_path, perms).unwrap();
+
+        let args = DeleteArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id: "doc1".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Delete should fail on read-only collection");
+
+        // Restore permissions for cleanup
+        let mut perms = std::fs::metadata(&collection_path).unwrap().permissions();
+        perms.set_readonly(false);
+        std::fs::set_permissions(&collection_path, perms).unwrap();
+    }
 }

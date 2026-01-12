@@ -131,14 +131,14 @@ mod tests {
         assert!(result.is_ok(), "Create collection with empty name should be handled");
     }
 
-    /// Test create collection with existing collection.
+    /// Test create collection with read-only store.
     ///
-    /// This test checks that creating a collection that already exists
-    /// is handled gracefully (should succeed as it's idempotent).
+    /// This test verifies that create-collection fails when the store directory
+    /// is read-only, covering the error branch.
     #[tokio::test]
-    async fn test_create_collection_existing() {
+    async fn test_create_collection_readonly_store() {
         let temp_dir = TempDir::new().unwrap();
-        let store_path = temp_dir.path().join("test_store");
+        let store_path = temp_dir.path().join("readonly_store");
 
         // Init store
         let init_args = crate::commands::init::InitArgs {
@@ -146,16 +146,22 @@ mod tests {
         };
         crate::commands::init::run(init_args).await.unwrap();
 
+        // Make the store directory read-only
+        let mut perms = std::fs::metadata(&store_path).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&store_path, perms).unwrap();
+
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "existing_collection".to_string(),
+            name: "test_collection".to_string(),
         };
 
-        // Create once
-        run(args.clone()).await.unwrap();
-
-        // Create again
         let result = run(args).await;
-        assert!(result.is_ok(), "Creating existing collection should succeed (idempotent)");
+        assert!(result.is_err(), "Create collection should fail on read-only store");
+
+        // Restore permissions for cleanup
+        let mut perms = std::fs::metadata(&store_path).unwrap().permissions();
+        perms.set_readonly(false);
+        std::fs::set_permissions(&store_path, perms).unwrap();
     }
 }
