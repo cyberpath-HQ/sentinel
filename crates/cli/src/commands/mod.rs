@@ -125,11 +125,11 @@ pub enum Commands {
 /// ```
 pub async fn run_command(command: Commands) -> std::io::Result<()> {
     match command {
-        Commands::Init(args) => crate::commands::init::run(args).await,
-        Commands::CreateCollection(args) => crate::commands::create_collection::run(args).await,
-        Commands::Insert(args) => crate::commands::insert::run(args).await,
-        Commands::Get(args) => crate::commands::get::run(args).await,
-        Commands::Update(args) => crate::commands::update::run(args).await,
-        Commands::Delete(args) => crate::commands::delete::run(args).await,
+        Commands::Init(args) => init::run(args).await,
+        Commands::CreateCollection(args) => create_collection::run(args).await,
+        Commands::Insert(args) => insert::run(args).await,
+        Commands::Get(args) => get::run(args).await,
+        Commands::Update(args) => update::run(args).await,
+        Commands::Delete(args) => delete::run(args).await,
     }
 }
