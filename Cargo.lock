@@ -626,7 +626,6 @@ name = "sentinel"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "clap",
  "criterion",
  "serde",
  "serde_json",
