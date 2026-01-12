@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::io;
 use serde_json::Value;
 use tokio::fs as tokio_fs;
-use crate::{Document, Store};
+use crate::{Document};
 
 pub struct Collection {
     pub(crate) name: String,
@@ -51,7 +51,9 @@ mod tests {
     use super::*;
     use serde_json::json;
     use tempfile::tempdir;
+    use crate::Store;
 
+    /// Helper function to set up a temporary collection for testing
     async fn setup_collection() -> (Collection, tempfile::TempDir) {
         let temp_dir = tempdir().unwrap();
         let store = Store::new(temp_dir.path()).await.unwrap();
