@@ -1,0 +1,18 @@
+[package]
+name = "sentinel-cli"
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+readme.workspace = true
+
+[dependencies]
+sentinel = { path = "../sentinel" }
+tokio = { version = "1.49.0", features = ["full"] }
+serde_json = "1.0.149"
+clap = { version = "4.5.54", features = ["derive"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["json", "fmt", "env-filter"] }
+
+[lints]
+workspace = true
