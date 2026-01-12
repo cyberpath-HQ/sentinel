@@ -658,6 +658,7 @@ dependencies = [
  "clap",
  "sentinel",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
