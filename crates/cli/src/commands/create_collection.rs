@@ -1,4 +1,5 @@
 use clap::Args;
+use tracing::{error, info};
 
 /// Arguments for the create-collection command.
 #[derive(Args)]
@@ -11,9 +12,6 @@ pub struct CreateCollectionArgs {
     pub name:       String,
 }
 
-use std::io;
-
-use tracing::{error, info};
 
 /// Create a new collection within an existing Sentinel store.
 ///
@@ -24,7 +22,7 @@ use tracing::{error, info};
 /// * `args` - The parsed command-line arguments for create-collection.
 ///
 /// # Returns
-/// Returns `Ok(())` on success, or an `io::Error` on failure.
+/// Returns `Ok(())` on success, or a `SentinelError` on failure.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -39,7 +37,7 @@ use tracing::{error, info};
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: CreateCollectionArgs) -> io::Result<()> {
+pub async fn run(args: CreateCollectionArgs) -> sentinel::Result<()> {
     let store_path = args.store_path;
     let name = args.name;
     info!("Creating collection '{}' in store {}", name, store_path);

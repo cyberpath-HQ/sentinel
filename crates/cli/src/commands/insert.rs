@@ -1,4 +1,6 @@
 use clap::Args;
+use serde_json::Value;
+use tracing::{error, info};
 
 /// Arguments for the insert command.
 #[derive(Args)]
@@ -17,10 +19,6 @@ pub struct InsertArgs {
     pub data:       String,
 }
 
-use std::io;
-
-use serde_json::Value;
-use tracing::{error, info};
 
 /// Insert a new document into a Sentinel collection.
 ///
@@ -32,7 +30,7 @@ use tracing::{error, info};
 /// * `args` - The parsed command-line arguments for insert.
 ///
 /// # Returns
-/// Returns `Ok(())` on success, or an `io::Error` on failure.
+/// Returns `Ok(())` on success, or a `SentinelError` on failure.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -46,7 +44,7 @@ use tracing::{error, info};
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: InsertArgs) -> io::Result<()> {
+pub async fn run(args: InsertArgs) -> sentinel::Result<()> {
     let store_path = args.store_path;
     let collection = args.collection;
     let id = args.id;
@@ -61,7 +59,7 @@ pub async fn run(args: InsertArgs) -> io::Result<()> {
         Ok(v) => v,
         Err(e) => {
             error!("Invalid JSON data: {}", e);
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, e));
+            return Err(sentinel::SentinelError::Json { source: e });
         },
     };
     match coll.insert(&id, value).await {

@@ -1,5 +1,3 @@
-use std::io;
-
 use clap::Parser;
 
 use crate::{
@@ -13,8 +11,8 @@ use crate::{
 /// initializes tracing, and executes the requested command.
 ///
 /// # Returns
-/// Returns `Ok(())` on successful execution, or an `io::Error` on failure.
-pub async fn run() -> io::Result<()> {
+/// Returns `Ok(())` on successful execution, or a `SentinelError` on failure.
+pub async fn run() -> sentinel::Result<()> {
     let cli = Cli::parse();
 
     init_tracing(cli.json, cli.verbose);

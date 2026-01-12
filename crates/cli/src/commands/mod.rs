@@ -123,7 +123,7 @@ pub enum Commands {
 /// });
 /// run_command(cmd).await?;
 /// ```
-pub async fn run_command(command: Commands) -> std::io::Result<()> {
+pub async fn run_command(command: Commands) -> sentinel::Result<()> {
     match command {
         Commands::Init(args) => init::run(args).await,
         Commands::CreateCollection(args) => create_collection::run(args).await,

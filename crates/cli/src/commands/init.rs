@@ -1,4 +1,5 @@
 use clap::Args;
+use tracing::{error, info};
 
 /// Arguments for the init command.
 #[derive(Args)]
@@ -8,9 +9,6 @@ pub struct InitArgs {
     pub path: String,
 }
 
-use std::io;
-
-use tracing::{error, info};
 
 /// Initialize a new Sentinel store at the specified path.
 ///
@@ -33,7 +31,7 @@ use tracing::{error, info};
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: InitArgs) -> io::Result<()> {
+pub async fn run(args: InitArgs) -> sentinel::Result<()> {
     let path = args.path;
     info!("Initializing store at {}", path);
     match sentinel::Store::new(&path).await {

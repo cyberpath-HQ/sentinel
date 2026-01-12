@@ -1,4 +1,5 @@
 use clap::Args;
+use tracing::{error, info};
 
 /// Arguments for the delete command.
 #[derive(Args)]
@@ -14,9 +15,6 @@ pub struct DeleteArgs {
     pub id:         String,
 }
 
-use std::io;
-
-use tracing::{error, info};
 
 /// Delete a document from a Sentinel collection.
 ///
@@ -27,7 +25,7 @@ use tracing::{error, info};
 /// * `args` - The parsed command-line arguments for delete.
 ///
 /// # Returns
-/// Returns `Ok(())` on success, or an `io::Error` on failure.
+/// Returns `Ok(())` on success, or a `SentinelError` on failure.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -40,7 +38,7 @@ use tracing::{error, info};
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: DeleteArgs) -> io::Result<()> {
+pub async fn run(args: DeleteArgs) -> sentinel::Result<()> {
     let store_path = args.store_path;
     let collection = args.collection;
     let id = args.id;

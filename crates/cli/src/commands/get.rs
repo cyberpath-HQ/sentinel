@@ -1,4 +1,5 @@
 use clap::Args;
+use tracing::{error, info, warn};
 
 /// Arguments for the get command.
 #[derive(Args)]
@@ -14,10 +15,6 @@ pub struct GetArgs {
     pub id:         String,
 }
 
-use std::io;
-
-use tracing::{error, info, warn};
-
 /// Retrieve a document from a Sentinel collection.
 ///
 /// This function fetches the document with the specified ID from the given collection.
@@ -28,7 +25,7 @@ use tracing::{error, info, warn};
 /// * `args` - The parsed command-line arguments for get.
 ///
 /// # Returns
-/// Returns `Ok(())` on success, or an `io::Error` on failure.
+/// Returns `Ok(())` on success, or a `SentinelError` on failure.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -41,7 +38,7 @@ use tracing::{error, info, warn};
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: GetArgs) -> io::Result<()> {
+pub async fn run(args: GetArgs) -> sentinel::Result<()> {
     let store_path = args.store_path;
     let collection = args.collection;
     let id = args.id;
@@ -54,8 +51,16 @@ pub async fn run(args: GetArgs) -> io::Result<()> {
     match coll.get(&id).await {
         Ok(Some(doc)) => {
             info!("Document '{}' retrieved successfully", id);
-            println!("{}", serde_json::to_string_pretty(&doc.data)?);
-            Ok(())
+            match serde_json::to_string_pretty(&doc.data) {
+                Ok(json) => {
+                    println!("{}", json);
+                    Ok(())
+                },
+                Err(e) => {
+                    error!("Failed to serialize document to JSON: {}", e);
+                    Err(sentinel::SentinelError::Json { source: e })
+                }
+            }
         },
         Ok(None) => {
             warn!("Document '{}' not found", id);
