@@ -1,18 +1,15 @@
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use tokio::fs as tokio_fs;
 
-use crate::Collection;
+use crate::{Collection, Result};
 
 pub struct Store {
     root_path: PathBuf,
 }
 
 impl Store {
-    pub async fn new(root_path: impl AsRef<Path>) -> io::Result<Self> {
+    pub async fn new(root_path: impl AsRef<Path>) -> Result<Self> {
         let root_path = root_path.as_ref().to_path_buf();
         tokio_fs::create_dir_all(&root_path).await?;
         Ok(Self {
@@ -20,7 +17,7 @@ impl Store {
         })
     }
 
-    pub async fn collection(&self, name: &str) -> io::Result<Collection> {
+    pub async fn collection(&self, name: &str) -> Result<Collection> {
         let path = self.root_path.join("data").join(name);
         tokio_fs::create_dir_all(&path).await?;
         Ok(Collection {

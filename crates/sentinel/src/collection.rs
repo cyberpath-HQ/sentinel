@@ -1,9 +1,9 @@
-use std::{io, path::PathBuf};
+use std::path::PathBuf;
 
 use serde_json::Value;
 use tokio::fs as tokio_fs;
 
-use crate::Document;
+use crate::{Document, Result, SentinelError};
 
 pub struct Collection {
     pub(crate) name: String,
@@ -11,13 +11,14 @@ pub struct Collection {
 }
 
 impl Collection {
-    pub async fn insert(&self, id: &str, data: Value) -> io::Result<()> {
+    pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
         let file_path = self.path.join(format!("{}.json", id));
         let json = serde_json::to_string_pretty(&data)?;
-        tokio_fs::write(&file_path, json).await
+        tokio_fs::write(&file_path, json).await?;
+        Ok(())
     }
 
-    pub async fn get(&self, id: &str) -> io::Result<Option<Document>> {
+    pub async fn get(&self, id: &str) -> Result<Option<Document>> {
         let file_path = self.path.join(format!("{}.json", id));
         match tokio_fs::read_to_string(&file_path).await {
             Ok(content) => {
@@ -27,22 +28,22 @@ impl Collection {
                     data,
                 }))
             },
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(SentinelError::Io { source: e }),
         }
     }
 
-    pub async fn update(&self, id: &str, data: Value) -> io::Result<()> {
+    pub async fn update(&self, id: &str, data: Value) -> Result<()> {
         // For update, just insert (overwrite)
         self.insert(id, data).await
     }
 
-    pub async fn delete(&self, id: &str) -> io::Result<()> {
+    pub async fn delete(&self, id: &str) -> Result<()> {
         let file_path = self.path.join(format!("{}.json", id));
         match tokio_fs::remove_file(&file_path).await {
             Ok(()) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()), // Already deleted
-            Err(e) => Err(e),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()), // Already deleted
+            Err(e) => Err(SentinelError::Io { source: e }),
         }
     }
 }
