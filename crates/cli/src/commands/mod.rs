@@ -4,11 +4,17 @@ use clap::{Parser, Subcommand};
 ///
 /// This module contains submodules for each CLI command, each implementing
 /// the logic for a specific operation on the Sentinel DBMS.
+/// Create collection command module.
 mod create_collection;
+/// Delete command module.
 mod delete;
+/// Get command module.
 mod get;
+/// Init command module.
 mod init;
+/// Insert command module.
 mod insert;
+/// Update command module.
 mod update;
 
 /// The main CLI structure for the Sentinel document DBMS.
@@ -33,6 +39,7 @@ mod update;
 #[command(about = "A document DBMS CLI")]
 pub struct Cli {
     #[command(subcommand)]
+    /// The subcommand to execute.
     pub command: Commands,
 
     /// Output logs in JSON format
