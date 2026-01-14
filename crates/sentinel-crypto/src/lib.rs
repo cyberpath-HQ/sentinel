@@ -45,16 +45,23 @@
 //! ```
 
 pub mod encrypt;
+pub mod encrypt_trait;
 pub mod error;
 pub mod hash;
 pub mod hash_trait;
+pub mod key_derivation;
+pub mod key_derivation_trait;
 pub mod sign;
 pub mod sign_trait;
 
 // Re-export crypto types for convenience
 pub use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
+pub use encrypt::Aes256GcmEncryptor;
+pub use encrypt_trait::EncryptionAlgorithm;
 pub use error::CryptoError;
 pub use hash_trait::HashFunction;
+pub use key_derivation::Blake3KeyDerivation;
+pub use key_derivation_trait::KeyDerivationFunction;
 // Convenience functions using default implementations
 use serde_json::Value;
 pub use sign::{Ed25519Signer, SigningKeyManager};
@@ -75,17 +82,17 @@ pub fn verify_signature(hash: &str, signature: &str, public_key: &VerifyingKey) 
 
 /// Encrypts data using AES-256-GCM.
 pub fn encrypt_data(data: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
-    crate::encrypt::encrypt_data(data, key)
+    Aes256GcmEncryptor::encrypt_data(data, key)
 }
 
 /// Decrypts data using AES-256-GCM.
 pub fn decrypt_data(encrypted_data: &str, key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
-    crate::encrypt::decrypt_data(encrypted_data, key)
+    Aes256GcmEncryptor::decrypt_data(encrypted_data, key)
 }
 
 /// Derives a 32-byte key from a passphrase.
 pub fn derive_key_from_passphrase(passphrase: &str) -> [u8; 32] {
-    crate::encrypt::derive_key_from_passphrase(passphrase)
+    Blake3KeyDerivation::derive_key_from_passphrase(passphrase).unwrap()
 }
 
 #[cfg(test)]
