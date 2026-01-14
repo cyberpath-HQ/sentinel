@@ -49,9 +49,9 @@ use crate::{
 #[derive(Debug)]
 pub struct Store {
     /// The root path of the store.
-    root_path:              PathBuf,
+    root_path:   PathBuf,
     /// The signing key for the store.
-    pub(crate) signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
+    signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
 }
 
 impl Store {
@@ -132,7 +132,10 @@ impl Store {
                 let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
                 let key_array: [u8; 32] = key_bytes.try_into().map_err(|kb: Vec<u8>| {
                     SentinelError::StoreCorruption {
-                        reason: format!("stored signing key has an invalid length ({}, expected 32)", kb.len()),
+                        reason: format!(
+                            "stored signing key has an invalid length ({}, expected 32)",
+                            kb.len()
+                        ),
                     }
                 })?;
                 let signing_key = sentinel_crypto::SigningKey::from_bytes(&key_array);
