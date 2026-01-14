@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
 readme.workspace = true
+description.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 tokio = { version = "1.49.0", features = ["full"] }

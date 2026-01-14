@@ -2,6 +2,12 @@
 name = "sentinel-crypto"
 version = "0.1.0"
 edition = "2024"
+description = "Cryptographic utilities for Cyberpath Sentinel, including hashing and signing."
+license = "Apache-2.0"
+repository = "https://github.com/cyberpath-HQ/sentinel"
+readme = "../README.md"
+keywords = ["crypto", "hashing", "signing", "ed25519", "blake3"]
+categories = ["cryptography"]
 
 [dependencies]
 serde_json = "1.0.149"
