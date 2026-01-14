@@ -3,7 +3,12 @@ use std::path::PathBuf;
 use serde_json::Value;
 use tokio::fs as tokio_fs;
 
-use crate::{validation::{is_reserved_name, is_valid_document_id_chars}, Document, Result, SentinelError};
+use crate::{
+    validation::{is_reserved_name, is_valid_document_id_chars},
+    Document,
+    Result,
+    SentinelError,
+};
 
 /// A collection represents a namespace for documents in the Sentinel database.
 ///
@@ -56,8 +61,8 @@ impl Collection {
     ///
     /// # Arguments
     ///
-    /// * `id` - A unique identifier for the document. This will be used as the filename
-    ///          (with `.json` extension). Must be filesystem-safe.
+    /// * `id` - A unique identifier for the document. This will be used as the filename (with
+    ///   `.json` extension). Must be filesystem-safe.
     /// * `data` - The JSON data to store. Can be any valid `serde_json::Value`.
     ///
     /// # Returns
@@ -139,12 +144,18 @@ impl Collection {
         match tokio_fs::read_to_string(&file_path).await {
             Ok(content) => {
                 let data: Value = serde_json::from_str(&content)?;
-                Ok(Some(Document { id: id.to_string(), data, ..Default::default() }))
+                Ok(Some(Document {
+                    id: id.to_string(),
+                    data,
+                    ..Default::default()
+                }))
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(SentinelError::Io {
-                source: e,
-            }),
+            Err(e) => {
+                Err(SentinelError::Io {
+                    source: e,
+                })
+            },
         }
     }
 
@@ -237,9 +248,11 @@ impl Collection {
         match tokio_fs::remove_file(&file_path).await {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()), // Already deleted
-            Err(e) => Err(SentinelError::Io {
-                source: e,
-            }),
+            Err(e) => {
+                Err(SentinelError::Io {
+                    source: e,
+                })
+            },
         }
     }
 }

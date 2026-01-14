@@ -41,11 +41,7 @@ pub trait SignatureAlgorithm: private::Sealed {
     ///
     /// # Errors
     /// Returns `CryptoError` if verification process fails
-    fn verify_signature(
-        hash: &str,
-        signature: &str,
-        public_key: &Self::VerifyingKey,
-    ) -> Result<bool, CryptoError>;
+    fn verify_signature(hash: &str, signature: &str, public_key: &Self::VerifyingKey) -> Result<bool, CryptoError>;
 }
 
 // Sealing the trait to prevent external implementations

@@ -30,7 +30,8 @@ pub fn init_tracing(json: bool, verbose: u8) {
         registry
             .with(fmt::layer().json().flatten_event(true))
             .init();
-    } else {
+    }
+    else {
         registry.with(fmt::layer()).init();
     }
 }

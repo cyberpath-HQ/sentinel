@@ -1,7 +1,7 @@
-use crate::error::CryptoError;
-use crate::sign_trait::SignatureAlgorithm;
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 use signature::{Signer, Verifier};
+
+use crate::{error::CryptoError, sign_trait::SignatureAlgorithm};
 
 /// Ed25519 signature implementation.
 /// Uses the Ed25519 elliptic curve signature scheme, providing high security
@@ -23,14 +23,11 @@ impl SignatureAlgorithm for Ed25519Signer {
         Ok(hex::encode(signature.to_bytes()))
     }
 
-    fn verify_signature(
-        hash: &str,
-        signature: &str,
-        public_key: &VerifyingKey,
-    ) -> Result<bool, CryptoError> {
-        let sig_bytes = hex::decode(signature)
-            .map_err(CryptoError::Hex)?;
-        let sig_array: [u8; 64] = sig_bytes.as_slice().try_into()
+    fn verify_signature(hash: &str, signature: &str, public_key: &VerifyingKey) -> Result<bool, CryptoError> {
+        let sig_bytes = hex::decode(signature).map_err(CryptoError::Hex)?;
+        let sig_array: [u8; 64] = sig_bytes
+            .as_slice()
+            .try_into()
             .map_err(|_| CryptoError::InvalidSignatureLength)?;
         let sig = Signature::from_bytes(&sig_array);
         Ok(public_key.verify(hash.as_bytes(), &sig).is_ok())

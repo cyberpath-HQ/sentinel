@@ -13,10 +13,10 @@ pub struct UpdateArgs {
     pub collection: String,
     /// Document ID
     #[arg(short, long)]
-    pub id: String,
+    pub id:         String,
     /// JSON data (as string)
     #[arg(short, long)]
-    pub data: String,
+    pub data:       String,
 }
 
 /// Update an existing document in a Sentinel collection.
@@ -99,7 +99,7 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -108,8 +108,8 @@ mod tests {
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice", "age": 30}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice", "age": 30}"#.to_string(),
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
@@ -117,8 +117,8 @@ mod tests {
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice", "age": 31}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice", "age": 31}"#.to_string(),
         };
 
         let result = run(args).await;
@@ -144,7 +144,7 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -153,16 +153,16 @@ mod tests {
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice"}"#.to_string(),
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice", "age": }"#.to_string(), // Invalid
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Alice", "age": }"#.to_string(), // Invalid
         };
 
         let result = run(args).await;
@@ -186,7 +186,7 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -195,8 +195,8 @@ mod tests {
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "non_existent".to_string(),
-            data: r#"{"name": "Bob"}"#.to_string(),
+            id:         "non_existent".to_string(),
+            data:       r#"{"name": "Bob"}"#.to_string(),
         };
 
         let result = run(args).await;
@@ -221,8 +221,8 @@ mod tests {
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "non_existent".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Bob"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Bob"}"#.to_string(),
         };
 
         let result = run(args).await;
@@ -246,7 +246,7 @@ mod tests {
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -261,8 +261,8 @@ mod tests {
         let args = UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Bob"}"#.to_string(),
+            id:         "doc1".to_string(),
+            data:       r#"{"name": "Bob"}"#.to_string(),
         };
 
         let result = run(args).await;

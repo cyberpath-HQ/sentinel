@@ -2,7 +2,12 @@ use std::path::{Path, PathBuf};
 
 use tokio::fs as tokio_fs;
 
-use crate::{validation::{is_reserved_name, is_valid_name_chars}, Collection, Result, SentinelError};
+use crate::{
+    validation::{is_reserved_name, is_valid_name_chars},
+    Collection,
+    Result,
+    SentinelError,
+};
 
 /// The top-level manager for document collections in Cyberpath Sentinel.
 ///
@@ -49,14 +54,12 @@ impl Store {
     ///
     /// # Parameters
     ///
-    /// * `root_path` - The filesystem path where the store will be created. This can be
-    ///   any type that implements `AsRef<Path>`, including `&str`, `String`, `Path`, and
-    ///   `PathBuf`.
+    /// * `root_path` - The filesystem path where the store will be created. This can be any type
+    ///   that implements `AsRef<Path>`, including `&str`, `String`, `Path`, and `PathBuf`.
     ///
     /// # Returns
     ///
-    /// * `Result<Self>` - Returns a new `Store` instance on success, or a `SentinelError`
-    ///   if:
+    /// * `Result<Self>` - Returns a new `Store` instance on success, or a `SentinelError` if:
     ///   - The directory cannot be created due to permission issues
     ///   - The path is invalid or cannot be accessed
     ///   - I/O errors occur during directory creation
@@ -103,14 +106,14 @@ impl Store {
     ///
     /// # Parameters
     ///
-    /// * `name` - The name of the collection. This will be used as the directory name
-    ///   under `data/`. The name should be filesystem-safe (avoid special characters
-    ///   that are invalid in directory names on your target platform).
+    /// * `name` - The name of the collection. This will be used as the directory name under
+    ///   `data/`. The name should be filesystem-safe (avoid special characters that are invalid in
+    ///   directory names on your target platform).
     ///
     /// # Returns
     ///
-    /// * `Result<Collection>` - Returns a `Collection` instance on success, or a
-    ///   `SentinelError` if:
+    /// * `Result<Collection>` - Returns a `Collection` instance on success, or a `SentinelError`
+    ///   if:
     ///   - The collection directory cannot be created due to permission issues
     ///   - The name contains invalid characters for the filesystem
     ///   - I/O errors occur during directory creation
@@ -149,8 +152,8 @@ impl Store {
     ///
     /// # Notes
     ///
-    /// - Calling this method multiple times with the same name returns separate
-    ///   `Collection` instances pointing to the same directory
+    /// - Calling this method multiple times with the same name returns separate `Collection`
+    ///   instances pointing to the same directory
     /// - The `data/` subdirectory is created automatically on first collection access
     /// - Collections are not cached; each call creates a new `Collection` instance
     /// - No validation is performed on the collection name beyond filesystem constraints

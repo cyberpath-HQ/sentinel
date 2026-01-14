@@ -9,7 +9,7 @@ pub struct CreateCollectionArgs {
     pub store_path: String,
     /// Collection name
     #[arg(short, long)]
-    pub name: String,
+    pub name:       String,
 }
 
 /// Create a new collection within an existing Sentinel store.
@@ -80,7 +80,7 @@ mod tests {
 
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
 
         let result = run(args).await;
@@ -97,7 +97,7 @@ mod tests {
 
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
 
         let result = run(args).await;
@@ -125,7 +125,7 @@ mod tests {
         // Test with empty name
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "".to_string(),
+            name:       "".to_string(),
         };
 
         let result = run(args).await;
@@ -158,7 +158,7 @@ mod tests {
 
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            name:       "test_collection".to_string(),
         };
 
         let result = run(args).await;

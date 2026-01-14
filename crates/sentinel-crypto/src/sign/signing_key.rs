@@ -1,5 +1,6 @@
-use crate::error::CryptoError;
 use ed25519_dalek::SigningKey;
+
+use crate::error::CryptoError;
 
 /// Signing key management utilities
 pub struct SigningKeyManager;
@@ -19,15 +20,14 @@ impl SigningKeyManager {
     }
 
     /// Export key as hex
-    pub fn export_key(key: &SigningKey) -> String {
-        hex::encode(key.to_bytes())
-    }
+    pub fn export_key(key: &SigningKey) -> String { hex::encode(key.to_bytes()) }
 
     /// Import key from hex
     pub fn import_key(hex: &str) -> Result<SigningKey, CryptoError> {
-        let bytes = hex::decode(hex)
-            .map_err(CryptoError::Hex)?;
-        let array: [u8; 32] = bytes.as_slice().try_into()
+        let bytes = hex::decode(hex).map_err(CryptoError::Hex)?;
+        let array: [u8; 32] = bytes
+            .as_slice()
+            .try_into()
             .map_err(|_| CryptoError::InvalidKeyLength)?;
         Ok(SigningKey::from_bytes(&array))
     }

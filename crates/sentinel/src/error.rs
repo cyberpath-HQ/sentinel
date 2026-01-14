@@ -24,7 +24,7 @@ pub enum SentinelError {
     /// Document not found in collection
     #[error("Document '{id}' not found in collection '{collection}'")]
     DocumentNotFound {
-        id: String,
+        id:         String,
         collection: String,
     },
 
@@ -37,7 +37,7 @@ pub enum SentinelError {
     /// Document already exists (for operations that require uniqueness)
     #[error("Document '{id}' already exists in collection '{collection}'")]
     DocumentAlreadyExists {
-        id: String,
+        id:         String,
         collection: String,
     },
 

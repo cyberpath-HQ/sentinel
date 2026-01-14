@@ -1,5 +1,6 @@
-use crate::error::CryptoError;
 use serde_json::Value;
+
+use crate::error::CryptoError;
 
 /// Core trait for hash functions used in sentinel-crypto.
 /// This trait abstracts hashing operations to allow easy switching between

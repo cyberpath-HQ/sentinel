@@ -5,9 +5,7 @@ use serde_json::json;
 fn bench_hash_data(c: &mut Criterion) {
     let data = json!({"key": "value", "number": 42, "array": [1,2,3,4,5]});
 
-    c.bench_function("hash_data", |b| {
-        b.iter(|| hash_data(black_box(&data)))
-    });
+    c.bench_function("hash_data", |b| b.iter(|| hash_data(black_box(&data))));
 }
 
 fn bench_sign_hash(c: &mut Criterion) {
@@ -26,7 +24,13 @@ fn bench_verify_signature(c: &mut Criterion) {
     let signature = sign_hash(hash, &key).unwrap();
 
     c.bench_function("verify_signature", |b| {
-        b.iter(|| verify_signature(black_box(hash), black_box(&signature), black_box(&public_key)))
+        b.iter(|| {
+            verify_signature(
+                black_box(hash),
+                black_box(&signature),
+                black_box(&public_key),
+            )
+        })
     });
 }
 
@@ -36,5 +40,11 @@ fn bench_generate_key(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_hash_data, bench_sign_hash, bench_verify_signature, bench_generate_key);
+criterion_group!(
+    benches,
+    bench_hash_data,
+    bench_sign_hash,
+    bench_verify_signature,
+    bench_generate_key
+);
 criterion_main!(benches);
