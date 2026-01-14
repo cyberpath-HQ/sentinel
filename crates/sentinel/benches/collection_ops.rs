@@ -1,11 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use sentinel::{Collection, Store};
+use std::hint::black_box;
 use serde_json::json;
 use tempfile::tempdir;
 
 async fn setup_collection() -> (Collection, tempfile::TempDir) {
     let temp_dir = tempdir().unwrap();
-    let store = Store::new(temp_dir.path()).await.unwrap();
+    let store = Store::new(temp_dir.path(), None).await.unwrap();
     let collection = store.collection("bench_collection").await.unwrap();
     (collection, temp_dir)
 }
