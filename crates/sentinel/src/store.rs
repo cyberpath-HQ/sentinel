@@ -543,4 +543,69 @@ mod tests {
         // Should have created signing key
         assert!(store.signing_key.is_some());
     }
+
+    #[tokio::test]
+    async fn test_store_new_with_corrupted_keys() {
+        let temp_dir = tempdir().unwrap();
+        // First create a store with passphrase to generate keys
+        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
+
+        // Now corrupt the .keys collection by inserting a document with missing fields
+        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
+        let keys_coll = store2.collection(".keys").await.unwrap();
+        // Insert corrupted document
+        let corrupted_data = serde_json::json!({
+            "salt": "invalid_salt",
+            // missing "encrypted"
+        });
+        keys_coll.insert("signing_key", corrupted_data).await.unwrap();
+
+        // Now try to create a new store with passphrase, should fail due to corruption
+        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_invalid_salt_hex() {
+        let temp_dir = tempdir().unwrap();
+        // First create a store with passphrase to generate keys
+        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
+
+        // Corrupt the salt to invalid hex
+        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
+        let keys_coll = store2.collection(".keys").await.unwrap();
+        let doc = keys_coll.get("signing_key").await.unwrap().unwrap();
+        let mut data = doc.data().clone();
+        data["salt"] = serde_json::Value::String("invalid_hex".to_string());
+        keys_coll.insert("signing_key", data).await.unwrap();
+
+        // Try to load
+        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_invalid_encrypted_length() {
+        let temp_dir = tempdir().unwrap();
+        // First create a store with passphrase to generate keys
+        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
+
+        // Corrupt the encrypted to short
+        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
+        let keys_coll = store2.collection(".keys").await.unwrap();
+        let doc = keys_coll.get("signing_key").await.unwrap().unwrap();
+        let mut data = doc.data().clone();
+        data["encrypted"] = serde_json::Value::String(hex::encode(&[0u8; 10])); // short
+        keys_coll.insert("signing_key", data).await.unwrap();
+
+        // Try to load
+        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        assert!(result.is_err());
+    }
 }

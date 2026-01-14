@@ -64,4 +64,13 @@ mod tests {
         let decrypted = Ascon128Encryptor::decrypt_data(&encrypted, &key).unwrap();
         assert_eq!(decrypted, data);
     }
+
+    #[test]
+    fn test_decrypt_invalid_length() {
+        let key = [0u8; 32];
+        // Short data that decodes to less than 16 bytes
+        let short_hex = hex::encode(&[0u8; 14]); // 28 hex chars, 14 bytes
+        let result = Ascon128Encryptor::decrypt_data(&short_hex, &key);
+        assert!(result.is_err());
+    }
 }

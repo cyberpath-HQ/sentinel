@@ -670,4 +670,31 @@ mod tests {
         let result = run_command(cli).await;
         assert!(result.is_ok(), "run_command should succeed for Generate");
     }
+
+    /// Test run_command with invalid encryption algorithm.
+    ///
+    /// This test verifies that run_command fails with invalid algorithm strings.
+    #[tokio::test]
+    async fn test_run_command_invalid_algorithm() {
+        let args = super::generate::GenArgs {
+            subcommand: super::generate::GenCommands::Key(super::generate::KeyArgs {
+                key_type: super::generate::KeyType::Signing,
+            }),
+        };
+        let cli = Cli {
+            command:                  Commands::Generate(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "invalid".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+
+        let result = run_command(cli).await;
+        assert!(
+            result.is_err(),
+            "run_command should fail for invalid hash algorithm"
+        );
+    }
 }

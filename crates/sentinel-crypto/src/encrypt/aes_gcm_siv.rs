@@ -60,4 +60,13 @@ mod tests {
         let decrypted = Aes256GcmSivEncryptor::decrypt_data(&encrypted, &key).unwrap();
         assert_eq!(decrypted, data);
     }
+
+    #[test]
+    fn test_decrypt_invalid_length() {
+        let key = [0u8; 32];
+        // Short data that decodes to less than 12 bytes
+        let short_hex = hex::encode(&[0u8; 10]); // 20 hex chars, 10 bytes
+        let result = Aes256GcmSivEncryptor::decrypt_data(&short_hex, &key);
+        assert!(result.is_err());
+    }
 }
