@@ -125,7 +125,7 @@ impl Collection {
     /// // Retrieve the document
     /// let doc = collection.get("user-123").await?;
     /// assert!(doc.is_some());
-    /// assert_eq!(doc.unwrap().id, "user-123");
+    /// assert_eq!(doc.unwrap().id(), "user-123");
     ///
     /// // Try to get a non-existent document
     /// let missing = collection.get("user-999").await?;
@@ -139,10 +139,7 @@ impl Collection {
         match tokio_fs::read_to_string(&file_path).await {
             Ok(content) => {
                 let data: Value = serde_json::from_str(&content)?;
-                Ok(Some(Document {
-                    id: id.to_string(),
-                    data,
-                }))
+                Ok(Some(Document { id: id.to_string(), data, ..Default::default() }))
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(SentinelError::Io {
@@ -184,7 +181,7 @@ impl Collection {
     ///
     /// // Verify the update
     /// let doc = collection.get("user-123").await?.unwrap();
-    /// assert_eq!(doc.data["age"], 31);
+    /// assert_eq!(doc.data()["age"], 31);
     /// # Ok(())
     /// # }
     /// ```
@@ -312,7 +309,7 @@ mod tests {
         collection.insert("user-123", doc.clone()).await.unwrap();
 
         let retrieved = collection.get("user-123").await.unwrap();
-        assert_eq!(retrieved.unwrap().data, doc);
+        assert_eq!(*retrieved.unwrap().data(), doc);
     }
 
     #[tokio::test]
@@ -323,7 +320,7 @@ mod tests {
         collection.insert("empty", doc.clone()).await.unwrap();
 
         let retrieved = collection.get("empty").await.unwrap();
-        assert_eq!(retrieved.unwrap().data, doc);
+        assert_eq!(*retrieved.unwrap().data(), doc);
     }
 
     #[tokio::test]
@@ -344,7 +341,7 @@ mod tests {
             .unwrap();
 
         let retrieved = collection.get("large").await.unwrap();
-        assert_eq!(retrieved.unwrap().data, large_data);
+        assert_eq!(*retrieved.unwrap().data(), large_data);
     }
 
     #[tokio::test]
@@ -463,7 +460,7 @@ mod tests {
         collection.update("user-123", doc2.clone()).await.unwrap();
 
         let retrieved = collection.get("user-123").await.unwrap();
-        assert_eq!(retrieved.unwrap().data, doc2);
+        assert_eq!(*retrieved.unwrap().data(), doc2);
     }
 
     #[tokio::test]
@@ -474,7 +471,7 @@ mod tests {
         collection.update("new-user", doc.clone()).await.unwrap();
 
         let retrieved = collection.get("new-user").await.unwrap();
-        assert_eq!(retrieved.unwrap().data, doc);
+        assert_eq!(*retrieved.unwrap().data(), doc);
     }
 
     #[tokio::test]
@@ -537,8 +534,8 @@ mod tests {
         // Get both
         let user1 = collection.get("user1").await.unwrap().unwrap();
         let user2 = collection.get("user2").await.unwrap().unwrap();
-        assert_eq!(user1.data["name"], "User1");
-        assert_eq!(user2.data["name"], "User2");
+        assert_eq!(user1.data()["name"], "User1");
+        assert_eq!(user2.data()["name"], "User2");
 
         // Update one
         collection
@@ -546,7 +543,7 @@ mod tests {
             .await
             .unwrap();
         let updated = collection.get("user1").await.unwrap().unwrap();
-        assert_eq!(updated.data["name"], "Updated");
+        assert_eq!(updated.data()["name"], "Updated");
 
         // Delete one
         collection.delete("user2").await.unwrap();
