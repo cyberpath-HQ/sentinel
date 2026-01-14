@@ -113,28 +113,43 @@ impl Store {
             if let Some(doc) = keys_collection.get("signing_key").await? {
                 // Load existing signing key
                 let data = doc.data();
-                let encrypted = data["encrypted"].as_str().unwrap();
-                let salt_hex = data["salt"].as_str().unwrap();
-                let salt = hex::decode(salt_hex).unwrap();
-                let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt).unwrap();
+                let encrypted = data["encrypted"].as_str().ok_or_else(|| {
+                    SentinelError::StoreCorruption {
+                        reason: "stored signing key document missing 'encrypted' field or not a string".to_string(),
+                    }
+                })?;
+                let salt_hex = data["salt"].as_str().ok_or_else(|| {
+                    SentinelError::StoreCorruption {
+                        reason: "stored signing key document missing 'salt' field or not a string".to_string(),
+                    }
+                })?;
+                let salt = hex::decode(salt_hex).map_err(|_| {
+                    SentinelError::StoreCorruption {
+                        reason: "stored signing key salt is not valid hex".to_string(),
+                    }
+                })?;
+                let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt)?;
                 let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
-                let key_array: [u8; 32] = key_bytes
-                    .try_into()
-                    .map_err(|_| SentinelError::StoreCorruption {
+                let key_array: [u8; 32] = key_bytes.try_into().map_err(|_| {
+                    SentinelError::StoreCorruption {
                         reason: "stored signing key has an invalid length".to_string(),
-                    })?;
+                    }
+                })?;
                 let signing_key = sentinel_crypto::SigningKey::from_bytes(&key_array);
                 store.signing_key = Some(Arc::new(signing_key));
             }
             else {
                 // Generate new signing key and salt
-                let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(passphrase).unwrap();
+                let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(passphrase)?;
                 let signing_key = sentinel_crypto::SigningKeyManager::generate_key();
                 let key_bytes = signing_key.to_bytes();
                 let encrypted = sentinel_crypto::encrypt_data(&key_bytes, &encryption_key)?;
                 let salt_hex = hex::encode(&salt);
                 keys_collection
-                    .insert("signing_key", serde_json::json!({"encrypted": encrypted, "salt": salt_hex}))
+                    .insert(
+                        "signing_key",
+                        serde_json::json!({"encrypted": encrypted, "salt": salt_hex}),
+                    )
                     .await?;
                 store.signing_key = Some(Arc::new(signing_key));
             }
