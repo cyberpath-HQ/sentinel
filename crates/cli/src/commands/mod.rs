@@ -69,7 +69,8 @@ pub enum Commands {
     /// Generate cryptographic keys and other artifacts.
     ///
     /// This command provides subcommands for generating keys and other cryptographic materials.
-    Gen(generate::GenArgs),
+    #[command(visible_alias = "gen")]
+    Generate(generate::GenArgs),
     /// Create a new collection within an existing store.
     ///
     /// Collections are logical groupings of documents within a store.
@@ -139,7 +140,7 @@ pub enum Commands {
 pub async fn run_command(command: Commands) -> sentinel::Result<()> {
     match command {
         Commands::Init(args) => init::run(args).await,
-        Commands::Gen(args) => generate::run(args).await,
+        Commands::Generate(args) => generate::run(args).await,
         Commands::CreateCollection(args) => create_collection::run(args).await,
         Commands::Insert(args) => insert::run(args).await,
         Commands::Get(args) => get::run(args).await,
