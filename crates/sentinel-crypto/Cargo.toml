@@ -14,10 +14,11 @@ serde_json = "1.0.149"
 blake3 = { version = "1.8.3", features = ["rayon"] }
 ed25519-dalek = { version = "2.1", features = ["zeroize"] }
 rand = "0.8"
-hex = "0.4"
+hex = "0.4.3"
 signature = "2.2"
-thiserror = "2.0"
-zeroize = "1.8"
+thiserror = "2.0.17"
+zeroize = "1.8.2"
+aes-gcm = "0.10"
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["html_reports"] }
