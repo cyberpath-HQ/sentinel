@@ -4,7 +4,7 @@ use crate::error::CryptoError;
 
 // Algorithm configuration enums
 /// Hash algorithm options for global configuration
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum HashAlgorithmChoice {
     /// Blake3 is chosen for its speed and security
     #[default]
@@ -12,7 +12,7 @@ pub enum HashAlgorithmChoice {
 }
 
 /// Signature algorithm options for global configuration
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum SignatureAlgorithmChoice {
     /// Ed25519 is chosen for its security and performance
     #[default]
@@ -20,7 +20,7 @@ pub enum SignatureAlgorithmChoice {
 }
 
 /// Encryption algorithm options for global configuration
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum EncryptionAlgorithmChoice {
     /// XChaCha20Poly1305 is chosen for its security and nonce misuse resistance, strongest option
     #[default]
@@ -33,7 +33,7 @@ pub enum EncryptionAlgorithmChoice {
 }
 
 /// Key derivation algorithm options for global configuration
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum KeyDerivationAlgorithmChoice {
     /// Argon2id is chosen for its strong security properties against various attacks
     #[default]
@@ -45,7 +45,7 @@ pub enum KeyDerivationAlgorithmChoice {
 /// Global cryptographic configuration.
 /// This allows runtime selection of algorithms for all default operations.
 /// Defaults to the most secure algorithms available.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CryptoConfig {
     pub hash_algorithm:           HashAlgorithmChoice,
     pub signature_algorithm:      SignatureAlgorithmChoice,

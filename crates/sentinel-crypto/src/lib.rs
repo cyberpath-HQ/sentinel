@@ -44,7 +44,7 @@
 //! assert!(verify_signature(&hash, &signature, &public_key).unwrap());
 //! ```
 
-mod crypto_config;
+pub mod crypto_config;
 pub mod encrypt;
 pub mod encrypt_trait;
 pub mod error;
