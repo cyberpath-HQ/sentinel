@@ -1,10 +1,8 @@
 use clap::Args;
 use tracing::{error, info};
 
-
 /// Arguments for the init command.
-#[derive(Args, Clone)]
-#[derive(Default)]
+#[derive(Args, Clone, Default)]
 pub struct InitArgs {
     /// Path to the store directory
     #[arg(short, long)]
