@@ -25,6 +25,10 @@ pub enum CryptoError {
     #[error("Key management error: {0}")]
     KeyManagement(#[from] KeyError),
 
+    /// Errors related to key derivation operations
+    #[error("Key derivation error: {0}")]
+    KeyDerivation(#[from] KeyDerivationError),
+
     /// Errors related to encryption operations
     #[error("Encryption error")]
     Encryption,
@@ -92,4 +96,16 @@ pub enum KeyError {
     /// Key export failed
     #[error("Key export failed")]
     ExportFailed,
+}
+
+/// Specific errors for key derivation operations
+#[derive(thiserror::Error, Debug)]
+pub enum KeyDerivationError {
+    /// Key derivation failed
+    #[error("Key derivation failed")]
+    DerivationFailed,
+
+    /// Invalid parameters for key derivation
+    #[error("Invalid key derivation parameters")]
+    InvalidParameters,
 }
