@@ -52,7 +52,10 @@ pub async fn run(args: InitArgs) -> sentinel::Result<()> {
                     let salt_hex = hex::encode(&salt);
                     let keys_collection = store.collection(".keys").await?;
                     keys_collection
-                        .insert("signing_key", serde_json::json!({"encrypted": encrypted, "salt": salt_hex}))
+                        .insert(
+                            "signing_key",
+                            serde_json::json!({"encrypted": encrypted, "salt": salt_hex}),
+                        )
                         .await?;
                 }
             }

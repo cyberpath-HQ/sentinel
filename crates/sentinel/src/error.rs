@@ -110,9 +110,11 @@ mod tests {
         let crypto_err = sentinel_crypto::CryptoError::Encryption;
         let sentinel_err: SentinelError = crypto_err.into();
         match sentinel_err {
-            SentinelError::CryptoFailed { operation } => {
+            SentinelError::CryptoFailed {
+                operation,
+            } => {
                 assert!(!operation.is_empty());
-            }
+            },
             _ => panic!("Expected CryptoFailed"),
         }
     }

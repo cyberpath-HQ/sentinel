@@ -117,11 +117,16 @@ pub fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]
     }
 }
 
-/// Derives a 32-byte key from a passphrase using the provided salt and the globally configured algorithm.
+/// Derives a 32-byte key from a passphrase using the provided salt and the globally configured
+/// algorithm.
 pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
     match get_global_crypto_config().key_derivation_algorithm {
-        KeyDerivationAlgorithmChoice::Argon2id => Argon2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, salt),
-        KeyDerivationAlgorithmChoice::Pbkdf2 => Pbkdf2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, salt),
+        KeyDerivationAlgorithmChoice::Argon2id => {
+            Argon2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, salt)
+        },
+        KeyDerivationAlgorithmChoice::Pbkdf2 => {
+            Pbkdf2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, salt)
+        },
     }
 }
 

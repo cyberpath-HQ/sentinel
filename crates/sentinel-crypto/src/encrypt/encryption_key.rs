@@ -28,10 +28,14 @@ impl EncryptionKeyManager {
     }
 
     /// Generate a key from a passphrase using the default KDF
-    pub fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> { crate::derive_key_from_passphrase(passphrase) }
+    pub fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> {
+        crate::derive_key_from_passphrase(passphrase)
+    }
 
     /// Generate a key from a passphrase using the provided salt
-    pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> { crate::derive_key_from_passphrase_with_salt(passphrase, salt) }
+    pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
+        crate::derive_key_from_passphrase_with_salt(passphrase, salt)
+    }
 }
 
 #[cfg(test)]

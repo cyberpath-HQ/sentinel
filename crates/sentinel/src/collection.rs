@@ -330,7 +330,9 @@ mod tests {
     /// Helper function to set up a temporary collection with signing key for testing
     async fn setup_collection_with_signing_key() -> (Collection, tempfile::TempDir) {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), Some("test_passphrase")).await.unwrap();
+        let store = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
         let collection = store.collection("test_collection").await.unwrap();
         (collection, temp_dir)
     }

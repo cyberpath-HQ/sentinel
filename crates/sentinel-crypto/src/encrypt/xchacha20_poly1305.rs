@@ -35,7 +35,8 @@ impl EncryptionAlgorithm for XChaCha20Poly1305Encryptor {
 
     fn decrypt_data(encrypted_data: &str, key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
         let data = hex::decode(encrypted_data).map_err(|_| CryptoError::Decryption)?;
-        if data.len() < 40 { // 24-byte nonce + 16-byte Poly1305 tag
+        if data.len() < 40 {
+            // 24-byte nonce + 16-byte Poly1305 tag
             return Err(CryptoError::Decryption);
         }
         let (nonce_bytes, ciphertext) = data.split_at(24);
