@@ -1,3 +1,4 @@
+use crate::error::CryptoError;
 use ed25519_dalek::SigningKey;
 
 /// Signing key management utilities
@@ -23,9 +24,11 @@ impl SigningKeyManager {
     }
 
     /// Import key from hex
-    pub fn import_key(hex: &str) -> Result<SigningKey, Box<dyn std::error::Error>> {
-        let bytes = hex::decode(hex)?;
-        let array: [u8; 32] = bytes.as_slice().try_into().map_err(|_| "Invalid key length")?;
+    pub fn import_key(hex: &str) -> Result<SigningKey, CryptoError> {
+        let bytes = hex::decode(hex)
+            .map_err(CryptoError::Hex)?;
+        let array: [u8; 32] = bytes.as_slice().try_into()
+            .map_err(|_| CryptoError::InvalidKeyLength)?;
         Ok(SigningKey::from_bytes(&array))
     }
 }

@@ -1,27 +1,74 @@
+//! # Sentinel Crypto
+//!
+//! A modular, secure cryptographic library for the Sentinel document database.
+//! This crate provides hashing and digital signature operations with a focus
+//! on maintainability, security, and performance.
+//!
+//! ## Design Principles
+//!
+//! - **Modular Architecture**: Traits are separated from implementations, allowing easy algorithm
+//!   switching and testing.
+//! - **Security First**: All sensitive data is automatically zeroized. Sealed traits prevent
+//!   external insecure implementations.
+//! - **Unified Error Handling**: Single `CryptoError` enum for consistent error handling across all
+//!   operations.
+//! - **RustCrypto Only**: Uses only audited rustcrypto crates (blake3, ed25519-dalek) for
+//!   cryptographic primitives.
+//! - **Parallel Performance**: BLAKE3 supports parallel computation for large inputs.
+//!
+//! ## Security Features
+//!
+//! - **Memory Protection**: `SigningKey` and other sensitive types automatically zeroize memory
+//!   when dropped.
+//! - **Sealed Traits**: Prevents external implementations that might bypass security.
+//! - **Type Safety**: Associated types ensure compile-time correctness.
+//! - **Error Abstraction**: Errors don't leak sensitive information.
+//!
+//! ## Performance
+//!
+//! - BLAKE3: High-performance hash function with parallel support.
+//! - Ed25519: Fast elliptic curve signatures with 128-bit security.
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use sentinel_crypto::{hash_data, sign_hash, verify_signature, SigningKey};
+//!
+//! let data = serde_json::json!({"key": "value"});
+//! let hash = hash_data(&data).unwrap();
+//!
+//! let key = SigningKey::from_bytes(&rand::random::<[u8; 32]>());
+//! let signature = sign_hash(&hash, &key).unwrap();
+//!
+//! let public_key = key.verifying_key();
+//! assert!(verify_signature(&hash, &signature, &public_key).unwrap());
+//! ```
+
+pub mod error;
 pub mod hash;
+pub mod hash_trait;
 pub mod sign;
+pub mod sign_trait;
 
 // Re-export crypto types for convenience
 pub use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
-pub use hash::HashFunction;
+pub use error::CryptoError;
+pub use hash_trait::HashFunction;
 // Convenience functions using default implementations
 use serde_json::Value;
-pub use sign::{Ed25519Signer, SignatureAlgorithm, SigningKeyManager};
+pub use sign::{Ed25519Signer, SigningKeyManager};
+pub use sign_trait::SignatureAlgorithm;
 
 /// Computes the Blake3 hash of the given JSON data.
-pub fn hash_data(data: &Value) -> String { crate::hash::Blake3Hasher::hash_data(data) }
+pub fn hash_data(data: &Value) -> Result<String, CryptoError> { crate::hash::Blake3Hasher::hash_data(data) }
 
 /// Signs the given hash using Ed25519.
-pub fn sign_hash(hash: &str, private_key: &SigningKey) -> Result<String, Box<dyn std::error::Error>> {
+pub fn sign_hash(hash: &str, private_key: &SigningKey) -> Result<String, CryptoError> {
     Ed25519Signer::sign_hash(hash, private_key)
 }
 
 /// Verifies the signature of the given hash using Ed25519.
-pub fn verify_signature(
-    hash: &str,
-    signature: &str,
-    public_key: &VerifyingKey,
-) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn verify_signature(hash: &str, signature: &str, public_key: &VerifyingKey) -> Result<bool, CryptoError> {
     Ed25519Signer::verify_signature(hash, signature, public_key)
 }
 
@@ -34,9 +81,9 @@ mod tests {
     #[test]
     fn test_hash_data() {
         let data = serde_json::json!({"key": "value", "number": 42});
-        let hash = hash_data(&data);
+        let hash = hash_data(&data).unwrap();
         assert_eq!(hash.len(), 64);
-        let hash2 = hash_data(&data);
+        let hash2 = hash_data(&data).unwrap();
         assert_eq!(hash, hash2);
     }
 
