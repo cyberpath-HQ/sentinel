@@ -4,29 +4,41 @@ use crate::error::CryptoError;
 
 // Algorithm configuration enums
 /// Hash algorithm options for global configuration
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum HashAlgorithmChoice {
+    /// Blake3 is chosen for its speed and security
+    #[default]
     Blake3,
 }
 
 /// Signature algorithm options for global configuration
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum SignatureAlgorithmChoice {
+    /// Ed25519 is chosen for its security and performance
+    #[default]
     Ed25519,
 }
 
 /// Encryption algorithm options for global configuration
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum EncryptionAlgorithmChoice {
+    /// XChaCha20Poly1305 is chosen for its security and nonce misuse resistance, strongest option
+    #[default]
     XChaCha20Poly1305,
+    /// Aes256GcmSiv provides strong security with nonce misuse resistance
     Aes256GcmSiv,
+    /// Ascon128 is a lightweight authenticated encryption algorithm with good security properties,
+    /// suggested for constrained environments
     Ascon128,
 }
 
 /// Key derivation algorithm options for global configuration
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum KeyDerivationAlgorithmChoice {
+    /// Argon2id is chosen for its strong security properties against various attacks
+    #[default]
     Argon2id,
+    /// PBKDF2 is a widely supported key derivation function suitable for constrained environments
     Pbkdf2,
 }
 
