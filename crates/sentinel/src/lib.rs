@@ -9,5 +9,7 @@ pub use document::Document;
 pub use error::{Result, SentinelError};
 pub use store::Store;
 
+pub use sentinel_crypto::crypto_config::*;
+
 /// The current version of the Sentinel metadata format.
 pub const META_SENTINEL_VERSION: u32 = 1;
