@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use ed25519_dalek::SigningKey;
+use sentinel_crypto::SigningKey;
 use sentinel_crypto::{hash_data, sign_hash};
 use serde_json::Value;
 
@@ -79,7 +79,7 @@ impl Document {
 
 #[cfg(test)]
 mod tests {
-    use ed25519_dalek::SigningKey;
+    use sentinel_crypto::SigningKey;
     use rand::{rngs::OsRng, RngCore};
 
     use super::*;
