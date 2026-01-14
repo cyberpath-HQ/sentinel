@@ -56,7 +56,13 @@ pub mod sign_trait;
 
 // Re-export crypto types for convenience
 pub use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
-pub use encrypt::Aes256GcmEncryptor;
+pub use encrypt::{
+    Aes256GcmEncryptor,
+    Aes256GcmSivEncryptor,
+    Ascon128Encryptor,
+    EncryptionKeyManager,
+    XChaCha20Poly1305Encryptor,
+};
 pub use encrypt_trait::EncryptionAlgorithm;
 pub use error::CryptoError;
 pub use hash_trait::HashFunction;
