@@ -1,2 +1,4 @@
 /target
 IMPLEMENTATION_PLAN_*.md
+flamegraph.svg
+perf*.data*

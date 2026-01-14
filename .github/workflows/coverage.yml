@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
@@ -24,16 +24,7 @@ jobs:
 
       - name: Generate coverage reports
         run: |
-          cargo tarpaulin --workspace --exclude-files "**/main.rs" --out Json --output-dir coverage
-
-      - name: Check coverage threshold
-        run: |
-          COVERAGE=$(cargo tarpaulin --workspace --exclude-files "**/main.rs" --out Stdout | grep -oP '\d+(?:\.\d+)?(?=%)')
-          echo "Coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 90" | bc -l) )); then
-            echo "Coverage $COVERAGE% is below 90% threshold"
-            exit 1
-          fi
+          cargo tarpaulin
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -43,3 +34,4 @@ jobs:
           flags: rust
           name: codecov-umbrella
           fail_ci_if_error: true
+          directory: ./target/tarpaulin

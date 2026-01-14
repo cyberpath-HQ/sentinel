@@ -1,12 +1,14 @@
-pub fn add(left: u64, right: u64) -> u64 { left + right }
+pub mod collection;
+pub mod document;
+pub mod error;
+pub mod store;
+pub mod validation;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub use collection::Collection;
+pub use document::Document;
+pub use error::{Result, SentinelError};
+pub use sentinel_crypto::crypto_config::*;
+pub use store::Store;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+/// The current version of the Sentinel metadata format.
+pub const META_SENTINEL_VERSION: u32 = 1;

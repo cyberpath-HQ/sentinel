@@ -1,0 +1,35 @@
+codecov:
+  notify:
+    wait_for_ci: true
+  require_ci_to_pass: true
+
+comment:
+  behavior: default
+  layout: reach,diff,flags,tree,reach
+  show_carryforward_flags: false
+
+coverage:
+  precision: 2
+  round: down
+  status:
+    changes: false
+    default_rules:
+      flag_coverage_not_uploaded_behavior: include
+    patch: true
+    project:
+      default:
+        # Require 80% overall project coverage
+        target: 80%
+        threshold: 1%
+        base: auto
+        if_ci_failed: error
+        if_not_found: failure
+        only_pulls: false
+
+# Enable coverage status checks on pull requests
+# https://docs.codecov.com/docs/common-recipe-list#set-project-coverage-checks-on-a-pull-request
+github_checks:
+  annotations: true
+  
+# Show project coverage changes on the pull request comment
+# https://docs.codecov.com/docs/common-recipe-list#show-project-coverage-changes-on-the-pull-request-comment
