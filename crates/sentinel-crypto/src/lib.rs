@@ -1,16 +1,15 @@
 pub mod hash;
-pub mod key;
 pub mod sign;
 
-use ed25519_dalek::SigningKey;
-pub use hash::{Blake3Hasher, HashFunction};
-pub use key::KeyManager;
+// Re-export crypto types for convenience
+pub use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
+pub use hash::HashFunction;
 // Convenience functions using default implementations
 use serde_json::Value;
-pub use sign::{Ed25519Signer, SignatureAlgorithm};
+pub use sign::{Ed25519Signer, SignatureAlgorithm, SigningKeyManager};
 
 /// Computes the Blake3 hash of the given JSON data.
-pub fn hash_data(data: &Value) -> String { Blake3Hasher::hash_data(data) }
+pub fn hash_data(data: &Value) -> String { crate::hash::Blake3Hasher::hash_data(data) }
 
 /// Signs the given hash using Ed25519.
 pub fn sign_hash(hash: &str, private_key: &SigningKey) -> Result<String, Box<dyn std::error::Error>> {
@@ -21,7 +20,7 @@ pub fn sign_hash(hash: &str, private_key: &SigningKey) -> Result<String, Box<dyn
 pub fn verify_signature(
     hash: &str,
     signature: &str,
-    public_key: &ed25519_dalek::VerifyingKey,
+    public_key: &VerifyingKey,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     Ed25519Signer::verify_signature(hash, signature, public_key)
 }

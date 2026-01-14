@@ -34,10 +34,7 @@ impl SignatureAlgorithm for Ed25519Signer {
         public_key: &VerifyingKey,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         let sig_bytes = hex::decode(signature)?;
-        let sig_array: [u8; 64] = sig_bytes
-            .as_slice()
-            .try_into()
-            .map_err(|_| "Invalid signature length")?;
+        let sig_array: [u8; 64] = sig_bytes.as_slice().try_into().map_err(|_| "Invalid signature length")?;
         let sig = Signature::from_bytes(&sig_array);
         Ok(public_key.verify(hash.as_bytes(), &sig).is_ok())
     }
@@ -45,9 +42,8 @@ impl SignatureAlgorithm for Ed25519Signer {
 
 #[cfg(test)]
 mod tests {
-    use rand::random;
-
     use super::*;
+    use rand::random;
 
     #[test]
     fn test_ed25519_sign_verify() {

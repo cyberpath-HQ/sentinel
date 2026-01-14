@@ -1,9 +1,9 @@
 use ed25519_dalek::SigningKey;
 
-/// Key management utilities
-pub struct KeyManager;
+/// Signing key management utilities
+pub struct SigningKeyManager;
 
-impl KeyManager {
+impl SigningKeyManager {
     /// Generate a new random signing key
     pub fn generate_key() -> SigningKey {
         let secret: [u8; 32] = rand::random();
@@ -36,22 +36,22 @@ mod tests {
 
     #[test]
     fn test_generate_key() {
-        let key = KeyManager::generate_key();
+        let key = SigningKeyManager::generate_key();
         assert_eq!(key.to_bytes().len(), 32);
     }
 
     #[test]
     fn test_export_import_key() {
-        let key = KeyManager::generate_key();
-        let hex = KeyManager::export_key(&key);
-        let imported = KeyManager::import_key(&hex).unwrap();
+        let key = SigningKeyManager::generate_key();
+        let hex = SigningKeyManager::export_key(&key);
+        let imported = SigningKeyManager::import_key(&hex).unwrap();
         assert_eq!(key.to_bytes(), imported.to_bytes());
     }
 
     #[test]
     fn test_rotate_key() {
-        let old = KeyManager::generate_key();
-        let (old_rot, new) = KeyManager::rotate_key(&old);
+        let old = SigningKeyManager::generate_key();
+        let (old_rot, new) = SigningKeyManager::rotate_key(&old);
         assert_eq!(old.to_bytes(), old_rot.to_bytes());
         assert_ne!(old.to_bytes(), new.to_bytes());
     }
