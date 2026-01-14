@@ -641,7 +641,7 @@ mod tests {
 
 #### 4.2 Digital Signatures
 
-- [ ] RSA-2048 document signing
+- [x] Ed25519 document signing
 - [ ] Signature verification
 - [ ] Tamper detection
 - [ ] Audit log signing
