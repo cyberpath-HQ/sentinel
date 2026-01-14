@@ -161,4 +161,26 @@ mod tests {
 
         assert!(store_path.exists(), "Store directory should exist");
     }
+
+    /// Test init with signing key.
+    ///
+    /// This test verifies that init can handle a provided signing key.
+    #[tokio::test]
+    async fn test_init_with_signing_key() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("store_with_key");
+
+        // Generate a signing key for testing
+        let key = sentinel_crypto::SigningKeyManager::generate_key();
+        let key_hex = sentinel_crypto::SigningKeyManager::export_key(&key);
+
+        let args = InitArgs {
+            path:        store_path.to_string_lossy().to_string(),
+            passphrase:  Some("test_passphrase".to_string()),
+            signing_key: Some(key_hex),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Init with signing key should succeed");
+    }
 }

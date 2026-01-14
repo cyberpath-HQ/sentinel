@@ -503,4 +503,14 @@ mod tests {
         let collection = store.collection(&long_name).await.unwrap();
         assert_eq!(collection.name(), long_name);
     }
+
+    #[tokio::test]
+    async fn test_store_new_with_passphrase() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
+        // Should have created signing key
+        assert!(store.signing_key.is_some());
+    }
 }

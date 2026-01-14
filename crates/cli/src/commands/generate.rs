@@ -101,4 +101,15 @@ mod tests {
             .block_on(run_key(args));
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_run_gen_key() {
+        let args = GenArgs {
+            subcommand: GenCommands::Key(KeyArgs {
+                key_type: KeyType::Signing,
+            }),
+        };
+        let result = tokio::runtime::Runtime::new().unwrap().block_on(run(args));
+        assert!(result.is_ok());
+    }
 }

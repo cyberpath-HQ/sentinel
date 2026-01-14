@@ -327,6 +327,14 @@ mod tests {
         (collection, temp_dir)
     }
 
+    /// Helper function to set up a temporary collection with signing key for testing
+    async fn setup_collection_with_signing_key() -> (Collection, tempfile::TempDir) {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new(temp_dir.path(), Some("test_passphrase")).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+        (collection, temp_dir)
+    }
+
     #[tokio::test]
     async fn test_insert_and_retrieve() {
         let (collection, _temp_dir) = setup_collection().await;
@@ -347,6 +355,19 @@ mod tests {
 
         let retrieved = collection.get("empty").await.unwrap();
         assert_eq!(*retrieved.unwrap().data(), doc);
+    }
+
+    #[tokio::test]
+    async fn test_insert_with_signing_key() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Alice", "signed": true });
+        collection.insert("signed_doc", doc.clone()).await.unwrap();
+
+        let retrieved = collection.get("signed_doc").await.unwrap().unwrap();
+        assert_eq!(*retrieved.data(), doc);
+        // Check that signature is not empty
+        assert!(!retrieved.signature().is_empty());
     }
 
     #[tokio::test]
@@ -622,6 +643,8 @@ mod tests {
         assert!(validate_document_id("file name").is_err()); // space
         assert!(validate_document_id("file@name").is_err()); // @
         assert!(validate_document_id("file!name").is_err()); // !
+        assert!(validate_document_id("file🚀name").is_err()); // emoji
+        assert!(validate_document_id("fileéname").is_err()); // accented
     }
 
     #[test]

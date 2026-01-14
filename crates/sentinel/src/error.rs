@@ -100,3 +100,20 @@ impl From<sentinel_crypto::CryptoError> for SentinelError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sentinel_error_from_crypto_error() {
+        let crypto_err = sentinel_crypto::CryptoError::Encryption;
+        let sentinel_err: SentinelError = crypto_err.into();
+        match sentinel_err {
+            SentinelError::CryptoFailed { operation } => {
+                assert!(!operation.is_empty());
+            }
+            _ => panic!("Expected CryptoFailed"),
+        }
+    }
+}

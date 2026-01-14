@@ -452,4 +452,20 @@ mod tests {
         let result = run_command(command).await;
         assert!(result.is_ok(), "run_command should succeed for Delete");
     }
+
+    /// Test run_command with Generate command.
+    ///
+    /// This test verifies that run_command correctly dispatches to generate::run.
+    #[tokio::test]
+    async fn test_run_command_generate() {
+        let args = super::generate::GenArgs {
+            subcommand: super::generate::GenCommands::Key(super::generate::KeyArgs {
+                key_type: super::generate::KeyType::Signing,
+            }),
+        };
+        let command = Commands::Generate(args);
+
+        let result = run_command(command).await;
+        assert!(result.is_ok(), "run_command should succeed for Generate");
+    }
 }
