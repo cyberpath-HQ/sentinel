@@ -44,6 +44,7 @@
 //! assert!(verify_signature(&hash, &signature, &public_key).unwrap());
 //! ```
 
+mod crypto_config;
 pub mod encrypt;
 pub mod encrypt_trait;
 pub mod error;
@@ -53,9 +54,9 @@ pub mod key_derivation;
 pub mod key_derivation_trait;
 pub mod sign;
 pub mod sign_trait;
-mod crypto_config;
 
 // Re-export crypto types for convenience
+pub use crypto_config::*;
 pub use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 pub use encrypt::{Aes256GcmSivEncryptor, Ascon128Encryptor, EncryptionKeyManager, XChaCha20Poly1305Encryptor};
 pub use encrypt_trait::EncryptionAlgorithm;
@@ -67,7 +68,6 @@ pub use key_derivation_trait::KeyDerivationFunction;
 use serde_json::Value;
 pub use sign::{Ed25519Signer, SigningKeyManager};
 pub use sign_trait::SignatureAlgorithm;
-pub use crypto_config::*;
 
 /// Computes the hash of the given JSON data using the globally configured algorithm.
 pub fn hash_data(data: &Value) -> Result<String, CryptoError> {
@@ -134,9 +134,18 @@ mod tests {
         // Test default configuration
         let config = get_global_crypto_config();
         assert!(matches!(config.hash_algorithm, HashAlgorithmChoice::Blake3));
-        assert!(matches!(config.signature_algorithm, SignatureAlgorithmChoice::Ed25519));
-        assert!(matches!(config.encryption_algorithm, EncryptionAlgorithmChoice::XChaCha20Poly1305));
-        assert!(matches!(config.key_derivation_algorithm, KeyDerivationAlgorithmChoice::Argon2id));
+        assert!(matches!(
+            config.signature_algorithm,
+            SignatureAlgorithmChoice::Ed25519
+        ));
+        assert!(matches!(
+            config.encryption_algorithm,
+            EncryptionAlgorithmChoice::XChaCha20Poly1305
+        ));
+        assert!(matches!(
+            config.key_derivation_algorithm,
+            KeyDerivationAlgorithmChoice::Argon2id
+        ));
 
         // Test that default functions work with the default configuration
         let data = serde_json::json!({"test": "data"});

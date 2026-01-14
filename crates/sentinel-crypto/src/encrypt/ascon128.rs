@@ -1,5 +1,9 @@
-use ascon_aead::{Ascon128, Key, Nonce};
-use ascon_aead::aead::{Aead, KeyInit};
+use ascon_aead::{
+    aead::{Aead, KeyInit},
+    Ascon128,
+    Key,
+    Nonce,
+};
 use rand::RngCore;
 
 use crate::{encrypt_trait::EncryptionAlgorithm, error::CryptoError};
@@ -16,13 +20,15 @@ pub struct Ascon128Encryptor;
 impl EncryptionAlgorithm for Ascon128Encryptor {
     fn encrypt_data(data: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
         // Ascon128 uses 16-byte keys, so we take the first 16 bytes of the 32-byte key
-        let key_16: &[u8; 16] = key[..16].try_into().unwrap();
+        let key_16: &[u8; 16] = key[.. 16].try_into().unwrap();
         let cipher = Ascon128::new(Key::<Ascon128>::from_slice(key_16));
         let mut nonce_bytes = [0u8; 16]; // Ascon uses 128-bit nonce
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::<Ascon128>::from_slice(&nonce_bytes);
 
-        let ciphertext = cipher.encrypt(nonce, data).map_err(|_| CryptoError::Encryption)?;
+        let ciphertext = cipher
+            .encrypt(nonce, data)
+            .map_err(|_| CryptoError::Encryption)?;
         let mut result = nonce_bytes.to_vec();
         result.extend_from_slice(&ciphertext);
         Ok(hex::encode(result))
@@ -35,10 +41,12 @@ impl EncryptionAlgorithm for Ascon128Encryptor {
         }
         let (nonce_bytes, ciphertext) = data.split_at(16);
         // Ascon128 uses 16-byte keys, so we take the first 16 bytes of the 32-byte key
-        let key_16: &[u8; 16] = key[..16].try_into().unwrap();
+        let key_16: &[u8; 16] = key[.. 16].try_into().unwrap();
         let cipher = Ascon128::new(Key::<Ascon128>::from_slice(key_16));
         let nonce = Nonce::<Ascon128>::from_slice(nonce_bytes);
-        cipher.decrypt(nonce, ciphertext).map_err(|_| CryptoError::Decryption)
+        cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|_| CryptoError::Decryption)
     }
 }
 

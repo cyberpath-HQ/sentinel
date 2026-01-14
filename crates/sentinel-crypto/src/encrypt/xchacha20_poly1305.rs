@@ -1,12 +1,17 @@
-use chacha20poly1305::{XChaCha20Poly1305, Key, XNonce};
-use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{
+    aead::{Aead, KeyInit},
+    Key,
+    XChaCha20Poly1305,
+    XNonce,
+};
 use rand::RngCore;
 
 use crate::{encrypt_trait::EncryptionAlgorithm, error::CryptoError};
 
 /// XChaCha20Poly1305 encryption implementation.
 /// Uses the extended ChaCha20 nonce (XChaCha20) with Poly1305 for authenticated encryption.
-/// Provides excellent performance and security, especially on systems without AES hardware acceleration.
+/// Provides excellent performance and security, especially on systems without AES hardware
+/// acceleration.
 ///
 /// Design choice: XChaCha20Poly1305 is preferred over standard ChaCha20Poly1305 for its
 /// larger nonce size (192 bits vs 96 bits), providing better nonce collision resistance.
@@ -20,7 +25,9 @@ impl EncryptionAlgorithm for XChaCha20Poly1305Encryptor {
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
         let nonce = XNonce::from_slice(&nonce_bytes);
 
-        let ciphertext = cipher.encrypt(nonce, data).map_err(|_| CryptoError::Encryption)?;
+        let ciphertext = cipher
+            .encrypt(nonce, data)
+            .map_err(|_| CryptoError::Encryption)?;
         let mut result = nonce_bytes.to_vec();
         result.extend_from_slice(&ciphertext);
         Ok(hex::encode(result))
@@ -34,7 +41,9 @@ impl EncryptionAlgorithm for XChaCha20Poly1305Encryptor {
         let (nonce_bytes, ciphertext) = data.split_at(24);
         let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
         let nonce = XNonce::from_slice(nonce_bytes);
-        cipher.decrypt(nonce, ciphertext).map_err(|_| CryptoError::Decryption)
+        cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|_| CryptoError::Decryption)
     }
 }
 

@@ -1,5 +1,7 @@
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use tokio::fs as tokio_fs;
 
@@ -31,7 +33,8 @@ use crate::{
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create a new store at the specified path
-/// let store = Store::new("/var/lib/sentinel/db", Some("my_passphrase")).await?;
+/// let store =
+///     Store::new("/var/lib/sentinel/db", Some("my_passphrase")).await?;
 ///
 /// // Access a collection
 /// let users = store.collection("users").await?;
@@ -46,7 +49,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Store {
     /// The root path of the store.
-    root_path: PathBuf,
+    root_path:              PathBuf,
     /// The signing key for the store.
     pub(crate) signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
 }
@@ -113,11 +116,14 @@ impl Store {
                 let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
                 let signing_key = sentinel_crypto::SigningKey::from_bytes(&key_bytes.try_into().unwrap());
                 store.signing_key = Some(Arc::new(signing_key));
-            } else {
+            }
+            else {
                 let signing_key = sentinel_crypto::SigningKeyManager::generate_key();
                 let key_bytes = signing_key.to_bytes();
                 let encrypted = sentinel_crypto::encrypt_data(&key_bytes, &encryption_key)?;
-                keys_collection.insert("signing_key", serde_json::json!({"encrypted": encrypted})).await?;
+                keys_collection
+                    .insert("signing_key", serde_json::json!({"encrypted": encrypted}))
+                    .await?;
                 store.signing_key = Some(Arc::new(signing_key));
             }
         }
@@ -193,9 +199,7 @@ impl Store {
         })
     }
 
-    pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) {
-        self.signing_key = Some(Arc::new(key));
-    }
+    pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) { self.signing_key = Some(Arc::new(key)); }
 }
 
 /// Validates that a collection name is filesystem-safe across all platforms.

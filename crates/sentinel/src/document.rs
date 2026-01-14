@@ -30,11 +30,7 @@ pub struct Document {
 impl Document {
     /// Creates a new document with the given id, version, and data.
     /// Computes the hash and signature using the provided private key.
-    pub fn new(
-        id: String,
-        data: Value,
-        private_key: &SigningKey,
-    ) -> Result<Self> {
+    pub fn new(id: String, data: Value, private_key: &SigningKey) -> Result<Self> {
         let now = Utc::now();
         let hash = hash_data(&data)?;
         let signature = sign_hash(&hash, private_key)?;
@@ -51,10 +47,7 @@ impl Document {
 
     /// Creates a new document with the given id and data.
     /// Computes the hash but not the signature.
-    pub fn new_without_signature(
-        id: String,
-        data: Value,
-    ) -> Result<Self> {
+    pub fn new_without_signature(id: String, data: Value) -> Result<Self> {
         let now = Utc::now();
         let hash = hash_data(&data)?;
         Ok(Self {
@@ -114,12 +107,7 @@ mod tests {
         rng.fill_bytes(&mut key_bytes);
         let private_key = SigningKey::from_bytes(&key_bytes);
         let data = serde_json::json!({"name": "Test", "value": 42});
-        let doc = Document::new(
-            "test-id".to_string(),
-            data.clone(),
-            &private_key,
-        )
-        .unwrap();
+        let doc = Document::new("test-id".to_string(), data.clone(), &private_key).unwrap();
 
         assert_eq!(doc.id(), "test-id");
         assert_eq!(doc.version(), crate::META_SENTINEL_VERSION);

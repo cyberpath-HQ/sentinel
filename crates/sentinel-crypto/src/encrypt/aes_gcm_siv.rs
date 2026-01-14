@@ -1,5 +1,9 @@
-use aes_gcm_siv::{Aes256GcmSiv, Key, Nonce};
-use aes_gcm_siv::aead::{Aead, KeyInit};
+use aes_gcm_siv::{
+    aead::{Aead, KeyInit},
+    Aes256GcmSiv,
+    Key,
+    Nonce,
+};
 use rand::RngCore;
 
 use crate::{encrypt_trait::EncryptionAlgorithm, error::CryptoError};
@@ -20,7 +24,9 @@ impl EncryptionAlgorithm for Aes256GcmSivEncryptor {
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        let ciphertext = cipher.encrypt(nonce, data).map_err(|_| CryptoError::Encryption)?;
+        let ciphertext = cipher
+            .encrypt(nonce, data)
+            .map_err(|_| CryptoError::Encryption)?;
         let mut result = nonce_bytes.to_vec();
         result.extend_from_slice(&ciphertext);
         Ok(hex::encode(result))
@@ -34,7 +40,9 @@ impl EncryptionAlgorithm for Aes256GcmSivEncryptor {
         let (nonce_bytes, ciphertext) = data.split_at(12);
         let cipher = Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(key));
         let nonce = Nonce::from_slice(nonce_bytes);
-        cipher.decrypt(nonce, ciphertext).map_err(|_| CryptoError::Decryption)
+        cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|_| CryptoError::Decryption)
     }
 }
 

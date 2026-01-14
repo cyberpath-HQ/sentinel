@@ -5,9 +5,7 @@ pub struct EncryptionKeyManager;
 
 impl EncryptionKeyManager {
     /// Generate a new random 256-bit encryption key
-    pub fn generate_key() -> [u8; 32] {
-        rand::random()
-    }
+    pub fn generate_key() -> [u8; 32] { rand::random() }
 
     /// Rotate key: generate new key and return both old and new
     /// For rotation, you might want to re-encrypt data with the new key
@@ -17,9 +15,7 @@ impl EncryptionKeyManager {
     }
 
     /// Export key as hex
-    pub fn export_key(key: &[u8; 32]) -> String {
-        hex::encode(key)
-    }
+    pub fn export_key(key: &[u8; 32]) -> String { hex::encode(key) }
 
     /// Import key from hex
     pub fn import_key(hex: &str) -> Result<[u8; 32], CryptoError> {
@@ -32,9 +28,7 @@ impl EncryptionKeyManager {
     }
 
     /// Generate a key from a passphrase using the default KDF
-    pub fn derive_key_from_passphrase(passphrase: &str) -> [u8; 32] {
-        crate::derive_key_from_passphrase(passphrase)
-    }
+    pub fn derive_key_from_passphrase(passphrase: &str) -> [u8; 32] { crate::derive_key_from_passphrase(passphrase) }
 }
 
 #[cfg(test)]
