@@ -1,4 +1,4 @@
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{fmt, layer::SubscriberExt as _, util::SubscriberInitExt as _, EnvFilter};
 
 /// Initialize tracing with the specified verbosity level and output format.
 ///
