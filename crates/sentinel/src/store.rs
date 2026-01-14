@@ -110,7 +110,7 @@ impl Store {
         };
         if let Some(passphrase) = passphrase {
             let encryption_key = sentinel_crypto::derive_key_from_passphrase(passphrase);
-            let keys_collection = store.collection("_keys").await?;
+            let keys_collection = store.collection(".keys").await?;
             if let Some(doc) = keys_collection.get("signing_key").await? {
                 let encrypted = doc.data()["encrypted"].as_str().unwrap();
                 let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
@@ -250,7 +250,7 @@ fn validate_collection_name(name: &str) -> Result<()> {
     }
 
     // Check if name starts with a dot (hidden directory)
-    if name.starts_with('.') {
+    if name.starts_with('.') && name != ".keys" {
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
