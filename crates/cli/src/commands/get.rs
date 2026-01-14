@@ -51,7 +51,7 @@ pub async fn run(args: GetArgs) -> sentinel::Result<()> {
     match coll.get(&id).await {
         Ok(Some(doc)) => {
             info!("Document '{}' retrieved successfully", id);
-            match serde_json::to_string_pretty(&doc.data) {
+            match serde_json::to_string_pretty(doc.data()) {
                 Ok(json) => {
                     println!("{}", json);
                     Ok(())
