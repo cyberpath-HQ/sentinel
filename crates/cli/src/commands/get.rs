@@ -53,7 +53,10 @@ pub async fn run(args: GetArgs) -> sentinel::Result<()> {
             info!("Document '{}' retrieved successfully", id);
             match serde_json::to_string_pretty(doc.data()) {
                 Ok(json) => {
-                    println!("{}", json);
+                    #[allow(clippy::print_stdout, reason = "CLI output")]
+                    {
+                        println!("{}", json);
+                    }
                     Ok(())
                 },
                 Err(e) => {
