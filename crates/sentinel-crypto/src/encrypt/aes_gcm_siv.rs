@@ -1,21 +1,21 @@
-use aes_gcm::{Aes256Gcm, Key, Nonce};
-use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm_siv::{Aes256GcmSiv, Key, Nonce};
+use aes_gcm_siv::aead::{Aead, KeyInit};
 use rand::RngCore;
 
 use crate::{encrypt_trait::EncryptionAlgorithm, error::CryptoError};
 
-/// AES-256-GCM encryption implementation.
-/// Uses AES-256 in GCM mode for authenticated encryption, providing both
-/// confidentiality and integrity. Generates random nonces for each encryption.
+/// AES-256-GCM-SIV encryption implementation.
+/// Uses AES-256 in GCM-SIV mode for authenticated encryption with nonce misuse resistance.
+/// Provides both confidentiality and integrity with better nonce handling than standard GCM.
 ///
-/// Design choice: AES-GCM was chosen for its security, performance, and
-/// authenticated encryption properties. It's a rustcrypto crate, preferred
-/// over ring implementations for consistency.
-pub struct Aes256GcmEncryptor;
+/// Design choice: GCM-SIV provides nonce misuse resistance, making it safer than standard GCM
+/// for applications where nonce uniqueness cannot be guaranteed. It's a rustcrypto crate,
+/// preferred for consistency.
+pub struct Aes256GcmSivEncryptor;
 
-impl EncryptionAlgorithm for Aes256GcmEncryptor {
+impl EncryptionAlgorithm for Aes256GcmSivEncryptor {
     fn encrypt_data(data: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
-        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+        let cipher = Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(key));
         let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
@@ -32,13 +32,13 @@ impl EncryptionAlgorithm for Aes256GcmEncryptor {
             return Err(CryptoError::Decryption);
         }
         let (nonce_bytes, ciphertext) = data.split_at(12);
-        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+        let cipher = Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(key));
         let nonce = Nonce::from_slice(nonce_bytes);
         cipher.decrypt(nonce, ciphertext).map_err(|_| CryptoError::Decryption)
     }
 }
 
-impl crate::encrypt_trait::private::Sealed for Aes256GcmEncryptor {}
+impl crate::encrypt_trait::private::Sealed for Aes256GcmSivEncryptor {}
 
 #[cfg(test)]
 mod tests {
@@ -48,8 +48,8 @@ mod tests {
     fn test_encrypt_decrypt() {
         let key = [0u8; 32];
         let data = b"Hello, world!";
-        let encrypted = Aes256GcmEncryptor::encrypt_data(data, &key).unwrap();
-        let decrypted = Aes256GcmEncryptor::decrypt_data(&encrypted, &key).unwrap();
+        let encrypted = Aes256GcmSivEncryptor::encrypt_data(data, &key).unwrap();
+        let decrypted = Aes256GcmSivEncryptor::decrypt_data(&encrypted, &key).unwrap();
         assert_eq!(decrypted, data);
     }
 }
