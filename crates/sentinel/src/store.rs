@@ -109,20 +109,27 @@ impl Store {
             signing_key: None,
         };
         if let Some(passphrase) = passphrase {
-            let encryption_key = sentinel_crypto::derive_key_from_passphrase(passphrase);
             let keys_collection = store.collection(".keys").await?;
             if let Some(doc) = keys_collection.get("signing_key").await? {
-                let encrypted = doc.data()["encrypted"].as_str().unwrap();
+                // Load existing signing key
+                let data = doc.data();
+                let encrypted = data["encrypted"].as_str().unwrap();
+                let salt_hex = data["salt"].as_str().unwrap();
+                let salt = hex::decode(salt_hex).unwrap();
+                let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt).unwrap();
                 let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
                 let signing_key = sentinel_crypto::SigningKey::from_bytes(&key_bytes.try_into().unwrap());
                 store.signing_key = Some(Arc::new(signing_key));
             }
             else {
+                // Generate new signing key and salt
+                let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(passphrase).unwrap();
                 let signing_key = sentinel_crypto::SigningKeyManager::generate_key();
                 let key_bytes = signing_key.to_bytes();
                 let encrypted = sentinel_crypto::encrypt_data(&key_bytes, &encryption_key)?;
+                let salt_hex = hex::encode(&salt);
                 keys_collection
-                    .insert("signing_key", serde_json::json!({"encrypted": encrypted}))
+                    .insert("signing_key", serde_json::json!({"encrypted": encrypted, "salt": salt_hex}))
                     .await?;
                 store.signing_key = Some(Arc::new(signing_key));
             }
