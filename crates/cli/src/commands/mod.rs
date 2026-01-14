@@ -265,6 +265,7 @@ mod tests {
 
         let args = super::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         let command = Commands::Init(args);
 
@@ -283,12 +284,14 @@ mod tests {
         // Setup store
         let init_args = super::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         run_command(Commands::Init(init_args)).await.unwrap();
 
         let args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         let command = Commands::CreateCollection(args);
 
@@ -310,12 +313,14 @@ mod tests {
         // Setup store and collection
         let init_args = super::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         run_command(Commands::Init(init_args)).await.unwrap();
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         run_command(Commands::CreateCollection(create_args))
             .await
@@ -326,6 +331,7 @@ mod tests {
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
             data:       r#"{"name": "Alice"}"#.to_string(),
+            ..Default::default()
         };
         let command = Commands::Insert(args);
 
@@ -347,12 +353,14 @@ mod tests {
         // Setup store and collection
         let init_args = super::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         run_command(Commands::Init(init_args)).await.unwrap();
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         run_command(Commands::CreateCollection(create_args))
             .await
@@ -362,6 +370,7 @@ mod tests {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
+            ..Default::default()
         };
         let command = Commands::Get(args);
 
@@ -383,12 +392,14 @@ mod tests {
         // Setup store and collection
         let init_args = super::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         run_command(Commands::Init(init_args)).await.unwrap();
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         run_command(Commands::CreateCollection(create_args))
             .await
@@ -417,12 +428,14 @@ mod tests {
         // Setup store and collection
         let init_args = super::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         run_command(Commands::Init(init_args)).await.unwrap();
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         run_command(Commands::CreateCollection(create_args))
             .await

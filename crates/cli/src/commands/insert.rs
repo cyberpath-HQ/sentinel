@@ -3,7 +3,7 @@ use serde_json::Value;
 use tracing::{error, info};
 
 /// Arguments for the insert command.
-#[derive(Args, Clone)]
+#[derive(Args, Clone, Default)]
 pub struct InsertArgs {
     /// Store path
     #[arg(short, long)]
@@ -108,6 +108,7 @@ mod tests {
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -145,6 +146,7 @@ mod tests {
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -209,6 +211,7 @@ mod tests {
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -249,6 +252,7 @@ mod tests {
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -286,6 +290,7 @@ mod tests {
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         crate::commands::create_collection::run(create_args)
             .await

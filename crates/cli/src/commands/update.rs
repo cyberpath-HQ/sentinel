@@ -94,12 +94,14 @@ mod tests {
         // Setup: init, create collection, insert
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -110,6 +112,7 @@ mod tests {
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
             data:       r#"{"name": "Alice", "age": 30}"#.to_string(),
+            ..Default::default()
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
@@ -139,12 +142,14 @@ mod tests {
         // Setup: init, create collection, insert
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -155,6 +160,7 @@ mod tests {
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
             data:       r#"{"name": "Alice"}"#.to_string(),
+            ..Default::default()
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
@@ -181,12 +187,14 @@ mod tests {
         // Setup: init and create collection
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         crate::commands::create_collection::run(create_args)
             .await
@@ -215,6 +223,7 @@ mod tests {
         // Init store only
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -241,12 +250,14 @@ mod tests {
         // Setup: init store and create collection
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
         let create_args = crate::commands::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name:       "test_collection".to_string(),
+            ..Default::default()
         };
         crate::commands::create_collection::run(create_args)
             .await

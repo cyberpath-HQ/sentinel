@@ -2,7 +2,7 @@ use clap::Args;
 use tracing::{error, info};
 
 /// Arguments for the create-collection command.
-#[derive(Args, Clone)]
+#[derive(Args, Clone, Default)]
 pub struct CreateCollectionArgs {
     /// Store path
     #[arg(short, long)]
@@ -78,12 +78,14 @@ mod tests {
         // First init the store
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name:       "test_collection".to_string(),
+            name: "test_collection".to_string(),
+            ..Default::default()
         };
 
         let result = run(args).await;
@@ -100,7 +102,8 @@ mod tests {
 
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name:       "test_collection".to_string(),
+            name: "test_collection".to_string(),
+            ..Default::default()
         };
 
         let result = run(args).await;
@@ -122,13 +125,15 @@ mod tests {
         // Init store
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
         // Test with empty name
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name:       "".to_string(),
+            name: "".to_string(),
+            ..Default::default()
         };
 
         let result = run(args).await;
@@ -151,6 +156,7 @@ mod tests {
         // Init store
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -161,7 +167,8 @@ mod tests {
 
         let args = CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
-            name:       "test_collection".to_string(),
+            name: "test_collection".to_string(),
+            ..Default::default()
         };
 
         let result = run(args).await;
