@@ -15,10 +15,10 @@ impl Default for InitArgs {
             path:                     String::new(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
+            hash_algorithm:           "blake3".to_owned(),
+            signature_algorithm:      "ed25519".to_owned(),
+            encryption_algorithm:     "xchacha20poly1305".to_owned(),
+            key_derivation_algorithm: "argon2id".to_owned(),
         }
     }
 }
@@ -155,9 +155,9 @@ pub async fn run(args: InitArgs) -> sentinel::Result<()> {
     };
 
     set_global_crypto_config(config.clone())
-        .map_err(|_| {
+        .map_err(|err| {
             sentinel::SentinelError::ConfigError {
-                message: "Crypto config already set".to_string(),
+                message: err.to_string(),
             }
         })
         .or_else(|_| {
@@ -168,7 +168,7 @@ pub async fn run(args: InitArgs) -> sentinel::Result<()> {
             }
             else {
                 Err(sentinel::SentinelError::ConfigError {
-                    message: "Crypto config already set with different values".to_string(),
+                    message: "Crypto config already set with different values".to_owned(),
                 })
             }
         })?;
