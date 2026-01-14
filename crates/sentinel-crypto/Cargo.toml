@@ -10,3 +10,10 @@ ed25519-dalek = "2.1"
 rand = "0.8"
 hex = "0.4"
 signature = "2.2"
+
+[dev-dependencies]
+criterion = { version = "0.8.1", features = ["html_reports"] }
+
+[[bench]]
+name = "crypto_benches"
+harness = false
