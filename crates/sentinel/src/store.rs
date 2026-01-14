@@ -130,9 +130,9 @@ impl Store {
                 })?;
                 let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt)?;
                 let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
-                let key_array: [u8; 32] = key_bytes.try_into().map_err(|_| {
+                let key_array: [u8; 32] = key_bytes.try_into().map_err(|kb: Vec<u8>| {
                     SentinelError::StoreCorruption {
-                        reason: "stored signing key has an invalid length".to_owned(),
+                        reason: format!("stored signing key has an invalid length ({}, expected 32)", kb.len()),
                     }
                 })?;
                 let signing_key = sentinel_crypto::SigningKey::from_bytes(&key_array);
