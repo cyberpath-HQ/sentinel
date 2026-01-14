@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
 readme.workspace = true
+description = "Command-line interface for Cyberpath Sentinel DBMS."
+license.workspace = true
+repository.workspace = true
+keywords = ["cli", "database", "document", "dbms"]
+categories = ["command-line-utilities", "database-implementations"]
 
 [dependencies]
 sentinel = { path = "../sentinel" }
