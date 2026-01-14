@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use serde_json::Value;
 use tokio::fs as tokio_fs;
@@ -30,7 +30,7 @@ use crate::{
 ///
 /// # async fn example() -> sentinel::Result<()> {
 /// // Create a store and get a collection
-/// let store = Store::new("/path/to/data").await?;
+/// let store = Store::new("/path/to/data", None).await?;
 /// let collection = store.collection("users").await?;
 ///
 /// // Insert a document
@@ -53,7 +53,9 @@ use crate::{
 )]
 pub struct Collection {
     /// The filesystem path to the collection directory.
-    pub(crate) path: PathBuf,
+    pub(crate) path:        PathBuf,
+    /// The signing key for the collection.
+    pub(crate) signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
 }
 
 impl Collection {
@@ -84,7 +86,7 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel::Result<()> {
-    /// let store = Store::new("/path/to/data").await?;
+    /// let store = Store::new("/path/to/data", None).await?;
     /// let collection = store.collection("users").await?;
     ///
     /// let user = json!({
@@ -100,7 +102,13 @@ impl Collection {
     pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
-        let json = serde_json::to_string_pretty(&data)?;
+        let doc = if let Some(key) = &self.signing_key {
+            Document::new(id.to_string(), data, key)?
+        }
+        else {
+            Document::new_without_signature(id.to_string(), data)?
+        };
+        let json = serde_json::to_string_pretty(&doc)?;
         tokio_fs::write(&file_path, json).await?;
         Ok(())
     }
@@ -128,7 +136,7 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel::Result<()> {
-    /// let store = Store::new("/path/to/data").await?;
+    /// let store = Store::new("/path/to/data", None).await?;
     /// let collection = store.collection("users").await?;
     ///
     /// // Insert a document first
@@ -150,12 +158,10 @@ impl Collection {
         let file_path = self.path.join(format!("{}.json", id));
         match tokio_fs::read_to_string(&file_path).await {
             Ok(content) => {
-                let data: Value = serde_json::from_str(&content)?;
-                Ok(Some(Document {
-                    id: id.to_owned(),
-                    data,
-                    ..Default::default()
-                }))
+                let mut doc: Document = serde_json::from_str(&content)?;
+                // Ensure the id matches the filename
+                doc.id = id.to_owned();
+                Ok(Some(doc))
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => {
@@ -188,7 +194,7 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel::Result<()> {
-    /// let store = Store::new("/path/to/data").await?;
+    /// let store = Store::new("/path/to/data", None).await?;
     /// let collection = store.collection("users").await?;
     ///
     /// // Insert initial document
@@ -231,7 +237,7 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel::Result<()> {
-    /// let store = Store::new("/path/to/data").await?;
+    /// let store = Store::new("/path/to/data", None).await?;
     /// let collection = store.collection("users").await?;
     ///
     /// // Insert a document
@@ -316,7 +322,7 @@ mod tests {
     /// Helper function to set up a temporary collection for testing
     async fn setup_collection() -> (Collection, tempfile::TempDir) {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
         let collection = store.collection("test_collection").await.unwrap();
         (collection, temp_dir)
     }

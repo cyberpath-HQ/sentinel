@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use tokio::fs as tokio_fs;
 
@@ -30,7 +31,7 @@ use crate::{
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create a new store at the specified path
-/// let store = Store::new("/var/lib/sentinel/db").await?;
+/// let store = Store::new("/var/lib/sentinel/db", Some("my_passphrase")).await?;
 ///
 /// // Access a collection
 /// let users = store.collection("users").await?;
@@ -42,9 +43,12 @@ use crate::{
 ///
 /// `Store` is safe to share across threads. Multiple collections can be accessed
 /// concurrently, with each collection managing its own locking internally.
+#[derive(Debug)]
 pub struct Store {
     /// The root path of the store.
     root_path: PathBuf,
+    /// The signing key for the store.
+    pub(crate) signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
 }
 
 impl Store {
@@ -72,16 +76,16 @@ impl Store {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// // Create a store with a string path
-    /// let store = Store::new("/var/lib/sentinel").await?;
+    /// let store = Store::new("/var/lib/sentinel", None).await?;
     ///
     /// // Create a store with a PathBuf
     /// use std::path::PathBuf;
     /// let path = PathBuf::from("/tmp/my-store");
-    /// let store = Store::new(path).await?;
+    /// let store = Store::new(path, None).await?;
     ///
     /// // Create a store in a temporary directory
     /// let temp_dir = std::env::temp_dir().join("sentinel-test");
-    /// let store = Store::new(&temp_dir).await?;
+    /// let store = Store::new(&temp_dir, None).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -91,15 +95,33 @@ impl Store {
     /// - If the directory already exists, this method succeeds without modification
     /// - Parent directories are created automatically if they don't exist
     /// - The created directory will have default permissions set by the operating system
-    pub async fn new<P>(root_path: P) -> Result<Self>
+    pub async fn new<P>(root_path: P, passphrase: Option<&str>) -> Result<Self>
     where
         P: AsRef<Path>,
     {
         let root_path = root_path.as_ref().to_path_buf();
         tokio_fs::create_dir_all(&root_path).await?;
-        Ok(Self {
+        let mut store = Self {
             root_path,
-        })
+            signing_key: None,
+        };
+        if let Some(passphrase) = passphrase {
+            let encryption_key = sentinel_crypto::derive_key_from_passphrase(passphrase);
+            let keys_collection = store.collection("_keys").await?;
+            if let Some(doc) = keys_collection.get("signing_key").await? {
+                let encrypted = doc.data()["encrypted"].as_str().unwrap();
+                let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
+                let signing_key = sentinel_crypto::SigningKey::from_bytes(&key_bytes.try_into().unwrap());
+                store.signing_key = Some(Arc::new(signing_key));
+            } else {
+                let signing_key = sentinel_crypto::SigningKeyManager::generate_key();
+                let key_bytes = signing_key.to_bytes();
+                let encrypted = sentinel_crypto::encrypt_data(&key_bytes, &encryption_key)?;
+                keys_collection.insert("signing_key", serde_json::json!({"encrypted": encrypted})).await?;
+                store.signing_key = Some(Arc::new(signing_key));
+            }
+        }
+        Ok(store)
     }
 
     /// Retrieves or creates a collection with the specified name.
@@ -129,7 +151,7 @@ impl Store {
     /// use serde_json::json;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let store = Store::new("/var/lib/sentinel").await?;
+    /// let store = Store::new("/var/lib/sentinel", None).await?;
     ///
     /// // Access a users collection
     /// let users = store.collection("users").await?;
@@ -167,7 +189,12 @@ impl Store {
         tokio_fs::create_dir_all(&path).await?;
         Ok(Collection {
             path,
+            signing_key: self.signing_key.clone(),
         })
+    }
+
+    pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) {
+        self.signing_key = Some(Arc::new(key));
     }
 }
 
@@ -194,7 +221,7 @@ impl Store {
 /// # use sentinel::{Store, SentinelError};
 /// # use std::path::Path;
 /// # async fn example() -> Result<(), SentinelError> {
-/// let store = Store::new(Path::new("/tmp/test")).await?;
+/// let store = Store::new(Path::new("/tmp/test"), None).await?;
 ///
 /// // Valid names
 /// assert!(store.collection("users").await.is_ok());
@@ -260,7 +287,7 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let store_path = temp_dir.path().join("store");
 
-        let _store = Store::new(&store_path).await.unwrap();
+        let _store = Store::new(&store_path, None).await.unwrap();
         assert!(store_path.exists());
         assert!(store_path.is_dir());
     }
@@ -271,14 +298,14 @@ mod tests {
         let store_path = temp_dir.path();
 
         // Directory already exists
-        let _store = Store::new(&store_path).await.unwrap();
+        let _store = Store::new(&store_path, None).await.unwrap();
         assert!(store_path.exists());
     }
 
     #[tokio::test]
     async fn test_store_collection_creates_subdirectory() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         let collection = store.collection("users").await.unwrap();
         assert!(collection.path.exists());
@@ -289,7 +316,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_with_valid_special_characters() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         // Test valid names with underscores, hyphens, and dots
         let collection = store.collection("user_data-123").await.unwrap();
@@ -308,7 +335,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_multiple_calls() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         let coll1 = store.collection("users").await.unwrap();
         let coll2 = store.collection("users").await.unwrap();
@@ -320,7 +347,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_empty_name() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         let result = store.collection("").await;
         assert!(result.is_err());
@@ -333,7 +360,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_path_separator() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         // Forward slash
         let result = store.collection("path/traversal").await;
@@ -355,7 +382,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_hidden_name() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         let result = store.collection(".hidden").await;
         assert!(result.is_err());
@@ -368,7 +395,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_windows_reserved_names() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         let reserved_names = vec!["CON", "PRN", "AUX", "NUL", "COM1", "LPT1"];
         for name in reserved_names {
@@ -396,7 +423,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_control_characters() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         // Test null byte
         let result = store.collection("test\0name").await;
@@ -418,7 +445,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_special_characters() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         let invalid_chars = vec!["<", ">", ":", "\"", "|", "?", "*"];
         for ch in invalid_chars {
@@ -435,7 +462,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_trailing_dot_or_space() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         // Trailing dot
         let result = store.collection("test.").await;
@@ -457,7 +484,7 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_valid_edge_cases() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path()).await.unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
 
         // Single character
         let collection = store.collection("a").await.unwrap();

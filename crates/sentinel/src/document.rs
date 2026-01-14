@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use sentinel_crypto::{hash_data, sign_hash, SigningKey};
 use serde_json::Value;
 
+use crate::Result;
+
 /// Represents a document in the database.
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 #[allow(
@@ -30,20 +32,38 @@ impl Document {
     /// Computes the hash and signature using the provided private key.
     pub fn new(
         id: String,
-        version: u32,
         data: Value,
         private_key: &SigningKey,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self> {
         let now = Utc::now();
         let hash = hash_data(&data)?;
         let signature = sign_hash(&hash, private_key)?;
         Ok(Self {
             id,
-            version,
+            version: crate::META_SENTINEL_VERSION,
             created_at: now,
             updated_at: now,
             hash,
             signature,
+            data,
+        })
+    }
+
+    /// Creates a new document with the given id and data.
+    /// Computes the hash but not the signature.
+    pub fn new_without_signature(
+        id: String,
+        data: Value,
+    ) -> Result<Self> {
+        let now = Utc::now();
+        let hash = hash_data(&data)?;
+        Ok(Self {
+            id,
+            version: crate::META_SENTINEL_VERSION,
+            created_at: now,
+            updated_at: now,
+            hash,
+            signature: String::new(),
             data,
         })
     }
@@ -71,7 +91,7 @@ impl Document {
 
     /// Sets the document data, updates the hash and signature, and refreshes the updated_at
     /// timestamp.
-    pub fn set_data(&mut self, data: Value, private_key: &SigningKey) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn set_data(&mut self, data: Value, private_key: &SigningKey) -> Result<()> {
         self.data = data;
         self.updated_at = Utc::now();
         self.hash = hash_data(&self.data)?;
@@ -96,7 +116,6 @@ mod tests {
         let data = serde_json::json!({"name": "Test", "value": 42});
         let doc = Document::new(
             "test-id".to_string(),
-            crate::META_SENTINEL_VERSION,
             data.clone(),
             &private_key,
         )
@@ -117,10 +136,10 @@ mod tests {
         rng.fill_bytes(&mut key_bytes);
         let private_key = SigningKey::from_bytes(&key_bytes);
         let data = serde_json::json!({});
-        let doc = Document::new("empty".to_string(), 1, data.clone(), &private_key).unwrap();
+        let doc = Document::new("empty".to_string(), data.clone(), &private_key).unwrap();
 
         assert_eq!(doc.id(), "empty");
-        assert_eq!(doc.version(), 1);
+        assert_eq!(doc.version(), crate::META_SENTINEL_VERSION);
         assert!(doc.data().as_object().unwrap().is_empty());
     }
 
@@ -137,7 +156,7 @@ mod tests {
             "array": [1, 2, 3],
             "object": {"nested": "value"}
         });
-        let doc = Document::new("complex".to_string(), 1, data.clone(), &private_key).unwrap();
+        let doc = Document::new("complex".to_string(), data.clone(), &private_key).unwrap();
 
         assert_eq!(doc.data()["string"], "value");
         assert_eq!(doc.data()["number"], 123);
@@ -165,7 +184,7 @@ mod tests {
 
         for id in valid_ids {
             let data = serde_json::json!({"data": "test"});
-            let doc = Document::new(id.to_owned(), 1, data.clone(), &private_key).unwrap();
+            let doc = Document::new(id.to_owned(), data.clone(), &private_key).unwrap();
 
             assert_eq!(doc.id(), id);
             assert_eq!(doc.data(), &data);
@@ -179,7 +198,7 @@ mod tests {
         rng.fill_bytes(&mut key_bytes);
         let private_key = SigningKey::from_bytes(&key_bytes);
         let initial_data = serde_json::json!({"initial": "data"});
-        let mut doc = Document::new("test".to_string(), 1, initial_data, &private_key).unwrap();
+        let mut doc = Document::new("test".to_string(), initial_data, &private_key).unwrap();
         let initial_hash = doc.hash().to_string();
         let initial_signature = doc.signature().to_string();
         let initial_updated_at = doc.updated_at();

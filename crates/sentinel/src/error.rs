@@ -92,3 +92,11 @@ pub enum SentinelError {
 
 /// Result type alias for Sentinel operations.
 pub type Result<T> = std::result::Result<T, SentinelError>;
+
+impl From<sentinel_crypto::CryptoError> for SentinelError {
+    fn from(err: sentinel_crypto::CryptoError) -> Self {
+        SentinelError::CryptoFailed {
+            operation: err.to_string(),
+        }
+    }
+}
