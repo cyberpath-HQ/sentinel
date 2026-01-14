@@ -4,9 +4,9 @@ use tracing::{error, info};
 impl Default for InitArgs {
     fn default() -> Self {
         Self {
-            path:                     String::new(),
-            passphrase:               None,
-            signing_key:              None,
+            path:        String::new(),
+            passphrase:  None,
+            signing_key: None,
         }
     }
 }
@@ -16,13 +16,13 @@ impl Default for InitArgs {
 pub struct InitArgs {
     /// Path to the store directory
     #[arg(short, long)]
-    pub path:                     String,
+    pub path:        String,
     /// Passphrase for encrypting the signing key
     #[arg(long)]
-    pub passphrase:               Option<String>,
+    pub passphrase:  Option<String>,
     /// Signing key to use (hex-encoded). If not provided, a new one is generated.
     #[arg(long)]
-    pub signing_key:              Option<String>,
+    pub signing_key: Option<String>,
 }
 
 /// Initialize a new Sentinel store at the specified path.
@@ -96,9 +96,9 @@ mod tests {
         let store_path = temp_dir.path().join("test_store");
 
         let args = InitArgs {
-            path:                     store_path.to_string_lossy().to_string(),
-            passphrase:               None,
-            signing_key:              None,
+            path:        store_path.to_string_lossy().to_string(),
+            passphrase:  None,
+            signing_key: None,
         };
 
         let result = run(args).await;
@@ -123,9 +123,9 @@ mod tests {
         std::fs::write(&file_path, "not a dir").unwrap();
 
         let args = InitArgs {
-            path:                     file_path.to_string_lossy().to_string(),
-            passphrase:               None,
-            signing_key:              None,
+            path:        file_path.to_string_lossy().to_string(),
+            passphrase:  None,
+            signing_key: None,
         };
 
         let result = run(args).await;
@@ -146,9 +146,9 @@ mod tests {
         std::fs::create_dir(&store_path).unwrap();
 
         let args = InitArgs {
-            path:                     store_path.to_string_lossy().to_string(),
-            passphrase:               None,
-            signing_key:              None,
+            path:        store_path.to_string_lossy().to_string(),
+            passphrase:  None,
+            signing_key: None,
         };
 
         let result = run(args).await;
@@ -166,9 +166,9 @@ mod tests {
         let store_path = temp_dir.path().join("nested").join("deep").join("store");
 
         let args = InitArgs {
-            path:                     store_path.to_string_lossy().to_string(),
-            passphrase:               None,
-            signing_key:              None,
+            path:        store_path.to_string_lossy().to_string(),
+            passphrase:  None,
+            signing_key: None,
         };
 
         let result = run(args).await;
@@ -190,9 +190,9 @@ mod tests {
         let key_hex = sentinel_crypto::SigningKeyManager::export_key(&key);
 
         let args = InitArgs {
-            path:                     store_path.to_string_lossy().to_string(),
-            passphrase:               Some("test_passphrase".to_string()),
-            signing_key:              Some(key_hex),
+            path:        store_path.to_string_lossy().to_string(),
+            passphrase:  Some("test_passphrase".to_string()),
+            signing_key: Some(key_hex),
         };
 
         let result = run(args).await;

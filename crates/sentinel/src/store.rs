@@ -560,7 +560,10 @@ mod tests {
             "salt": "invalid_salt",
             // missing "encrypted"
         });
-        keys_coll.insert("signing_key", corrupted_data).await.unwrap();
+        keys_coll
+            .insert("signing_key", corrupted_data)
+            .await
+            .unwrap();
 
         // Now try to create a new store with passphrase, should fail due to corruption
         let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
