@@ -138,6 +138,7 @@ dependencies = [
  "cfg-if",
  "constant_time_eq",
  "cpufeatures",
+ "rayon-core",
 ]
 
 [[package]]
@@ -938,7 +939,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "criterion",
- "ed25519-dalek",
  "rand",
  "sentinel-crypto",
  "serde",
@@ -972,6 +972,8 @@ dependencies = [
  "rand",
  "serde_json",
  "signature",
+ "thiserror",
+ "zeroize",
 ]
 
 [[package]]
