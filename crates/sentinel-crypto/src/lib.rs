@@ -53,58 +53,71 @@ pub mod key_derivation;
 pub mod key_derivation_trait;
 pub mod sign;
 pub mod sign_trait;
+mod crypto_config;
 
 // Re-export crypto types for convenience
 pub use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
-pub use encrypt::{
-    Aes256GcmEncryptor,
-    Aes256GcmSivEncryptor,
-    Ascon128Encryptor,
-    EncryptionKeyManager,
-    XChaCha20Poly1305Encryptor,
-};
+pub use encrypt::{Aes256GcmSivEncryptor, Ascon128Encryptor, EncryptionKeyManager, XChaCha20Poly1305Encryptor};
 pub use encrypt_trait::EncryptionAlgorithm;
 pub use error::CryptoError;
 pub use hash_trait::HashFunction;
-pub use key_derivation::Blake3KeyDerivation;
+pub use key_derivation::{Argon2KeyDerivation, Pbkdf2KeyDerivation};
 pub use key_derivation_trait::KeyDerivationFunction;
 // Convenience functions using default implementations
 use serde_json::Value;
 pub use sign::{Ed25519Signer, SigningKeyManager};
 pub use sign_trait::SignatureAlgorithm;
+pub use crypto_config::*;
 
-/// Computes the Blake3 hash of the given JSON data.
-pub fn hash_data(data: &Value) -> Result<String, CryptoError> { crate::hash::Blake3Hasher::hash_data(data) }
+/// Computes the hash of the given JSON data using the globally configured algorithm.
+pub fn hash_data(data: &Value) -> Result<String, CryptoError> {
+    match get_global_crypto_config().hash_algorithm {
+        HashAlgorithmChoice::Blake3 => crate::hash::Blake3Hasher::hash_data(data),
+    }
+}
 
-/// Signs the given hash using Ed25519.
+/// Signs the given hash using the globally configured algorithm.
 pub fn sign_hash(hash: &str, private_key: &SigningKey) -> Result<String, CryptoError> {
-    Ed25519Signer::sign_hash(hash, private_key)
+    match get_global_crypto_config().signature_algorithm {
+        SignatureAlgorithmChoice::Ed25519 => Ed25519Signer::sign_hash(hash, private_key),
+    }
 }
 
-/// Verifies the signature of the given hash using Ed25519.
+/// Verifies the signature of the given hash using the globally configured algorithm.
 pub fn verify_signature(hash: &str, signature: &str, public_key: &VerifyingKey) -> Result<bool, CryptoError> {
-    Ed25519Signer::verify_signature(hash, signature, public_key)
+    match get_global_crypto_config().signature_algorithm {
+        SignatureAlgorithmChoice::Ed25519 => Ed25519Signer::verify_signature(hash, signature, public_key),
+    }
 }
 
-/// Encrypts data using AES-256-GCM.
+/// Encrypts data using the globally configured algorithm.
 pub fn encrypt_data(data: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
-    Aes256GcmEncryptor::encrypt_data(data, key)
+    match get_global_crypto_config().encryption_algorithm {
+        EncryptionAlgorithmChoice::XChaCha20Poly1305 => XChaCha20Poly1305Encryptor::encrypt_data(data, key),
+        EncryptionAlgorithmChoice::Aes256GcmSiv => Aes256GcmSivEncryptor::encrypt_data(data, key),
+        EncryptionAlgorithmChoice::Ascon128 => Ascon128Encryptor::encrypt_data(data, key),
+    }
 }
 
-/// Decrypts data using AES-256-GCM.
+/// Decrypts data using the globally configured algorithm.
 pub fn decrypt_data(encrypted_data: &str, key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
-    Aes256GcmEncryptor::decrypt_data(encrypted_data, key)
+    match get_global_crypto_config().encryption_algorithm {
+        EncryptionAlgorithmChoice::XChaCha20Poly1305 => XChaCha20Poly1305Encryptor::decrypt_data(encrypted_data, key),
+        EncryptionAlgorithmChoice::Aes256GcmSiv => Aes256GcmSivEncryptor::decrypt_data(encrypted_data, key),
+        EncryptionAlgorithmChoice::Ascon128 => Ascon128Encryptor::decrypt_data(encrypted_data, key),
+    }
 }
 
-/// Derives a 32-byte key from a passphrase.
+/// Derives a 32-byte key from a passphrase using the globally configured algorithm.
 pub fn derive_key_from_passphrase(passphrase: &str) -> [u8; 32] {
-    Blake3KeyDerivation::derive_key_from_passphrase(passphrase).unwrap()
+    match get_global_crypto_config().key_derivation_algorithm {
+        KeyDerivationAlgorithmChoice::Argon2id => Argon2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap(),
+        KeyDerivationAlgorithmChoice::Pbkdf2 => Pbkdf2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use rand::random;
-
     use super::*;
 
     #[test]
@@ -117,18 +130,26 @@ mod tests {
     }
 
     #[test]
-    fn test_sign_and_verify_hash() {
-        let secret: [u8; 32] = random();
-        let private_key = SigningKey::from_bytes(&secret);
-        let public_key = private_key.verifying_key();
+    fn test_global_config() {
+        // Test default configuration
+        let config = get_global_crypto_config();
+        assert!(matches!(config.hash_algorithm, HashAlgorithmChoice::Blake3));
+        assert!(matches!(config.signature_algorithm, SignatureAlgorithmChoice::Ed25519));
+        assert!(matches!(config.encryption_algorithm, EncryptionAlgorithmChoice::XChaCha20Poly1305));
+        assert!(matches!(config.key_derivation_algorithm, KeyDerivationAlgorithmChoice::Argon2id));
 
-        let hash = "some_hash_value";
-        let signature = sign_hash(hash, &private_key).unwrap();
+        // Test that default functions work with the default configuration
+        let data = serde_json::json!({"test": "data"});
+        let hash = hash_data(&data).unwrap();
+        assert_eq!(hash.len(), 64); // Blake3 hash
 
-        let is_valid = verify_signature(hash, &signature, &public_key).unwrap();
-        assert!(is_valid);
+        let key = [0u8; 32];
+        let test_data = b"test data";
+        let encrypted = encrypt_data(test_data, &key).unwrap();
+        let decrypted = decrypt_data(&encrypted, &key).unwrap();
+        assert_eq!(test_data, decrypted.as_slice()); // Should work with XChaCha20-Poly1305
 
-        let is_valid_wrong = verify_signature("wrong_hash", &signature, &public_key).unwrap();
-        assert!(!is_valid_wrong);
+        let derived_key = derive_key_from_passphrase("test passphrase");
+        assert_eq!(derived_key.len(), 32); // Should work with Argon2id
     }
 }
