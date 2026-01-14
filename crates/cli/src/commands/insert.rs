@@ -17,6 +17,9 @@ pub struct InsertArgs {
     /// JSON data (as string)
     #[arg(short, long)]
     pub data:       String,
+    /// Passphrase for decrypting the signing key
+    #[arg(long)]
+    pub passphrase: Option<String>,
 }
 
 /// Insert a new document into a Sentinel collection.
@@ -40,6 +43,7 @@ pub struct InsertArgs {
 ///     collection: "users".to_string(),
 ///     id:         "user1".to_string(),
 ///     data:       r#"{"name": "Alice"}"#.to_string(),
+///     passphrase: None,
 /// };
 /// run(args).await?;
 /// ```
@@ -52,7 +56,7 @@ pub async fn run(args: InsertArgs) -> sentinel::Result<()> {
         "Inserting document '{}' into collection '{}' in store {}",
         id, collection, store_path
     );
-    let store = sentinel::Store::new(&store_path).await?;
+    let store = sentinel::Store::new(&store_path, args.passphrase.as_deref()).await?;
     let coll = store.collection(&collection).await?;
     let value: Value = match serde_json::from_str(&data) {
         Ok(v) => v,
@@ -96,6 +100,8 @@ mod tests {
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -112,6 +118,7 @@ mod tests {
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
             data:       r#"{"name": "Alice", "age": 30}"#.to_string(),
+            passphrase: None,
         };
 
         let result = run(args).await;
@@ -130,6 +137,8 @@ mod tests {
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -146,6 +155,7 @@ mod tests {
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
             data:       r#"{"name": "Alice", "age": }"#.to_string(), // Invalid JSON
+            passphrase: None,
         };
 
         let result = run(args).await;
@@ -163,6 +173,8 @@ mod tests {
         // Init store only
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -171,6 +183,7 @@ mod tests {
             collection: "non_existent".to_string(),
             id:         "doc1".to_string(),
             data:       r#"{"name": "Alice"}"#.to_string(),
+            passphrase: None,
         };
 
         let result = run(args).await;
@@ -188,6 +201,8 @@ mod tests {
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -204,6 +219,7 @@ mod tests {
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
             data:       "{}".to_string(),
+            passphrase: None,
         };
 
         let result = run(args).await;
@@ -225,6 +241,8 @@ mod tests {
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -241,6 +259,7 @@ mod tests {
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
             data:       r#"{"users": [{"name": "Alice"}, {"name": "Bob"}], "metadata": {"version": 1}}"#.to_string(),
+            passphrase: None,
         };
 
         let result = run(args).await;
@@ -259,6 +278,8 @@ mod tests {
         // Setup: init store and create collection
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -281,6 +302,7 @@ mod tests {
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
             data:       r#"{"name": "Alice"}"#.to_string(),
+            passphrase: None,
         };
 
         let result = run(args).await;

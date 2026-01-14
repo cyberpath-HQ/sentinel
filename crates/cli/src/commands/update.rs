@@ -51,7 +51,7 @@ pub async fn run(args: UpdateArgs) -> sentinel::Result<()> {
         "Updating document '{}' in collection '{}' in store {}",
         id, collection, store_path
     );
-    let store = sentinel::Store::new(&store_path).await?;
+    let store = sentinel::Store::new(&store_path, None).await?;
     let coll = store.collection(&collection).await?;
     let value: Value = match serde_json::from_str(&data) {
         Ok(v) => v,

@@ -45,7 +45,7 @@ pub async fn run(args: DeleteArgs) -> sentinel::Result<()> {
         "Deleting document '{}' from collection '{}' in store {}",
         id, collection, store_path
     );
-    let store = sentinel::Store::new(&store_path).await?;
+    let store = sentinel::Store::new(&store_path, None).await?;
     let coll = store.collection(&collection).await?;
     match coll.delete(&id).await {
         Ok(_) => {

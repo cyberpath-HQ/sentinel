@@ -10,6 +10,9 @@ pub struct CreateCollectionArgs {
     /// Collection name
     #[arg(short, long)]
     pub name:       String,
+    /// Passphrase for decrypting the signing key
+    #[arg(long)]
+    pub passphrase: Option<String>,
 }
 
 /// Create a new collection within an existing Sentinel store.
@@ -40,7 +43,7 @@ pub async fn run(args: CreateCollectionArgs) -> sentinel::Result<()> {
     let store_path = args.store_path;
     let name = args.name;
     info!("Creating collection '{}' in store {}", name, store_path);
-    let store = sentinel::Store::new(&store_path).await?;
+    let store = sentinel::Store::new(&store_path, args.passphrase.as_deref()).await?;
     match store.collection(&name).await {
         Ok(_) => {
             info!("Collection '{}' created successfully", name);

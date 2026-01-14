@@ -1,12 +1,20 @@
 use clap::Args;
 use tracing::{error, info};
 
+use sentinel_crypto;
+
 /// Arguments for the init command.
 #[derive(Args, Clone)]
 pub struct InitArgs {
     /// Path to the store directory
     #[arg(short, long)]
     pub path: String,
+    /// Passphrase for encrypting the signing key
+    #[arg(long)]
+    pub passphrase: Option<String>,
+    /// Signing key to use (hex-encoded). If not provided, a new one is generated.
+    #[arg(long)]
+    pub signing_key: Option<String>,
 }
 
 /// Initialize a new Sentinel store at the specified path.
@@ -33,8 +41,19 @@ pub struct InitArgs {
 pub async fn run(args: InitArgs) -> sentinel::Result<()> {
     let path = args.path;
     info!("Initializing store at {}", path);
-    match sentinel::Store::new(&path).await {
-        Ok(_) => {
+    let passphrase = args.passphrase.as_deref();
+    match sentinel::Store::new(&path, passphrase).await {
+        Ok(mut store) => {
+            if let Some(hex) = &args.signing_key {
+                let key = sentinel_crypto::SigningKeyManager::import_key(hex)?;
+                store.set_signing_key(key.clone());
+                if let Some(pass) = passphrase {
+                    let encryption_key = sentinel_crypto::derive_key_from_passphrase(pass);
+                    let encrypted = sentinel_crypto::encrypt_data(&key.to_bytes(), &encryption_key)?;
+                    let keys_collection = store.collection("_keys").await?;
+                    keys_collection.insert("signing_key", serde_json::json!({"encrypted": encrypted})).await?;
+                }
+            }
             info!("Store initialized successfully at {}", path);
             Ok(())
         },
@@ -62,6 +81,8 @@ mod tests {
 
         let args = InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
 
         let result = run(args).await;
@@ -87,6 +108,8 @@ mod tests {
 
         let args = InitArgs {
             path: file_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
 
         let result = run(args).await;
@@ -108,6 +131,8 @@ mod tests {
 
         let args = InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
 
         let result = run(args).await;
@@ -126,6 +151,8 @@ mod tests {
 
         let args = InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
 
         let result = run(args).await;

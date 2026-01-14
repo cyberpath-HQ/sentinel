@@ -13,6 +13,9 @@ pub struct GetArgs {
     /// Document ID
     #[arg(short, long)]
     pub id:         String,
+    /// Passphrase for decrypting the signing key
+    #[arg(long)]
+    pub passphrase: Option<String>,
 }
 
 /// Retrieve a document from a Sentinel collection.
@@ -35,6 +38,7 @@ pub struct GetArgs {
 ///     store_path: "/tmp/my_store".to_string(),
 ///     collection: "users".to_string(),
 ///     id:         "user1".to_string(),
+///     passphrase: None,
 /// };
 /// run(args).await?;
 /// ```
@@ -46,7 +50,7 @@ pub async fn run(args: GetArgs) -> sentinel::Result<()> {
         "Getting document '{}' from collection '{}' in store {}",
         id, collection, store_path
     );
-    let store = sentinel::Store::new(&store_path).await?;
+    let store = sentinel::Store::new(&store_path, args.passphrase.as_deref()).await?;
     let coll = store.collection(&collection).await?;
     match coll.get(&id).await {
         Ok(Some(doc)) => {
@@ -123,6 +127,7 @@ mod tests {
                 store_path: store_path.to_string_lossy().to_string(),
                 collection: "test_collection".to_string(),
                 id:         "doc1".to_string(),
+                passphrase: None,
             };
 
             // Since run prints to stdout, we need to capture it
@@ -159,6 +164,7 @@ mod tests {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
             id:         "non_existent".to_string(),
+            passphrase: None,
         };
 
         let result = run(args).await;
@@ -179,6 +185,8 @@ mod tests {
         // Init store only
         let init_args = crate::commands::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
+            signing_key: None,
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -186,6 +194,7 @@ mod tests {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "non_existent".to_string(),
             id:         "doc1".to_string(),
+            passphrase: None,
         };
 
         let result = run(args).await;
@@ -218,6 +227,7 @@ mod tests {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
             id:         "".to_string(),
+            passphrase: None,
         };
 
         let result = run(args).await;
@@ -269,6 +279,7 @@ mod tests {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
+            passphrase: None,
         };
 
         let result = run(args).await;

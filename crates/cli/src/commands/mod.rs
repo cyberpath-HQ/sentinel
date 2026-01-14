@@ -8,6 +8,8 @@ use clap::{Parser, Subcommand};
 mod create_collection;
 /// Delete command module.
 mod delete;
+/// Generate key command module.
+mod generate_key;
 /// Get command module.
 mod get;
 /// Init command module.
@@ -64,6 +66,11 @@ pub enum Commands {
     /// # Arguments
     /// * `--path` - The filesystem path where the store should be created.
     Init(init::InitArgs),
+    /// Generate a new signing key.
+    ///
+    /// This command generates a new Ed25519 signing key and outputs it as a hex string.
+    /// The key can be used for signing documents.
+    GenerateKey(generate_key::GenerateKeyArgs),
     /// Create a new collection within an existing store.
     ///
     /// Collections are logical groupings of documents within a store.
@@ -133,6 +140,7 @@ pub enum Commands {
 pub async fn run_command(command: Commands) -> sentinel::Result<()> {
     match command {
         Commands::Init(args) => init::run(args).await,
+        Commands::GenerateKey(args) => generate_key::run(args).await,
         Commands::CreateCollection(args) => create_collection::run(args).await,
         Commands::Insert(args) => insert::run(args).await,
         Commands::Get(args) => get::run(args).await,
