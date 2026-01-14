@@ -1,5 +1,4 @@
 use clap::Args;
-use sentinel_crypto;
 use tracing::{error, info};
 
 /// Arguments for the init command.

@@ -103,10 +103,10 @@ impl Collection {
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
         let doc = if let Some(key) = &self.signing_key {
-            Document::new(id.to_string(), data, key)?
+            Document::new(id.to_owned(), data, key)?
         }
         else {
-            Document::new_without_signature(id.to_string(), data)?
+            Document::new_without_signature(id.to_owned(), data)?
         };
         let json = serde_json::to_string_pretty(&doc)?;
         tokio_fs::write(&file_path, json).await?;
