@@ -42,6 +42,7 @@ pub async fn run(args: InitArgs) -> sentinel::Result<()> {
     let passphrase = args.passphrase.as_deref();
     match sentinel::Store::new(&path, passphrase).await {
         Ok(mut store) => {
+            #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
             if let Some(hex) = &args.signing_key {
                 let key = sentinel_crypto::SigningKeyManager::import_key(hex)?;
                 store.set_signing_key(key.clone());

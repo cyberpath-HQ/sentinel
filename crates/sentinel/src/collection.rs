@@ -102,6 +102,8 @@ impl Collection {
     pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
+
+        #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
         let doc = if let Some(key) = &self.signing_key {
             Document::new(id.to_owned(), data, key)?
         }

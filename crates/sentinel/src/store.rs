@@ -123,9 +123,9 @@ impl Store {
                         reason: "stored signing key document missing 'salt' field or not a string".to_owned(),
                     }
                 })?;
-                let salt = hex::decode(salt_hex).map_err(|_| {
+                let salt = hex::decode(salt_hex).map_err(|err| {
                     SentinelError::StoreCorruption {
-                        reason: "stored signing key salt is not valid hex".to_owned(),
+                        reason: format!("stored signing key salt is not valid hex ({})", err),
                     }
                 })?;
                 let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt)?;

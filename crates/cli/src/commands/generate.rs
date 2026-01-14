@@ -59,12 +59,18 @@ pub async fn run_key(args: KeyArgs) -> sentinel::Result<()> {
         KeyType::Signing => {
             let key = sentinel_crypto::SigningKeyManager::generate_key();
             let key_hex = sentinel_crypto::SigningKeyManager::export_key(&key);
-            println!("{}", key_hex);
+            #[allow(clippy::print_stdout, reason = "CLI output")]
+            {
+                println!("{}", key_hex);
+            }
         },
         KeyType::Encryption => {
             let key = sentinel_crypto::EncryptionKeyManager::generate_key();
             let key_hex = sentinel_crypto::EncryptionKeyManager::export_key(&key);
-            println!("{}", key_hex);
+            #[allow(clippy::print_stdout, reason = "CLI output")]
+            {
+                println!("{}", key_hex);
+            }
         },
     }
     Ok(())
