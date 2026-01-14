@@ -147,10 +147,10 @@ pub async fn run(args: InitArgs) -> sentinel::Result<()> {
     })?;
 
     let config = CryptoConfig {
-        hash_algorithm:           hash_alg.clone(),
-        signature_algorithm:      sig_alg.clone(),
-        encryption_algorithm:     enc_alg.clone(),
-        key_derivation_algorithm: kd_alg.clone(),
+        hash_algorithm:           hash_alg,
+        signature_algorithm:      sig_alg,
+        encryption_algorithm:     enc_alg,
+        key_derivation_algorithm: kd_alg,
     };
 
     set_global_crypto_config(config.clone())
