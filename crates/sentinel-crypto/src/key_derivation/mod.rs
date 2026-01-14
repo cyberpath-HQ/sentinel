@@ -1,3 +1,5 @@
-pub mod blake3_simple;
+pub mod argon2;
+pub mod pbkdf2;
 
-pub use blake3_simple::Blake3KeyDerivation;
+pub use argon2::Argon2KeyDerivation;
+pub use pbkdf2::Pbkdf2KeyDerivation;
