@@ -17,5 +17,5 @@ pub async fn run() -> sentinel::Result<()> {
 
     init_tracing(cli.json, cli.verbose);
 
-    run_command(cli.command).await
+    run_command(cli).await
 }

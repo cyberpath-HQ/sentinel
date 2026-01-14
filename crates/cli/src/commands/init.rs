@@ -1,12 +1,4 @@
 use clap::Args;
-use sentinel_crypto::{
-    set_global_crypto_config,
-    CryptoConfig,
-    EncryptionAlgorithmChoice,
-    HashAlgorithmChoice,
-    KeyDerivationAlgorithmChoice,
-    SignatureAlgorithmChoice,
-};
 use tracing::{error, info};
 
 impl Default for InitArgs {
@@ -15,46 +7,7 @@ impl Default for InitArgs {
             path:                     String::new(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_owned(),
-            signature_algorithm:      "ed25519".to_owned(),
-            encryption_algorithm:     "xchacha20poly1305".to_owned(),
-            key_derivation_algorithm: "argon2id".to_owned(),
         }
-    }
-}
-
-/// Parse hash algorithm string to enum
-fn parse_hash_algorithm(s: &str) -> Result<HashAlgorithmChoice, String> {
-    match s {
-        "blake3" => Ok(HashAlgorithmChoice::Blake3),
-        _ => Err(format!("Invalid hash algorithm: {}", s)),
-    }
-}
-
-/// Parse signature algorithm string to enum
-fn parse_signature_algorithm(s: &str) -> Result<SignatureAlgorithmChoice, String> {
-    match s {
-        "ed25519" => Ok(SignatureAlgorithmChoice::Ed25519),
-        _ => Err(format!("Invalid signature algorithm: {}", s)),
-    }
-}
-
-/// Parse encryption algorithm string to enum
-fn parse_encryption_algorithm(s: &str) -> Result<EncryptionAlgorithmChoice, String> {
-    match s {
-        "xchacha20poly1305" => Ok(EncryptionAlgorithmChoice::XChaCha20Poly1305),
-        "aes256gcmsiv" => Ok(EncryptionAlgorithmChoice::Aes256GcmSiv),
-        "ascon128" => Ok(EncryptionAlgorithmChoice::Ascon128),
-        _ => Err(format!("Invalid encryption algorithm: {}", s)),
-    }
-}
-
-/// Parse key derivation algorithm string to enum
-fn parse_key_derivation_algorithm(s: &str) -> Result<KeyDerivationAlgorithmChoice, String> {
-    match s {
-        "argon2id" => Ok(KeyDerivationAlgorithmChoice::Argon2id),
-        "pbkdf2" => Ok(KeyDerivationAlgorithmChoice::Pbkdf2),
-        _ => Err(format!("Invalid key derivation algorithm: {}", s)),
     }
 }
 
@@ -70,34 +23,6 @@ pub struct InitArgs {
     /// Signing key to use (hex-encoded). If not provided, a new one is generated.
     #[arg(long)]
     pub signing_key:              Option<String>,
-    /// Hash algorithm to use for cryptographic operations & data integrity.
-    ///
-    /// Options:
-    /// - blake3 (fast, secure, default)
-    #[arg(long, value_name = "ALGORITHM", default_value = "blake3", value_parser = ["blake3"], verbatim_doc_comment)]
-    pub hash_algorithm:           String,
-    /// Signature algorithm to use for cryptographic operations & authentication.
-    ///
-    /// Options:
-    /// - ed25519 (secure, performant, default)
-    #[arg(long, value_name = "ALGORITHM", default_value = "ed25519", value_parser = ["ed25519"], verbatim_doc_comment)]
-    pub signature_algorithm:      String,
-    /// Encryption algorithm to use for cryptographic operations & data protection.
-    ///
-    /// Options:
-    /// - xchacha20poly1305 (strongest security, nonce-misuse resistant, default)
-    /// - aes256gcmsiv (strong security, nonce-misuse resistant)
-    /// - ascon128 (lightweight, good security for constrained environments)
-    #[arg(long, value_name = "ALGORITHM", default_value = "xchacha20poly1305", value_parser = ["xchacha20poly1305", "aes256gcmsiv", "ascon128"], verbatim_doc_comment)]
-    pub encryption_algorithm:     String,
-    /// Key derivation algorithm to use for cryptographic operations & passphrase-based key
-    /// generation.
-    ///
-    /// Options:
-    /// - argon2id (strong security against attacks, default)
-    /// - pbkdf2 (widely supported for constrained environments)
-    #[arg(long, value_name = "ALGORITHM", default_value = "argon2id", value_parser = ["argon2id", "pbkdf2"], verbatim_doc_comment)]
-    pub key_derivation_algorithm: String,
 }
 
 /// Initialize a new Sentinel store at the specified path.
@@ -124,54 +49,6 @@ pub struct InitArgs {
 pub async fn run(args: InitArgs) -> sentinel::Result<()> {
     let path = args.path;
     info!("Initializing store at {}", path);
-
-    // Set global crypto configuration
-    let hash_alg = parse_hash_algorithm(&args.hash_algorithm).map_err(|e| {
-        sentinel::SentinelError::ConfigError {
-            message: e,
-        }
-    })?;
-    let sig_alg = parse_signature_algorithm(&args.signature_algorithm).map_err(|e| {
-        sentinel::SentinelError::ConfigError {
-            message: e,
-        }
-    })?;
-    let enc_alg = parse_encryption_algorithm(&args.encryption_algorithm).map_err(|e| {
-        sentinel::SentinelError::ConfigError {
-            message: e,
-        }
-    })?;
-    let kd_alg = parse_key_derivation_algorithm(&args.key_derivation_algorithm).map_err(|e| {
-        sentinel::SentinelError::ConfigError {
-            message: e,
-        }
-    })?;
-
-    let config = CryptoConfig {
-        hash_algorithm:           hash_alg,
-        signature_algorithm:      sig_alg,
-        encryption_algorithm:     enc_alg,
-        key_derivation_algorithm: kd_alg,
-    };
-
-    set_global_crypto_config(config.clone())
-        .map_err(|err| {
-            sentinel::SentinelError::ConfigError {
-                message: err.to_string(),
-            }
-        })
-        .or_else(|_| {
-            // If already set, check if it's the same config
-            let current = sentinel_crypto::get_global_crypto_config();
-            if *current == config {
-                Ok(())
-            }
-            else {
-                Err(sentinel::SentinelError::ConfigError {
-                    message: "Crypto config already set with different values".to_owned(),
-                })
-            }
-        })?;
 
     let passphrase = args.passphrase.as_deref();
     match sentinel::Store::new(&path, passphrase).await {
@@ -222,10 +99,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
 
         let result = run(args).await;
@@ -253,10 +126,6 @@ mod tests {
             path:                     file_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
 
         let result = run(args).await;
@@ -280,10 +149,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
 
         let result = run(args).await;
@@ -304,10 +169,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
 
         let result = run(args).await;
@@ -332,10 +193,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               Some("test_passphrase".to_string()),
             signing_key:              Some(key_hex),
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
 
         let result = run(args).await;

@@ -19,38 +19,92 @@ mod insert;
 /// Update command module.
 mod update;
 
-/// The main CLI structure for the Sentinel document DBMS.
+/// Parse hash algorithm string to enum
+fn parse_hash_algorithm(s: &str) -> Result<sentinel_crypto::HashAlgorithmChoice, String> {
+    match s {
+        "blake3" => Ok(sentinel_crypto::HashAlgorithmChoice::Blake3),
+        _ => Err(format!("Invalid hash algorithm: {}", s)),
+    }
+}
+
+/// Parse signature algorithm string to enum
+fn parse_signature_algorithm(s: &str) -> Result<sentinel_crypto::SignatureAlgorithmChoice, String> {
+    match s {
+        "ed25519" => Ok(sentinel_crypto::SignatureAlgorithmChoice::Ed25519),
+        _ => Err(format!("Invalid signature algorithm: {}", s)),
+    }
+}
+
+/// Parse encryption algorithm string to enum
+fn parse_encryption_algorithm(s: &str) -> Result<sentinel_crypto::EncryptionAlgorithmChoice, String> {
+    match s {
+        "xchacha20poly1305" => Ok(sentinel_crypto::EncryptionAlgorithmChoice::XChaCha20Poly1305),
+        "aes256gcmsiv" => Ok(sentinel_crypto::EncryptionAlgorithmChoice::Aes256GcmSiv),
+        "ascon128" => Ok(sentinel_crypto::EncryptionAlgorithmChoice::Ascon128),
+        _ => Err(format!("Invalid encryption algorithm: {}", s)),
+    }
+}
+
+/// Parse key derivation algorithm string to enum
+fn parse_key_derivation_algorithm(s: &str) -> Result<sentinel_crypto::KeyDerivationAlgorithmChoice, String> {
+    match s {
+        "argon2id" => Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Argon2id),
+        "pbkdf2" => Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Pbkdf2),
+        _ => Err(format!("Invalid key derivation algorithm: {}", s)),
+    }
+}
+
+/// The CLI for the Sentinel document DBMS.
 ///
 /// This CLI provides commands to interact with Sentinel stores, collections, and documents.
 /// It supports various operations like initializing stores, managing collections, and CRUD
 /// operations on documents.
-///
-/// # Examples
-///
-/// Initialize a new store:
-/// ```bash
-/// sentinel-cli init --path /path/to/store
-/// ```
-///
-/// Insert a document:
-/// ```bash
-/// sentinel-cli insert --store-path /path/to/store --collection my_collection --id doc1 --data '{"key": "value"}'
-/// ```
 #[derive(Parser)]
-#[command(name = "sentinel-cli")]
-#[command(about = "A document DBMS CLI")]
+#[command(name = "sentinel")]
 pub struct Cli {
     #[command(subcommand)]
     /// The subcommand to execute.
     pub command: Commands,
 
     /// Output logs in JSON format
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub json: bool,
 
     /// Increase verbosity (can be used multiple times: -v for debug, -vv for trace)
-    #[arg(short, long, action = clap::ArgAction::Count)]
+    #[arg(short, long, action = clap::ArgAction::Count, global = true)]
     pub verbose: u8,
+
+    /// Hash algorithm to use for cryptographic operations & data integrity.
+    ///
+    /// Options:
+    /// - blake3 (fast, secure, default)
+    #[arg(long, value_name = "ALGORITHM", default_value = "blake3", value_parser = ["blake3"], global = true)]
+    pub hash_algorithm: String,
+
+    /// Signature algorithm to use for cryptographic operations & authentication.
+    ///
+    /// Options:
+    /// - ed25519 (secure, performant, default)
+    #[arg(long, value_name = "ALGORITHM", default_value = "ed25519", value_parser = ["ed25519"], global = true)]
+    pub signature_algorithm: String,
+
+    /// Encryption algorithm to use for cryptographic operations & data protection.
+    ///
+    /// Options:
+    /// - xchacha20poly1305 (strongest security, nonce-misuse resistant, default)
+    /// - aes256gcmsiv (strong security, nonce-misuse resistant)
+    /// - ascon128 (lightweight, good security for constrained environments)
+    #[arg(long, value_name = "ALGORITHM", default_value = "xchacha20poly1305", value_parser = ["xchacha20poly1305", "aes256gcmsiv", "ascon128"], global = true)]
+    pub encryption_algorithm: String,
+
+    /// Key derivation algorithm to use for cryptographic operations & passphrase-based key
+    /// generation.
+    ///
+    /// Options:
+    /// - argon2id (strong security against attacks, default)
+    /// - pbkdf2 (widely supported for constrained environments)
+    #[arg(long, value_name = "ALGORITHM", default_value = "argon2id", value_parser = ["argon2id", "pbkdf2"], global = true)]
+    pub key_derivation_algorithm: String,
 }
 
 /// Enumeration of all available CLI commands.
@@ -92,24 +146,72 @@ pub enum Commands {
 ///
 /// This function dispatches to the appropriate command handler based on the
 /// provided command variant, delegating the actual work to isolated modules.
+/// It also initializes the global crypto configuration based on the provided
+/// algorithm flags.
 ///
 /// # Arguments
-/// * `command` - The command to execute.
+/// * `cli` - The parsed CLI arguments.
 ///
 /// # Returns
 /// Returns `Ok(())` on success, or an `io::Error` on failure.
 ///
 /// # Examples
 /// ```rust,no_run
-/// use sentinel_cli::commands::{run_command, Commands};
+/// use sentinel_cli::commands::{run_command, Cli};
 ///
-/// let cmd = Commands::Init(init::InitArgs {
-///     path: "/tmp/store".to_string(),
-/// });
-/// run_command(cmd).await?;
+/// let cli = Cli::parse();
+/// run_command(cli).await?;
 /// ```
-pub async fn run_command(command: Commands) -> sentinel::Result<()> {
-    match command {
+pub async fn run_command(cli: Cli) -> sentinel::Result<()> {
+    // Parse algorithms
+    let hash_alg = parse_hash_algorithm(&cli.hash_algorithm).map_err(|e| {
+        sentinel::SentinelError::ConfigError {
+            message: e,
+        }
+    })?;
+    let sig_alg = parse_signature_algorithm(&cli.signature_algorithm).map_err(|e| {
+        sentinel::SentinelError::ConfigError {
+            message: e,
+        }
+    })?;
+    let enc_alg = parse_encryption_algorithm(&cli.encryption_algorithm).map_err(|e| {
+        sentinel::SentinelError::ConfigError {
+            message: e,
+        }
+    })?;
+    let kd_alg = parse_key_derivation_algorithm(&cli.key_derivation_algorithm).map_err(|e| {
+        sentinel::SentinelError::ConfigError {
+            message: e,
+        }
+    })?;
+
+    let config = sentinel_crypto::CryptoConfig {
+        hash_algorithm:           hash_alg,
+        signature_algorithm:      sig_alg,
+        encryption_algorithm:     enc_alg,
+        key_derivation_algorithm: kd_alg,
+    };
+
+    sentinel_crypto::set_global_crypto_config(config.clone())
+        .map_err(|err| {
+            sentinel::SentinelError::ConfigError {
+                message: err.to_string(),
+            }
+        })
+        .or_else(|_| {
+            // If already set, check if it's the same config
+            let current = sentinel_crypto::get_global_crypto_config();
+            if *current == config {
+                Ok(())
+            }
+            else {
+                Err(sentinel::SentinelError::ConfigError {
+                    message: "Crypto config already set with different values".to_owned(),
+                })
+            }
+        })?;
+
+    match cli.command {
         Commands::Init(args) => init::run(args).await,
         Commands::Generate(args) => generate::run(args).await,
         Commands::CreateCollection(args) => create_collection::run(args).await,
@@ -239,9 +341,17 @@ mod tests {
             path: store_path.to_string_lossy().to_string(),
             ..Default::default()
         };
-        let command = Commands::Init(args);
+        let cli = Cli {
+            command:                  Commands::Init(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
 
-        let result = run_command(command).await;
+        let result = run_command(cli).await;
         assert!(result.is_ok(), "run_command should succeed for valid Init");
     }
 
@@ -258,16 +368,33 @@ mod tests {
             path: store_path.to_string_lossy().to_string(),
             ..Default::default()
         };
-        run_command(Commands::Init(init_args)).await.unwrap();
+        let init_cli = Cli {
+            command:                  Commands::Init(init_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+        run_command(init_cli).await.unwrap();
 
         let args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name: "test_collection".to_string(),
             ..Default::default()
         };
-        let command = Commands::CreateCollection(args);
+        let cli = Cli {
+            command:                  Commands::CreateCollection(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
 
-        let result = run_command(command).await;
+        let result = run_command(cli).await;
         assert!(
             result.is_ok(),
             "run_command should succeed for valid CreateCollection"
@@ -287,16 +414,32 @@ mod tests {
             path: store_path.to_string_lossy().to_string(),
             ..Default::default()
         };
-        run_command(Commands::Init(init_args)).await.unwrap();
+        let init_cli = Cli {
+            command:                  Commands::Init(init_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+        run_command(init_cli).await.unwrap();
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name: "test_collection".to_string(),
             ..Default::default()
         };
-        run_command(Commands::CreateCollection(create_args))
-            .await
-            .unwrap();
+        let create_cli = Cli {
+            command:                  Commands::CreateCollection(create_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+        run_command(create_cli).await.unwrap();
 
         let args = super::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
@@ -305,9 +448,17 @@ mod tests {
             data: r#"{"name": "Alice"}"#.to_string(),
             ..Default::default()
         };
-        let command = Commands::Insert(args);
+        let cli = Cli {
+            command:                  Commands::Insert(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
 
-        let result = run_command(command).await;
+        let result = run_command(cli).await;
         assert!(
             result.is_ok(),
             "run_command should succeed for valid Insert"
@@ -327,16 +478,32 @@ mod tests {
             path: store_path.to_string_lossy().to_string(),
             ..Default::default()
         };
-        run_command(Commands::Init(init_args)).await.unwrap();
+        let init_cli = Cli {
+            command:                  Commands::Init(init_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+        run_command(init_cli).await.unwrap();
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name: "test_collection".to_string(),
             ..Default::default()
         };
-        run_command(Commands::CreateCollection(create_args))
-            .await
-            .unwrap();
+        let create_cli = Cli {
+            command:                  Commands::CreateCollection(create_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+        run_command(create_cli).await.unwrap();
 
         let args = super::get::GetArgs {
             store_path: store_path.to_string_lossy().to_string(),
@@ -344,9 +511,17 @@ mod tests {
             id: "doc1".to_string(),
             ..Default::default()
         };
-        let command = Commands::Get(args);
+        let cli = Cli {
+            command:                  Commands::Get(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
 
-        let result = run_command(command).await;
+        let result = run_command(cli).await;
         assert!(
             result.is_ok(),
             "run_command should succeed for Get (even if not found)"
@@ -366,16 +541,32 @@ mod tests {
             path: store_path.to_string_lossy().to_string(),
             ..Default::default()
         };
-        run_command(Commands::Init(init_args)).await.unwrap();
+        let init_cli = Cli {
+            command:                  Commands::Init(init_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+        run_command(init_cli).await.unwrap();
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name: "test_collection".to_string(),
             ..Default::default()
         };
-        run_command(Commands::CreateCollection(create_args))
-            .await
-            .unwrap();
+        let create_cli = Cli {
+            command:                  Commands::CreateCollection(create_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+        run_command(create_cli).await.unwrap();
 
         let args = super::update::UpdateArgs {
             store_path: store_path.to_string_lossy().to_string(),
@@ -383,9 +574,17 @@ mod tests {
             id:         "doc1".to_string(),
             data:       r#"{"name": "Bob"}"#.to_string(),
         };
-        let command = Commands::Update(args);
+        let cli = Cli {
+            command:                  Commands::Update(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
 
-        let result = run_command(command).await;
+        let result = run_command(cli).await;
         assert!(result.is_ok(), "run_command should succeed for Update");
     }
 
@@ -402,25 +601,49 @@ mod tests {
             path: store_path.to_string_lossy().to_string(),
             ..Default::default()
         };
-        run_command(Commands::Init(init_args)).await.unwrap();
+        let init_cli = Cli {
+            command:                  Commands::Init(init_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+        run_command(init_cli).await.unwrap();
 
         let create_args = super::create_collection::CreateCollectionArgs {
             store_path: store_path.to_string_lossy().to_string(),
             name: "test_collection".to_string(),
             ..Default::default()
         };
-        run_command(Commands::CreateCollection(create_args))
-            .await
-            .unwrap();
+        let create_cli = Cli {
+            command:                  Commands::CreateCollection(create_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+        run_command(create_cli).await.unwrap();
 
         let args = super::delete::DeleteArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
             id:         "doc1".to_string(),
         };
-        let command = Commands::Delete(args);
+        let cli = Cli {
+            command:                  Commands::Delete(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
 
-        let result = run_command(command).await;
+        let result = run_command(cli).await;
         assert!(result.is_ok(), "run_command should succeed for Delete");
     }
 
@@ -434,9 +657,17 @@ mod tests {
                 key_type: super::generate::KeyType::Signing,
             }),
         };
-        let command = Commands::Generate(args);
+        let cli = Cli {
+            command:                  Commands::Generate(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "blake3".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
 
-        let result = run_command(command).await;
+        let result = run_command(cli).await;
         assert!(result.is_ok(), "run_command should succeed for Generate");
     }
 }

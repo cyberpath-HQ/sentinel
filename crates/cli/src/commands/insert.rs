@@ -102,10 +102,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -144,10 +140,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -185,10 +177,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -217,10 +205,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -262,10 +246,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -304,10 +284,6 @@ mod tests {
             path:                     store_path.to_string_lossy().to_string(),
             passphrase:               None,
             signing_key:              None,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
         };
         crate::commands::init::run(init_args).await.unwrap();
 
