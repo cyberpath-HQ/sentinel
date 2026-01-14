@@ -1,18 +1,10 @@
 use clap::Args;
 use tracing::{error, info};
 
-impl Default for InitArgs {
-    fn default() -> Self {
-        Self {
-            path:        String::new(),
-            passphrase:  None,
-            signing_key: None,
-        }
-    }
-}
 
 /// Arguments for the init command.
 #[derive(Args, Clone)]
+#[derive(Default)]
 pub struct InitArgs {
     /// Path to the store directory
     #[arg(short, long)]
