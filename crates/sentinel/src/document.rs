@@ -48,13 +48,13 @@ impl Document {
     pub fn id(&self) -> &str { &self.id }
 
     /// Returns the document version.
-    pub fn version(&self) -> u32 { self.version }
+    pub const fn version(&self) -> u32 { self.version }
 
     /// Returns the creation timestamp.
-    pub fn created_at(&self) -> DateTime<Utc> { self.created_at }
+    pub const fn created_at(&self) -> DateTime<Utc> { self.created_at }
 
     /// Returns the last update timestamp.
-    pub fn updated_at(&self) -> DateTime<Utc> { self.updated_at }
+    pub const fn updated_at(&self) -> DateTime<Utc> { self.updated_at }
 
     /// Returns the hash of the document data.
     pub fn hash(&self) -> &str { &self.hash }
@@ -63,7 +63,7 @@ impl Document {
     pub fn signature(&self) -> &str { &self.signature }
 
     /// Returns a reference to the document data.
-    pub fn data(&self) -> &Value { &self.data }
+    pub const fn data(&self) -> &Value { &self.data }
 
     /// Sets the document data, updates the hash and signature, and refreshes the updated_at
     /// timestamp.

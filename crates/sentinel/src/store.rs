@@ -43,6 +43,7 @@ use crate::{
 /// `Store` is safe to share across threads. Multiple collections can be accessed
 /// concurrently, with each collection managing its own locking internally.
 pub struct Store {
+    /// The root path of the store.
     root_path: PathBuf,
 }
 
@@ -90,7 +91,10 @@ impl Store {
     /// - If the directory already exists, this method succeeds without modification
     /// - Parent directories are created automatically if they don't exist
     /// - The created directory will have default permissions set by the operating system
-    pub async fn new(root_path: impl AsRef<Path>) -> Result<Self> {
+    pub async fn new<P>(root_path: P) -> Result<Self>
+    where
+        P: AsRef<Path>,
+    {
         let root_path = root_path.as_ref().to_path_buf();
         tokio_fs::create_dir_all(&root_path).await?;
         Ok(Self {

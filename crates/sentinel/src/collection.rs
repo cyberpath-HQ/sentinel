@@ -145,7 +145,7 @@ impl Collection {
             Ok(content) => {
                 let data: Value = serde_json::from_str(&content)?;
                 Ok(Some(Document {
-                    id: id.to_string(),
+                    id: id.to_owned(),
                     data,
                     ..Default::default()
                 }))
