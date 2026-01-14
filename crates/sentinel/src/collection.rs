@@ -47,12 +47,19 @@ use crate::{
 /// # }
 /// ```
 #[derive(Debug)]
+#[allow(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "fields need to be pub(crate) for internal access"
+)]
 pub struct Collection {
-    pub(crate) name: String,
+    /// The filesystem path to the collection directory.
     pub(crate) path: PathBuf,
 }
 
 impl Collection {
+    /// Returns the name of the collection.
+    pub fn name(&self) -> &str { self.path.file_name().unwrap().to_str().unwrap() }
+
     /// Inserts a new document into the collection or overwrites an existing one.
     ///
     /// The document is serialized to pretty-printed JSON and written to a file named

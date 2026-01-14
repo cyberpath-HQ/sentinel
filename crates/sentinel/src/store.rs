@@ -166,7 +166,6 @@ impl Store {
         let path = self.root_path.join("data").join(name);
         tokio_fs::create_dir_all(&path).await?;
         Ok(Collection {
-            name: name.to_owned(),
             path,
         })
     }

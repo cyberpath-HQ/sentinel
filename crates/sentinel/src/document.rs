@@ -4,6 +4,10 @@ use serde_json::Value;
 
 /// Represents a document in the database.
 #[derive(serde::Serialize, serde::Deserialize, Default)]
+#[allow(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "fields need to be pub(crate) for internal access"
+)]
 pub struct Document {
     /// The unique identifier of the document.
     pub(crate) id:         String,
