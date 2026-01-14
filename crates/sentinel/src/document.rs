@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
-use sentinel_crypto::SigningKey;
-use sentinel_crypto::{hash_data, sign_hash};
+use sentinel_crypto::{hash_data, sign_hash, SigningKey};
 use serde_json::Value;
 
 /// Represents a document in the database.
@@ -32,7 +31,7 @@ impl Document {
         private_key: &SigningKey,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let now = Utc::now();
-        let hash = hash_data(&data);
+        let hash = hash_data(&data)?;
         let signature = sign_hash(&hash, private_key)?;
         Ok(Self {
             id,
@@ -71,7 +70,7 @@ impl Document {
     pub fn set_data(&mut self, data: Value, private_key: &SigningKey) -> Result<(), Box<dyn std::error::Error>> {
         self.data = data;
         self.updated_at = Utc::now();
-        self.hash = hash_data(&self.data);
+        self.hash = hash_data(&self.data)?;
         self.signature = sign_hash(&self.hash, private_key)?;
         Ok(())
     }
@@ -79,8 +78,8 @@ impl Document {
 
 #[cfg(test)]
 mod tests {
-    use sentinel_crypto::SigningKey;
     use rand::{rngs::OsRng, RngCore};
+    use sentinel_crypto::SigningKey;
 
     use super::*;
 
