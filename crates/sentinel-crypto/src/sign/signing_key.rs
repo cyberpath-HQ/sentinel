@@ -1,4 +1,5 @@
 use ed25519_dalek::SigningKey;
+use zeroize::Zeroize;
 
 use crate::error::CryptoError;
 
@@ -8,8 +9,10 @@ pub struct SigningKeyManager;
 impl SigningKeyManager {
     /// Generate a new random signing key
     pub fn generate_key() -> SigningKey {
-        let secret: [u8; 32] = rand::random();
-        SigningKey::from_bytes(&secret)
+        let mut secret: [u8; 32] = rand::random();
+        let key = SigningKey::from_bytes(&secret);
+        secret.zeroize();
+        key
     }
 
     /// Rotate key: generate new key and return both old and new
@@ -25,11 +28,13 @@ impl SigningKeyManager {
     /// Import key from hex
     pub fn import_key(hex: &str) -> Result<SigningKey, CryptoError> {
         let bytes = hex::decode(hex).map_err(CryptoError::Hex)?;
-        let array: [u8; 32] = bytes
+        let mut array: [u8; 32] = bytes
             .as_slice()
             .try_into()
             .map_err(|_| CryptoError::InvalidKeyLength)?;
-        Ok(SigningKey::from_bytes(&array))
+        let key = SigningKey::from_bytes(&array);
+        array.zeroize();
+        Ok(key)
     }
 }
 
