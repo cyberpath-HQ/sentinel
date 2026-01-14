@@ -90,7 +90,8 @@ pub struct InitArgs {
     /// - ascon128 (lightweight, good security for constrained environments)
     #[arg(long, value_name = "ALGORITHM", default_value = "xchacha20poly1305", value_parser = ["xchacha20poly1305", "aes256gcmsiv", "ascon128"], verbatim_doc_comment)]
     pub encryption_algorithm:     String,
-    /// Key derivation algorithm to use for cryptographic operations & passphrase-based key generation.
+    /// Key derivation algorithm to use for cryptographic operations & passphrase-based key
+    /// generation.
     ///
     /// Options:
     /// - argon2id (strong security against attacks, default)
