@@ -283,7 +283,7 @@ mod tests {
         let collection = store.collection("users").await.unwrap();
         assert!(collection.path.exists());
         assert!(collection.path.is_dir());
-        assert_eq!(collection.name, "users");
+        assert_eq!(collection.name(), "users");
     }
 
     #[tokio::test]
@@ -294,15 +294,15 @@ mod tests {
         // Test valid names with underscores, hyphens, and dots
         let collection = store.collection("user_data-123").await.unwrap();
         assert!(collection.path.exists());
-        assert_eq!(collection.name, "user_data-123");
+        assert_eq!(collection.name(), "user_data-123");
 
         let collection2 = store.collection("test.collection").await.unwrap();
         assert!(collection2.path.exists());
-        assert_eq!(collection2.name, "test.collection");
+        assert_eq!(collection2.name(), "test.collection");
 
         let collection3 = store.collection("data_2024-v1.0").await.unwrap();
         assert!(collection3.path.exists());
-        assert_eq!(collection3.name, "data_2024-v1.0");
+        assert_eq!(collection3.name(), "data_2024-v1.0");
     }
 
     #[tokio::test]
@@ -313,7 +313,7 @@ mod tests {
         let coll1 = store.collection("users").await.unwrap();
         let coll2 = store.collection("users").await.unwrap();
 
-        assert_eq!(coll1.name, coll2.name);
+        assert_eq!(coll1.name(), coll2.name());
         assert_eq!(coll1.path, coll2.path);
     }
 
@@ -461,15 +461,15 @@ mod tests {
 
         // Single character
         let collection = store.collection("a").await.unwrap();
-        assert_eq!(collection.name, "a");
+        assert_eq!(collection.name(), "a");
 
         // Numbers only
         let collection = store.collection("123").await.unwrap();
-        assert_eq!(collection.name, "123");
+        assert_eq!(collection.name(), "123");
 
         // Max length typical name
         let long_name = "a".repeat(255);
         let collection = store.collection(&long_name).await.unwrap();
-        assert_eq!(collection.name, long_name);
+        assert_eq!(collection.name(), long_name);
     }
 }
