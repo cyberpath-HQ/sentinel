@@ -25,9 +25,13 @@ pub enum CryptoError {
     #[error("Key management error: {0}")]
     KeyManagement(#[from] KeyError),
 
-    /// Generic I/O errors (e.g., file operations)
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
+    /// Errors related to encryption operations
+    #[error("Encryption error")]
+    Encryption,
+
+    /// Errors related to decryption operations
+    #[error("Decryption error")]
+    Decryption,
 
     /// JSON serialization/deserialization errors
     #[error("JSON error: {0}")]

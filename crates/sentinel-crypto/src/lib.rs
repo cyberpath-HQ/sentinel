@@ -44,6 +44,7 @@
 //! assert!(verify_signature(&hash, &signature, &public_key).unwrap());
 //! ```
 
+pub mod encrypt;
 pub mod error;
 pub mod hash;
 pub mod hash_trait;
@@ -70,6 +71,21 @@ pub fn sign_hash(hash: &str, private_key: &SigningKey) -> Result<String, CryptoE
 /// Verifies the signature of the given hash using Ed25519.
 pub fn verify_signature(hash: &str, signature: &str, public_key: &VerifyingKey) -> Result<bool, CryptoError> {
     Ed25519Signer::verify_signature(hash, signature, public_key)
+}
+
+/// Encrypts data using AES-256-GCM.
+pub fn encrypt_data(data: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
+    crate::encrypt::encrypt_data(data, key)
+}
+
+/// Decrypts data using AES-256-GCM.
+pub fn decrypt_data(encrypted_data: &str, key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
+    crate::encrypt::decrypt_data(encrypted_data, key)
+}
+
+/// Derives a 32-byte key from a passphrase.
+pub fn derive_key_from_passphrase(passphrase: &str) -> [u8; 32] {
+    crate::encrypt::derive_key_from_passphrase(passphrase)
 }
 
 #[cfg(test)]
