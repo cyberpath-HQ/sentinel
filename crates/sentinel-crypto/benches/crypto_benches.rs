@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use sentinel_crypto::{hash_data, sign_hash, verify_signature, KeyManager};
+use sentinel_crypto::{hash_data, sign_hash, verify_signature, SigningKeyManager};
 use serde_json::json;
 
 fn bench_hash_data(c: &mut Criterion) {
@@ -11,7 +11,7 @@ fn bench_hash_data(c: &mut Criterion) {
 }
 
 fn bench_sign_hash(c: &mut Criterion) {
-    let key = KeyManager::generate_key();
+    let key = SigningKeyManager::generate_key();
     let hash = "some_hash_value";
 
     c.bench_function("sign_hash", |b| {
@@ -20,7 +20,7 @@ fn bench_sign_hash(c: &mut Criterion) {
 }
 
 fn bench_verify_signature(c: &mut Criterion) {
-    let key = KeyManager::generate_key();
+    let key = SigningKeyManager::generate_key();
     let public_key = key.verifying_key();
     let hash = "some_hash_value";
     let signature = sign_hash(hash, &key).unwrap();
@@ -32,7 +32,7 @@ fn bench_verify_signature(c: &mut Criterion) {
 
 fn bench_generate_key(c: &mut Criterion) {
     c.bench_function("generate_key", |b| {
-        b.iter(|| KeyManager::generate_key())
+        b.iter(|| SigningKeyManager::generate_key())
     });
 }
 
