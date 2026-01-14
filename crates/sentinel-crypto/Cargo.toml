@@ -1,0 +1,12 @@
+[package]
+name = "sentinel-crypto"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde_json = "1.0.149"
+blake3 = "1.8.3"
+ed25519-dalek = "2.1"
+rand = "0.8"
+hex = "0.4"
+signature = "2.2"
