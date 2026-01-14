@@ -56,6 +56,10 @@ pub enum CryptoError {
     /// Verification failed
     #[error("Verification failed")]
     VerificationFailed,
+
+    /// Global config already set
+    #[error("Global config already set")]
+    ConfigAlreadySet,
 }
 
 /// Specific errors for hashing operations
