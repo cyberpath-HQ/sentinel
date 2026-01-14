@@ -62,9 +62,6 @@ pub enum Commands {
     ///
     /// This command creates the necessary directory structure and metadata for a new Sentinel
     /// store.
-    ///
-    /// # Arguments
-    /// * `--path` - The filesystem path where the store should be created.
     Init(init::InitArgs),
     /// Generate cryptographic keys and other artifacts.
     ///
@@ -74,46 +71,20 @@ pub enum Commands {
     /// Create a new collection within an existing store.
     ///
     /// Collections are logical groupings of documents within a store.
-    ///
-    /// # Arguments
-    /// * `--store-path` - Path to the existing store.
-    /// * `--name` - Name of the collection to create.
     CreateCollection(create_collection::CreateCollectionArgs),
     /// Insert a new document into a collection.
     ///
     /// The document data must be valid JSON.
-    ///
-    /// # Arguments
-    /// * `--store-path` - Path to the store.
-    /// * `--collection` - Name of the collection.
-    /// * `--id` - Unique identifier for the document.
-    /// * `--data` - JSON string representing the document data.
     Insert(insert::InsertArgs),
     /// Retrieve a document from a collection.
     ///
     /// If the document exists, its JSON data is printed to stdout.
-    ///
-    /// # Arguments
-    /// * `--store-path` - Path to the store.
-    /// * `--collection` - Name of the collection.
-    /// * `--id` - Document ID to retrieve.
     Get(get::GetArgs),
     /// Update an existing document in a collection.
     ///
     /// The entire document is replaced with the new data.
-    ///
-    /// # Arguments
-    /// * `--store-path` - Path to the store.
-    /// * `--collection` - Name of the collection.
-    /// * `--id` - Document ID to update.
-    /// * `--data` - New JSON data for the document.
     Update(update::UpdateArgs),
     /// Delete a document from a collection.
-    ///
-    /// # Arguments
-    /// * `--store-path` - Path to the store.
-    /// * `--collection` - Name of the collection.
-    /// * `--id` - Document ID to delete.
     Delete(delete::DeleteArgs),
 }
 
