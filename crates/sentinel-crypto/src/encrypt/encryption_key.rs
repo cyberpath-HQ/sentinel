@@ -28,7 +28,10 @@ impl EncryptionKeyManager {
     }
 
     /// Generate a key from a passphrase using the default KDF
-    pub fn derive_key_from_passphrase(passphrase: &str) -> [u8; 32] { crate::derive_key_from_passphrase(passphrase) }
+    pub fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> { crate::derive_key_from_passphrase(passphrase) }
+
+    /// Generate a key from a passphrase using the provided salt
+    pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> { crate::derive_key_from_passphrase_with_salt(passphrase, salt) }
 }
 
 #[cfg(test)]
@@ -59,15 +62,16 @@ mod tests {
 
     #[test]
     fn test_derive_key() {
-        let key = EncryptionKeyManager::derive_key_from_passphrase("test");
-        assert_eq!(key.len(), 32);
+        let (salt1, key1) = EncryptionKeyManager::derive_key_from_passphrase("test").unwrap();
+        assert_eq!(key1.len(), 32);
+        assert_eq!(salt1.len(), 32);
 
-        // Same passphrase should give same key
-        let key2 = EncryptionKeyManager::derive_key_from_passphrase("test");
-        assert_eq!(key, key2);
+        // Same passphrase with same salt should give same key
+        let key1_again = EncryptionKeyManager::derive_key_from_passphrase_with_salt("test", &salt1).unwrap();
+        assert_eq!(key1, key1_again);
 
         // Different passphrase should give different key
-        let key3 = EncryptionKeyManager::derive_key_from_passphrase("different");
-        assert_ne!(key, key3);
+        let (_salt2, key2) = EncryptionKeyManager::derive_key_from_passphrase("different").unwrap();
+        assert_ne!(key1, key2);
     }
 }

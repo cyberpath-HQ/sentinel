@@ -109,10 +109,19 @@ pub fn decrypt_data(encrypted_data: &str, key: &[u8; 32]) -> Result<Vec<u8>, Cry
 }
 
 /// Derives a 32-byte key from a passphrase using the globally configured algorithm.
-pub fn derive_key_from_passphrase(passphrase: &str) -> [u8; 32] {
+/// Returns the randomly generated salt and the derived key.
+pub fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> {
     match get_global_crypto_config().key_derivation_algorithm {
-        KeyDerivationAlgorithmChoice::Argon2id => Argon2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap(),
-        KeyDerivationAlgorithmChoice::Pbkdf2 => Pbkdf2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap(),
+        KeyDerivationAlgorithmChoice::Argon2id => Argon2KeyDerivation::derive_key_from_passphrase(passphrase),
+        KeyDerivationAlgorithmChoice::Pbkdf2 => Pbkdf2KeyDerivation::derive_key_from_passphrase(passphrase),
+    }
+}
+
+/// Derives a 32-byte key from a passphrase using the provided salt and the globally configured algorithm.
+pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
+    match get_global_crypto_config().key_derivation_algorithm {
+        KeyDerivationAlgorithmChoice::Argon2id => Argon2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, salt),
+        KeyDerivationAlgorithmChoice::Pbkdf2 => Pbkdf2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, salt),
     }
 }
 
@@ -158,7 +167,8 @@ mod tests {
         let decrypted = decrypt_data(&encrypted, &key).unwrap();
         assert_eq!(test_data, decrypted.as_slice()); // Should work with XChaCha20-Poly1305
 
-        let derived_key = derive_key_from_passphrase("test passphrase");
-        assert_eq!(derived_key.len(), 32); // Should work with Argon2id
+        let derived = derive_key_from_passphrase("test passphrase").unwrap();
+        assert_eq!(derived.1.len(), 32); // Should work with Argon2id
+        assert_eq!(derived.0.len(), 32); // Salt should be 32 bytes
     }
 }

@@ -1163,6 +1163,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "criterion",
+ "hex",
  "rand",
  "sentinel-crypto",
  "serde",
@@ -1177,6 +1178,7 @@ name = "sentinel-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "hex",
  "sentinel",
  "sentinel-crypto",
  "serde_json",
