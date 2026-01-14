@@ -1,4 +1,5 @@
 use argon2::{Argon2, Params};
+use rand::RngCore;
 
 use crate::{
     error::{CryptoError, KeyDerivationError},
@@ -16,10 +17,15 @@ use crate::{
 /// - Memory: 65536 KiB (64 MiB)
 /// - Iterations: 3
 /// - Parallelism: 1
+/// - Salt: Randomly generated 32 bytes
 pub struct Argon2KeyDerivation;
 
 impl KeyDerivationFunction for Argon2KeyDerivation {
-    fn derive_key_from_passphrase(passphrase: &str) -> Result<[u8; 32], CryptoError> {
+    fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> {
+        let mut salt = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut salt);
+        let salt_vec = salt.to_vec();
+
         let mut output_key_material = [0u8; 32];
 
         // Use recommended parameters for key derivation
@@ -29,11 +35,23 @@ impl KeyDerivationFunction for Argon2KeyDerivation {
         let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
 
         argon2
-            .hash_password_into(
-                passphrase.as_bytes(),
-                b"sentinel-salt",
-                &mut output_key_material,
-            )
+            .hash_password_into(passphrase.as_bytes(), &salt, &mut output_key_material)
+            .map_err(|_| CryptoError::KeyDerivation(KeyDerivationError::DerivationFailed))?;
+
+        Ok((salt_vec, output_key_material))
+    }
+
+    fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
+        let mut output_key_material = [0u8; 32];
+
+        // Use recommended parameters for key derivation
+        let params = Params::new(65536, 3, 1, Some(32))
+            .map_err(|_| CryptoError::KeyDerivation(KeyDerivationError::DerivationFailed))?;
+
+        let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+
+        argon2
+            .hash_password_into(passphrase.as_bytes(), salt, &mut output_key_material)
             .map_err(|_| CryptoError::KeyDerivation(KeyDerivationError::DerivationFailed))?;
 
         Ok(output_key_material)
@@ -49,15 +67,21 @@ mod tests {
     #[test]
     fn test_derive_key_from_passphrase() {
         let passphrase = "test_passphrase";
-        let key = Argon2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap();
-        assert_eq!(key.len(), 32);
+        let (salt1, key1) = Argon2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap();
+        assert_eq!(key1.len(), 32);
+        assert_eq!(salt1.len(), 32);
 
-        // Same passphrase should produce same key
-        let key2 = Argon2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap();
-        assert_eq!(key, key2);
+        // Same passphrase with different random salt should produce different keys
+        let (salt2, key2) = Argon2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap();
+        assert_ne!(salt1, salt2);
+        assert_ne!(key1, key2);
+
+        // Same passphrase with same salt should produce same key
+        let key1_again = Argon2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, &salt1).unwrap();
+        assert_eq!(key1, key1_again);
 
         // Different passphrase should produce different key
-        let key3 = Argon2KeyDerivation::derive_key_from_passphrase("different").unwrap();
-        assert_ne!(key, key3);
+        let (_salt3, key3) = Argon2KeyDerivation::derive_key_from_passphrase("different").unwrap();
+        assert_ne!(key1, key3);
     }
 }

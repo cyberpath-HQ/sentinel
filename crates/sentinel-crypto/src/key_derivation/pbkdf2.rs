@@ -1,4 +1,5 @@
 use pbkdf2::pbkdf2_hmac;
+use rand::RngCore;
 use sha2::Sha256;
 
 use crate::{error::CryptoError, key_derivation_trait::KeyDerivationFunction};
@@ -13,13 +14,30 @@ use crate::{error::CryptoError, key_derivation_trait::KeyDerivationFunction};
 ///
 /// Default parameters:
 /// - Iterations: 100,000
-/// - Salt: "sentinel-pbkdf2-salt"
+/// - Salt: Randomly generated 32 bytes
 pub struct Pbkdf2KeyDerivation;
 
 impl KeyDerivationFunction for Pbkdf2KeyDerivation {
-    fn derive_key_from_passphrase(passphrase: &str) -> Result<[u8; 32], CryptoError> {
+    fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> {
+        let mut salt = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut salt);
+        let salt_vec = salt.to_vec();
+
         let mut output_key_material = [0u8; 32];
-        let salt = b"sentinel-pbkdf2-salt";
+
+        // Use 100,000 iterations for good security in constrained environments
+        pbkdf2_hmac::<Sha256>(
+            passphrase.as_bytes(),
+            &salt,
+            100_000,
+            &mut output_key_material,
+        );
+
+        Ok((salt_vec, output_key_material))
+    }
+
+    fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
+        let mut output_key_material = [0u8; 32];
 
         // Use 100,000 iterations for good security in constrained environments
         pbkdf2_hmac::<Sha256>(
@@ -42,15 +60,21 @@ mod tests {
     #[test]
     fn test_derive_key_from_passphrase() {
         let passphrase = "test_passphrase";
-        let key = Pbkdf2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap();
-        assert_eq!(key.len(), 32);
+        let (salt1, key1) = Pbkdf2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap();
+        assert_eq!(key1.len(), 32);
+        assert_eq!(salt1.len(), 32);
 
-        // Same passphrase should produce same key
-        let key2 = Pbkdf2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap();
-        assert_eq!(key, key2);
+        // Same passphrase with different random salt should produce different keys
+        let (salt2, key2) = Pbkdf2KeyDerivation::derive_key_from_passphrase(passphrase).unwrap();
+        assert_ne!(salt1, salt2);
+        assert_ne!(key1, key2);
+
+        // Same passphrase with same salt should produce same key
+        let key1_again = Pbkdf2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, &salt1).unwrap();
+        assert_eq!(key1, key1_again);
 
         // Different passphrase should produce different key
-        let key3 = Pbkdf2KeyDerivation::derive_key_from_passphrase("different").unwrap();
-        assert_ne!(key, key3);
+        let (_salt3, key3) = Pbkdf2KeyDerivation::derive_key_from_passphrase("different").unwrap();
+        assert_ne!(key1, key3);
     }
 }
