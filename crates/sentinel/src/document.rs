@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::Result;
 
 /// Represents a document in the database.
-#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 #[allow(
     clippy::field_scoped_visibility_modifiers,
     reason = "fields need to be pub(crate) for internal access"

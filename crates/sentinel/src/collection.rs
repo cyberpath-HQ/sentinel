@@ -46,7 +46,7 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(
     clippy::field_scoped_visibility_modifiers,
     reason = "fields need to be pub(crate) for internal access"
