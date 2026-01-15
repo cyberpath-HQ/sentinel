@@ -6,10 +6,13 @@ import sitemap from '@astrojs/sitemap';
 import playformInline from '@playform/inline';
 import playformCompress from '@playform/compress';
 import tailwindcss from "@tailwindcss/vite";
+import rehypeAutolinkHeadings from "rehype-autolink-headings";
+import rehypeSlug from "rehype-slug";
+import { transformerMetaHighlight } from '@shikijs/transformers';
 
 // https://astro.build/config
 export default defineConfig({
-    site:          `https://quant.cyberpath-hq.com`,
+    site:          `https://sentinel.cyberpath-hq.com`,
     base:          `/`,
     trailingSlash: `ignore`,
     integrations:  [
@@ -386,6 +389,20 @@ export default defineConfig({
             tailwindcss({
                 optimize: true,
             }),
+        ],
+    },
+markdown: {
+        shikiConfig: {
+            themes: {
+                light: `aurora-x`,
+                dark:  `aurora-x`,
+            },
+            wrap:         false,
+            transformers: [ transformerMetaHighlight() ],
+        },
+        rehypePlugins: [
+            rehypeSlug,
+            rehypeAutolinkHeadings,
         ],
     },
 });
