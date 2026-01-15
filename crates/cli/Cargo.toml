@@ -11,8 +11,8 @@ keywords = ["cli", "database", "document", "dbms"]
 categories = ["command-line-utilities", "database-implementations"]
 
 [dependencies]
-sentinel = { path = "../sentinel" }
-sentinel-crypto = { path = "../sentinel-crypto" }
+sentinel = { version = "1.0.0", path = "../sentinel" }
+sentinel-crypto = { version = "1.0.0", path = "../sentinel-crypto" }
 tokio = { version = "1.49.0", features = ["full"] }
 serde_json = "1.0.149"
 clap = { version = "4.5.54", features = ["derive"] }
