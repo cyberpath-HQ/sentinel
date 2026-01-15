@@ -4,7 +4,7 @@
 export default {
   branches: [
     "main",
-    /^v?\d+\.x$/,
+    "+([0-9])?(.{+([0-9]),x}).x",
     { name: "beta", prerelease: true },
     { name: "alpha", prerelease: true },
     { name: "rc", prerelease: true },
