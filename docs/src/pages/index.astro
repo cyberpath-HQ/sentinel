@@ -240,12 +240,12 @@ async fn main() -> Result<(), SentinelError> {
                 </li>
               </ul>
             </div>
-            <div class="relative">
+            <div class="relative max-w-full">
               <div
-                class="absolute -inset-4 bg-gradient-to-r from-primary/20 to-transparent rounded-2xl blur-xl opacity-50"
+                class="absolute -inset-4 bg-linear-to-r from-primary/20 to-transparent rounded-2xl blur-xl opacity-50"
               >
               </div>
-              <div class="relative rounded-xl border border-border bg-card p-1 overflow-x-auto text-sm">
+              <div class="relative rounded-xl border border-border bg-card p-1 overflow-x-auto text-sm max-w-[calc(100vw-2rem)] [&>pre]:m-0! [&_.line::before]:hidden!">
                 <CodeComponent lang="rust" code={codeExample} theme={"aurora-x"} />
               </div>
             </div>
@@ -336,8 +336,7 @@ async fn main() -> Result<(), SentinelError> {
                 </Button>
               </a>
             </div>
-            <div class="relative">
-              <div class="rounded-xl border border-border bg-card p-1 overflow-x-auto text-sm">
+              <div class="rounded-xl border border-border bg-card p-1 overflow-x-auto text-sm [&>pre]:m-0! [&_.line::before]:hidden!">
                 <CodeComponent
                   lang={`json5`}
                   theme={`aurora-x`}
@@ -355,7 +354,6 @@ async fn main() -> Result<(), SentinelError> {
   }
 }`}
                 />
-              </div>
             </div>
           </div>
         </div>
