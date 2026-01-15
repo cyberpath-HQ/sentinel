@@ -5,23 +5,12 @@ import type { AstroSeoProps } from "@astrolib/seo";
 import { AstroSeo } from "@astrolib/seo";
 import { getCollection } from "astro:content";
 import type { CollectionEntry } from "astro:content";
-import {
-  ChevronRight,
-  Book,
-  Code,
-  Database,
-  Shield,
-  Key,
-  FileText,
-  Settings,
-  Zap,
-  Package,
-  Menu,
-  X,
-} from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import TableOfContents from "@/components/TableOfContents";
 import SearchModal from "@/components/SearchModal";
 import SidebarNavigation from "@/components/SidebarNavigation";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 
 interface Props {
   JSON_LD?: string;
@@ -87,100 +76,14 @@ const sectionIcons: Record<string, string> = {
     <link rel="sitemap" href="/sitemap-index.xml" />
     {seo && <AstroSeo {...seo} />}
   </head>
-  <body class="font-sans bg-background text-foreground min-h-screen">
+  <body class="font-sans bg-background text-foreground min-h-screen flex flex-col">
     <!-- Header -->
-    <header
-      class="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60"
-    >
-      <div class="flex h-16 items-center justify-between px-4 lg:px-8">
-        <div class="flex items-center gap-4">
-          <!-- Mobile menu button -->
-          <button
-            id="mobile-menu-toggle"
-            class="lg:hidden p-2 hover:bg-muted rounded-md transition-colors"
-            aria-label="Toggle navigation"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-
-          <!-- Logo -->
-          <a href="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div class="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 border border-primary/20">
-              <Shield className="h-4 w-4 text-primary" />
-            </div>
-            <span class="font-bold text-lg hidden sm:inline">Sentinel</span>
-          </a>
-        </div>
-
-        <!-- Navigation -->
-        <nav class="hidden md:flex items-center gap-6">
-          <a href="/" class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            Home
-          </a>
-          <a href="/docs/introduction" class="text-sm font-medium text-foreground transition-colors"> Documentation </a>
-          <a
-            href="https://github.com/cyberpath-HQ/sentinel"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            GitHub
-          </a>
-        </nav>
-
-        <!-- Mobile search button -->
-        <button
-          id="mobile-search-button"
-          class="lg:hidden p-2 hover:bg-muted rounded-md transition-colors"
-          aria-label="Search"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="m21 21-4.3-4.3"></path>
-          </svg>
-        </button>
-
-        <!-- Search placeholder -->
-        <div class="hidden lg:flex items-center">
-          <button
-            id="search-button"
-            class="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground bg-muted/50 border border-border rounded-lg hover:bg-muted transition-colors"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="11" cy="11" r="8"></circle>
-              <path d="m21 21-4.3-4.3"></path>
-            </svg>
-            <span>Search docs...</span>
-            <kbd class="ml-4 px-1.5 py-0.5 text-xs bg-background border border-border rounded">⌘K</kbd>
-          </button>
-        </div>
-      </div>
-    </header>
+    <SiteHeader client:load activePage="docs" />
 
     <!-- Search Modal -->
     <SearchModal client:load isOpen={false} onClose={() => {}} />
 
-    <div class="flex">
+    <div class="flex flex-1">
       <!-- Sidebar -->
       <aside
         id="sidebar"
@@ -238,7 +141,6 @@ const sectionIcons: Record<string, string> = {
                         href={`/docs/${slug}`}
                         class="flex items-center gap-3 p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors group"
                       >
-                        <FileText className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
                         <div>
                           <div class="font-medium group-hover:text-primary transition-colors">
                             {relatedDoc.data.title}
@@ -255,80 +157,32 @@ const sectionIcons: Record<string, string> = {
         </div>
 
         <!-- Footer -->
-        <footer class="border-t border-border bg-card/50 mt-12">
-          <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div class="flex items-center gap-2 text-sm text-muted-foreground">
-                <Shield className="h-4 w-4" />
-                <span>Cyberpath Sentinel</span>
-                <span>•</span>
-                <span>Apache 2.0 License</span>
-              </div>
-              <div class="flex items-center gap-4 text-sm">
-                <a
-                  href="https://github.com/cyberpath-HQ/sentinel"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  GitHub
-                </a>
-                <a
-                  href="https://cyberpath-hq.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  CyberPath
-                </a>
-              </div>
-            </div>
-          </div>
-        </footer>
+        <SiteFooter client:load />
       </main>
     </div>
 
     <script>
-      // Mobile sidebar toggle
-      const toggle = document.getElementById("mobile-menu-toggle");
-      const sidebar = document.getElementById("sidebar");
-      const overlay = document.getElementById("sidebar-overlay");
-
-      function closeSidebar() {
-        sidebar?.classList.add("-translate-x-full");
-        overlay?.classList.add("hidden");
-      }
-
-      toggle?.addEventListener("click", () => {
-        sidebar?.classList.toggle("-translate-x-full");
-        overlay?.classList.toggle("hidden");
-      });
-
-      overlay?.addEventListener("click", closeSidebar);
-
       // Close sidebar when clicking a link (mobile only)
+      const sidebar = document.getElementById("sidebar");
       sidebar?.querySelectorAll("a").forEach((link) => {
         link.addEventListener("click", () => {
           if (window.innerWidth < 1024) {
-            // lg breakpoint
-            closeSidebar();
+            // lg breakpoint - close the sidebar when a link is clicked
+            const overlay = document.getElementById("sidebar-overlay");
+            sidebar?.classList.add("-translate-x-full");
+            overlay?.classList.add("hidden");
           }
         });
       });
 
-      // Search modal handling
+      // Search modal handling from keyboard and any search trigger
       let searchModalOpen = false;
-      const searchButton = document.getElementById("search-button");
-      const mobileSearchButton = document.getElementById("mobile-search-button");
 
       function toggleSearchModal() {
         searchModalOpen = !searchModalOpen;
         // Dispatch custom event that React component will listen to
         window.dispatchEvent(new CustomEvent("toggle-search", { detail: { isOpen: searchModalOpen } }));
       }
-
-      searchButton?.addEventListener("click", toggleSearchModal);
-      mobileSearchButton?.addEventListener("click", toggleSearchModal);
 
       // Keyboard shortcut for search (Cmd+K or Ctrl+K)
       document.addEventListener("keydown", (e) => {
