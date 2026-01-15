@@ -8,7 +8,7 @@ import { useState, useEffect, type FC } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { Menu, Github, ExternalLink, Search } from "lucide-react";
+import { Menu, ExternalLink, Search, PanelRightClose } from "lucide-react";
 
 interface HeaderProps {
     activePage?: "home" | "docs";
@@ -73,7 +73,7 @@ export const SiteHeader: FC<HeaderProps> = ({ activePage = "home" }) => {
                         className="lg:hidden p-2 hover:bg-muted rounded-md transition-colors"
                         aria-label="Toggle navigation"
                     >
-                        <Menu className="h-5 w-5" />
+                        <PanelRightClose className="size-4" />
                     </button>
                 )}
 
@@ -108,17 +108,6 @@ export const SiteHeader: FC<HeaderProps> = ({ activePage = "home" }) => {
 
                 {/* Right side actions */}
                 <div className="flex items-center gap-4 ml-auto">
-                    {/* Mobile Search Button */}
-                    {activePage === "docs" && (
-                        <button
-                            id="mobile-search-button"
-                            onClick={openSearch}
-                            className="lg:hidden p-2 hover:bg-muted rounded-md transition-colors"
-                            aria-label="Search"
-                        >
-                            <Search className="h-5 w-5" />
-                        </button>
-                    )}
 
                     {/* Desktop Search Button (docs only) */}
                     {activePage === "docs" && (
