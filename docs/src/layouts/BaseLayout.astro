@@ -1,0 +1,29 @@
+---
+import "@fontsource-variable/nunito";
+import "@/styles/global.css";
+import type { AstroSeoProps } from "@astrolib/seo";
+import { AstroSeo } from "@astrolib/seo";
+
+interface Props {
+  JSON_LD?: string;
+  seo?: AstroSeoProps;
+}
+
+const { seo, JSON_LD } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en" class="scroll-smooth scroll-pt-24 overflow-x-hidden">
+  <head>
+    {JSON_LD && <script is:inline type="application/ld+json" set:html={JSON_LD} />}
+    <slot name="head" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    {seo && <AstroSeo {...seo} />}
+  </head>
+  <body class="font-sans bg-background text-foreground min-h-screen">
+    <slot />
+  </body>
+</html>

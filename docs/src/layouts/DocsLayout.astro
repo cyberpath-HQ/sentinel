@@ -1,0 +1,300 @@
+---
+import "@fontsource-variable/nunito";
+import "@/styles/global.css";
+import type { AstroSeoProps } from "@astrolib/seo";
+import { AstroSeo } from "@astrolib/seo";
+import { getCollection } from "astro:content";
+import type { CollectionEntry } from "astro:content";
+import {
+  ChevronRight,
+  Book,
+  Code,
+  Database,
+  Shield,
+  Key,
+  FileText,
+  Settings,
+  Zap,
+  Package,
+  Menu,
+  X,
+} from "lucide-react";
+
+interface Props {
+  JSON_LD?: string;
+  seo?: AstroSeoProps;
+  frontmatter?: CollectionEntry<"docs">["data"];
+  currentSlug?: string;
+}
+
+const { seo, JSON_LD, frontmatter, currentSlug } = Astro.props;
+
+// Fetch all documentation pages
+const allDocs = await getCollection("docs", ({ data }) => !data.draft);
+
+// Group docs by section
+type DocEntry = CollectionEntry<"docs">;
+const sections: Record<string, Array<DocEntry>> = {};
+
+for (const doc of allDocs) {
+  const section = doc.data.section || "General";
+  if (!sections[section]) {
+    sections[section] = [];
+  }
+  sections[section].push(doc);
+}
+
+// Sort docs within each section by order
+for (const section of Object.keys(sections)) {
+  sections[section].sort((a, b) => (a.data.order || 100) - (b.data.order || 100));
+}
+
+// Define section order
+const sectionOrder = ["Getting Started", "Core Concepts", "Cryptography", "API Reference", "Advanced", "General"];
+
+// Sort sections
+const sortedSections = Object.keys(sections).sort((a, b) => {
+  const aIndex = sectionOrder.indexOf(a);
+  const bIndex = sectionOrder.indexOf(b);
+  if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+  if (aIndex === -1) return 1;
+  if (bIndex === -1) return -1;
+  return aIndex - bIndex;
+});
+
+// Map section names to icons
+const sectionIcons: Record<string, string> = {
+  "Getting Started": "Zap",
+  "Core Concepts": "Database",
+  Cryptography: "Shield",
+  "API Reference": "Code",
+  Advanced: "Settings",
+  General: "Book",
+};
+---
+
+<!doctype html>
+<html lang="en" class="scroll-smooth scroll-pt-24 overflow-x-hidden">
+  <head>
+    {JSON_LD && <script is:inline type="application/ld+json" set:html={JSON_LD} />}
+    <slot name="head" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    {seo && <AstroSeo {...seo} />}
+  </head>
+  <body class="font-sans bg-background text-foreground min-h-screen">
+    <!-- Header -->
+    <header
+      class="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+    >
+      <div class="flex h-16 items-center justify-between px-4 lg:px-8">
+        <div class="flex items-center gap-4">
+          <!-- Mobile menu button -->
+          <button
+            id="mobile-menu-toggle"
+            class="lg:hidden p-2 hover:bg-muted rounded-md transition-colors"
+            aria-label="Toggle navigation"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          <!-- Logo -->
+          <a href="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <div class="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 border border-primary/20">
+              <Shield className="h-4 w-4 text-primary" />
+            </div>
+            <span class="font-bold text-lg hidden sm:inline">Sentinel</span>
+          </a>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="hidden md:flex items-center gap-6">
+          <a href="/" class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            Home
+          </a>
+          <a href="/docs/introduction" class="text-sm font-medium text-foreground transition-colors"> Documentation </a>
+          <a
+            href="https://github.com/cyberpath-HQ/sentinel"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            GitHub
+          </a>
+        </nav>
+
+        <!-- Search placeholder -->
+        <div class="hidden lg:flex items-center">
+          <button
+            class="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground bg-muted/50 border border-border rounded-lg hover:bg-muted transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.3-4.3"></path>
+            </svg>
+            <span>Search docs...</span>
+            <kbd class="ml-4 px-1.5 py-0.5 text-xs bg-background border border-border rounded">⌘K</kbd>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="flex">
+      <!-- Sidebar -->
+      <aside
+        id="sidebar"
+        class="fixed lg:sticky top-16 z-40 h-[calc(100vh-4rem)] w-72 -translate-x-full lg:translate-x-0 transition-transform duration-200 border-r border-border bg-sidebar overflow-hidden"
+      >
+        <nav class="h-full overflow-y-auto py-6 px-4">
+          {
+            sortedSections.map((section) => (
+              <div class="mb-6">
+                <h3 class="flex items-center gap-2 px-2 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {section}
+                </h3>
+                <ul class="space-y-1">
+                  {sections[section].map((doc) => {
+                    const isActive = currentSlug === doc.id;
+                    return (
+                      <li>
+                        <a
+                          href={`/docs/${doc.id}`}
+                          class:list={[
+                            "flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors",
+                            isActive
+                              ? "bg-primary/10 text-primary font-medium"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                          ]}
+                        >
+                          <ChevronRight className={`h-3 w-3 transition-transform ${isActive ? "rotate-90" : ""}`} />
+                          {doc.data.title}
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))
+          }
+        </nav>
+      </aside>
+
+      <!-- Mobile sidebar overlay -->
+      <div id="sidebar-overlay" class="fixed inset-0 z-30 bg-background/80 backdrop-blur-sm lg:hidden hidden"></div>
+
+      <!-- Main content -->
+      <main class="flex-1 min-w-0">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+          {
+            frontmatter && (
+              <div class="mb-8">
+                <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                  <a href="/docs/introduction" class="hover:text-foreground transition-colors">
+                    Docs
+                  </a>
+                  <ChevronRight className="h-4 w-4" />
+                  <span class="text-foreground">{frontmatter.title}</span>
+                </nav>
+                <h1 class="text-4xl font-bold tracking-tight mb-4">{frontmatter.title}</h1>
+                <p class="text-lg text-muted-foreground">{frontmatter.description}</p>
+              </div>
+            )
+          }
+
+          <article class="prose">
+            <slot />
+          </article>
+
+          {
+            frontmatter?.related && frontmatter.related.length > 0 && (
+              <div class="mt-12 pt-8 border-t border-border">
+                <h2 class="text-lg font-semibold mb-4">Related Pages</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {frontmatter.related.map((slug) => {
+                    const relatedDoc = allDocs.find((d) => d.id === slug);
+                    if (!relatedDoc) return null;
+                    return (
+                      <a
+                        href={`/docs/${slug}`}
+                        class="flex items-center gap-3 p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors group"
+                      >
+                        <FileText className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                        <div>
+                          <div class="font-medium group-hover:text-primary transition-colors">
+                            {relatedDoc.data.title}
+                          </div>
+                          <div class="text-sm text-muted-foreground line-clamp-1">{relatedDoc.data.description}</div>
+                        </div>
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            )
+          }
+        </div>
+
+        <!-- Footer -->
+        <footer class="border-t border-border bg-card/50 mt-12">
+          <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                <Shield className="h-4 w-4" />
+                <span>Cyberpath Sentinel</span>
+                <span>•</span>
+                <span>Apache 2.0 License</span>
+              </div>
+              <div class="flex items-center gap-4 text-sm">
+                <a
+                  href="https://github.com/cyberpath-HQ/sentinel"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  GitHub
+                </a>
+                <a
+                  href="https://cyberpath-hq.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  CyberPath
+                </a>
+              </div>
+            </div>
+          </div>
+        </footer>
+      </main>
+    </div>
+
+    <script>
+      // Mobile sidebar toggle
+      const toggle = document.getElementById("mobile-menu-toggle");
+      const sidebar = document.getElementById("sidebar");
+      const overlay = document.getElementById("sidebar-overlay");
+
+      toggle?.addEventListener("click", () => {
+        sidebar?.classList.toggle("-translate-x-full");
+        overlay?.classList.toggle("hidden");
+      });
+
+      overlay?.addEventListener("click", () => {
+        sidebar?.classList.add("-translate-x-full");
+        overlay?.classList.add("hidden");
+      });
+    </script>
+  </body>
+</html>
