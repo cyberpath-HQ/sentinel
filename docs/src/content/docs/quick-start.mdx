@@ -40,7 +40,7 @@ my-database/
 
 Collections are namespaces for related documents. They're represented as subdirectories within your store:
 
-```rust
+```rust {7-8}
 use sentinel_dbms::Store;
 
 #[tokio::main]
@@ -67,7 +67,7 @@ my-database/
 
 Documents are JSON objects stored as individual files. Use `insert` to create a new document:
 
-```rust
+```rust {10-15}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -115,7 +115,7 @@ integrity verification.
 
 Use `get` to retrieve a document by its ID:
 
-```rust
+```rust {10}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -144,7 +144,7 @@ The `get` method returns `Option<Document>`. If the document doesn't exist, you 
 
 The `update` method replaces a document's contents while preserving the file location:
 
-```rust
+```rust {10-15}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -157,7 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     users.update("alice", json!({
         "name": "Alice Johnson",
         "email": "alice.johnson@example.com",  // New email
-        "role": "senior_admin",                 // Promoted!
+        "role": "senior_admin",                // Promoted!
         "department": "Engineering"
     })).await?;
 
@@ -172,7 +172,7 @@ The updated document gets a new timestamp and hash, allowing you to track when c
 
 Use `delete` to remove a document:
 
-```rust
+```rust {8-9}
 use sentinel_dbms::Store;
 
 #[tokio::main]
@@ -188,14 +188,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The `delete` operation is idempotent—deleting a non-existent document succeeds without error.
+The `delete` operation is idempotent, deleting a non-existent document succeeds without error.
 
 ## Adding Signatures
 
 For tamper-evident storage, create a store with a passphrase. This generates a signing key that will be used to sign all
 documents:
 
-```rust
+```rust {7}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -219,14 +219,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The document now includes an Ed25519 signature:
 
-```json
+```json {7}
 {
   "id": "api-key",
   "version": 1,
   "created_at": "2026-01-15T12:00:00Z",
   "updated_at": "2026-01-15T12:00:00Z",
   "hash": "a1b2c3d4e5f6789...",
-  "signature": "ed25519:xyz789abc...",
+  "signature": "xyz789abc...",
   "data": {
     "service": "payment-gateway",
     "key": "sk_live_abc123",
@@ -301,7 +301,7 @@ cat ./company-data/data/employees/emp-001.json
 
 Now that you understand the basics, dive deeper into:
 
-- **[Store](/docs/store)** — Learn about store configuration and management
-- **[Collection](/docs/collection)** — Master collection operations and validation
-- **[Document](/docs/document)** — Understand document structure and metadata
-- **[Cryptography](/docs/cryptography)** — Explore hashing, signing, and encryption options
+- **[Store](/docs/store)**: Learn about store configuration and management
+- **[Collection](/docs/collection)**: Master collection operations and validation
+- **[Document](/docs/document)**: Understand document structure and metadata
+- **[Cryptography](/docs/cryptography)**: Explore hashing, signing, and encryption options

@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-When you create a store, Sentinel creates the root directory if it doesn't exist. This operation is idempotent—creating
+When you create a store, Sentinel creates the root directory if it doesn't exist. This operation is idempotent, creating
 a store that already exists simply opens it for use.
 
 ## Store Path and Structure
@@ -84,7 +84,7 @@ When you provide a passphrase, Sentinel performs these steps:
 2. **Subsequent Runs**: Reads the stored salt, re-derives the encryption key from your passphrase, decrypts the signing
    key, and uses it for signing documents.
 
-This approach means you never store the raw passphrase—only the salt needed to re-derive the encryption key.
+This approach means you never store the raw passphrase, only the salt needed to re-derive the encryption key.
 
 ## Opening Existing Stores
 
@@ -169,7 +169,7 @@ Examples of invalid names: `users/admin`, `CON`, `file:name`, empty string
 
 Store operations return `Result<T, SentinelError>`. Common errors include:
 
-```rust
+```rust {9-10,13-14}
 use sentinel_dbms::{Store, SentinelError};
 
 #[tokio::main]
@@ -231,23 +231,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 When working with stores, keep these recommendations in mind:
 
-**Choose meaningful paths.** Use paths that describe your application's purpose: `./audit-logs`, `./certificates`,
+- **Choose meaningful paths.** Use paths that describe your application's purpose: `./audit-logs`, `./certificates`,
 `./config-store`.
 
-**Secure your passphrase.** Don't hardcode passphrases. Load them from environment variables, secret managers, or secure
+- **Secure your passphrase.** Don't hardcode passphrases. Load them from environment variables, secret managers, or secure
 configuration.
 
-**Use separate stores for separate purposes.** Don't mix audit logs with user data in the same store if they have
+- **Use separate stores for separate purposes.** Don't mix audit logs with user data in the same store if they have
 different security requirements.
 
-**Back up regularly.** Since stores are just directories, use `rsync`, `tar`, or your preferred backup tool.
+- **Back up regularly.** Since stores are just directories, use `rsync`, `tar`, or your preferred backup tool.
 
-**Version with Git.** Your entire store can be a Git repository for complete change history.
+- **Version with Git.** Your entire store can be a Git repository for complete change history.
 
 ## Next Steps
 
 Now that you understand stores, learn about:
 
-- **[Collection](/docs/collection)** — Working with collections and CRUD operations
-- **[Document](/docs/document)** — Understanding document structure and metadata
-- **[Cryptography](/docs/cryptography)** — Configuring hashing, signing, and encryption
+- **[Collection](/docs/collection)**: Working with collections and CRUD operations
+- **[Document](/docs/document)**: Understanding document structure and metadata
+- **[Cryptography](/docs/cryptography)**: Configuring hashing, signing, and encryption

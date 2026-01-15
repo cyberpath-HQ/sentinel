@@ -57,7 +57,7 @@ Collections provide four primary operations for document management.
 
 The `insert` method creates a new document or overwrites an existing one:
 
-```rust
+```rust {10-14,17-21}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -91,7 +91,7 @@ store was created with a passphrase.
 
 The `get` method retrieves a document by its ID:
 
-```rust
+```rust {13,25-26}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The `update` method replaces a document's contents:
 
-```rust
+```rust {10-13,16-20}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -160,7 +160,7 @@ the document first, modify the data, then update.
 
 The `delete` method removes a document from the collection:
 
-```rust
+```rust {11-12,14-15}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -184,7 +184,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The delete operation is idempotent—deleting a non-existent document succeeds without error.
+The delete operation is idempotent, deleting a non-existent document succeeds without error.
 
 ## Document ID Validation
 
@@ -216,7 +216,7 @@ Document IDs must be valid filenames across all platforms. Sentinel validates ID
 - `user/admin` (contains path separator)
 - `file.name` (contains dot)
 - `CON` (Windows reserved name)
-- `` (empty string)
+- empty string
 
 ```rust
 use sentinel_dbms::Store;
@@ -340,17 +340,17 @@ async fn main() {
 
 When working with collections, consider these recommendations:
 
-**Use meaningful collection names.** Choose names that describe the data: `users`, `audit_logs`, `certificates`,
+- **Use meaningful collection names.** Choose names that describe the data: `users`, `audit_logs`, `certificates`,
 `api_keys`.
 
-**Keep related documents together.** Group documents by type and access patterns in the same collection.
+- **Keep related documents together.** Group documents by type and access patterns in the same collection.
 
-**Use consistent ID schemes.** Adopt a naming convention for IDs: `user-{uuid}`, `log-{timestamp}`,
+- **Use consistent ID schemes.** Adopt a naming convention for IDs: `user-{uuid}`, `log-{timestamp}`,
 `cert-{fingerprint}`.
 
-**Validate data before insertion.** Sentinel stores whatever JSON you give it—validate your data first.
+- **Validate data before insertion.** Sentinel stores whatever JSON you give it, validate your data first.
 
-**Consider using prefixes for large collections.** If you expect millions of documents, use ID prefixes to help with
+- **Consider using prefixes for large collections.** If you expect millions of documents, use ID prefixes to help with
 manual navigation: `a/alice`, `b/bob`.
 
 ## Next Steps
