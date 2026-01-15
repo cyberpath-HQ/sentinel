@@ -1,6 +1,6 @@
 use ascon_aead::{
     aead::{Aead, KeyInit},
-    Ascon128,
+    AsconAead128 as Ascon128,
     Key,
     Nonce,
 };
