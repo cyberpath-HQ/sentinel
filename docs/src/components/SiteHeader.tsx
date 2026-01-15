@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Menu, Shield, Github, ExternalLink } from "lucide-react";
+import logo from '@/assets/logo.svg';
 
 interface HeaderProps {
     activePage?: "home" | "docs";
@@ -27,13 +28,7 @@ export const SiteHeader: FC<HeaderProps> = ({ activePage = "home" }) => {
             <div className="container mx-auto flex h-16 items-center justify-between px-4 lg:px-8">
                 {/* Logo */}
                 <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 border border-primary/20">
-                        <Shield className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="font-bold text-lg leading-none">Sentinel</span>
-                        <span className="text-xs text-muted-foreground leading-none mt-0.5">by CyberPath</span>
-                    </div>
+                    <img src={"/logo-white.svg"} alt="Sentinel Logo" className={"h-8 max-h-8 w-full"}/>
                 </a>
 
                 {/* Desktop Navigation */}
