@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.3...v1.0.4) (2026-01-15)
+
+
+### Bug Fixes
+
+* update dependencies and refactor code to use sentinel-dbms ([302d05c](https://github.com/cyberpath-HQ/sentinel/commit/302d05c75e04ead38c2027607e16db3abedf7469))
+
 ## [1.0.3](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.2...v1.0.3) (2026-01-15)
 
 
