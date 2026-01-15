@@ -152,7 +152,7 @@ export const SiteHeader: FC<HeaderProps> = ({ activePage = "home" }) => {
                                 <span className="sr-only">Toggle menu</span>
                             </Button>
                         </SheetTrigger>
-                        <SheetContent side="right" className="w-72 bg-sidebar border-l border-border">
+                        <SheetContent side="right" className="w-72 bg-sidebar border-l border-border p-4">
                             <div className="flex flex-col gap-6 mt-8">
                                 <nav className="flex flex-col gap-4">
                                     {navLinks.map((link) => (
@@ -175,7 +175,6 @@ export const SiteHeader: FC<HeaderProps> = ({ activePage = "home" }) => {
                                         onClick={() => setIsOpen(false)}
                                         className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2 py-2"
                                     >
-                                        <Github className="h-4 w-4" />
                                         GitHub
                                     </a>
                                 </nav>
