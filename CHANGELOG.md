@@ -1,3 +1,11 @@
+## [1.0.2](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.1...v1.0.2) (2026-01-15)
+
+
+### Bug Fixes
+
+* bump version for sentinel, sentinel-cli, and sentinel-crypto to 1.0.0 ([4b4aef4](https://github.com/cyberpath-HQ/sentinel/commit/4b4aef4d1a6788ab6f790ccd801a33919c52cc16))
+* update Ascon128 import to use AsconAead128 for clarity ([4c50dd6](https://github.com/cyberpath-HQ/sentinel/commit/4c50dd676100dfd0b884c77c23f4fafe59313dda))
+
 ## [1.0.1](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.0...v1.0.1) (2026-01-15)
 
 
