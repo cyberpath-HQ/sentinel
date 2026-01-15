@@ -144,7 +144,7 @@ html {
 
 /* Code block styling */
 pre {
-  @apply rounded-lg border border-border bg-card p-4 overflow-x-auto text-sm;
+  @apply rounded-lg border border-border bg-card p-4 overflow-x-auto text-sm mb-4;
 }
 
 code {
