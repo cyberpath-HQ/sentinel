@@ -1,0 +1,54 @@
+---
+const code = await Astro.slots.render("default");
+const id = `code-${Math.random().toString(36).substring(2, 9)}`;
+---
+
+<div class="relative group">
+  <pre
+    class="astro-code astro-code-themes aurora-x aurora-x"
+    style="background-color:#07090F;--shiki-dark-bg:#07090F;color:#bbbbbb;--shiki-dark:#bbbbbb;overflow-x:auto"
+    tabindex="0"
+    id={id}><Fragment set:html={code} /></pre>
+  <div
+    id={`trigger-${id}`}
+    class="opacity-0 z-[-1] group-hover:opacity-100 group-hover:z-10 transition-all duration-300 absolute top-2 right-2 size-6 aspect-square rounded bg-muted text-muted-foreground p-1.25 cursor-pointer hover:bg-accent hover:text-accent-foreground"
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class="lucide lucide-copy-icon lucide-copy"
+      ><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path
+        d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg
+    >
+  </div>
+  <script define:vars={{ id }} is:inline>
+    const trigger = document.getElementById(`trigger-${id}`);
+    const codeElement = document.getElementById(id);
+
+    trigger?.addEventListener("click", async () => {
+      if (!codeElement) return;
+      const innerCode = codeElement.querySelector("code");
+
+      if (innerCode) {
+        try {
+          await navigator.clipboard.writeText(innerCode.innerText);
+          trigger.classList.remove("text-muted-foreground", "bg-muted");
+          trigger?.classList.add("bg-accent", "text-accent-foreground");
+          trigger.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-icon lucide-check"><path d="M20 6 9 17l-5-5"/></svg>`;
+          setTimeout(() => {
+            trigger?.classList.remove("bg-accent", "text-accent-foreground");
+            trigger.classList.add("text-muted-foreground", "bg-muted");
+            trigger.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy-icon lucide-copy"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>`;
+          }, 1500);
+        } catch (err) {
+          console.error("Failed to copy text: ", err);
+        }
+      }
+    });
+  </script>
+</div>
