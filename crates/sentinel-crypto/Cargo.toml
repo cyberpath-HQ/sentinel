@@ -1,10 +1,11 @@
 [package]
 name = "sentinel-crypto"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Cryptographic utilities for Cyberpath Sentinel, including hashing and signing."
-license = "Apache-2.0"
-repository = "https://github.com/cyberpath-HQ/sentinel"
 readme = "../README.md"
 keywords = ["crypto", "hashing", "signing", "ed25519", "blake3"]
 categories = ["cryptography"]
