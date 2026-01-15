@@ -18,8 +18,7 @@ interface SidebarNavigationProps {
  * Client-side sidebar navigation with accordions
  */
 export default function SidebarNavigation({ sections, sortedSections, currentSlug }: SidebarNavigationProps) {
-console.log(sortedSections);    
-return (
+    return (
         <Accordion type="multiple" defaultValue={sortedSections} className="space-y-2">
             {sortedSections.map((section) => (
                 <AccordionItem key={section} value={section} className="border-0">
@@ -35,8 +34,8 @@ return (
                                         <a
                                             href={`/docs/${doc.id}`}
                                             className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${isActive
-                                                    ? "bg-primary/10 text-primary font-medium"
-                                                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                                ? "bg-primary/10 text-primary font-medium"
+                                                : "text-muted-foreground hover:text-foreground hover:bg-muted"
                                                 }`}
                                         >
                                             <ChevronRight className={`h-3 w-3 transition-transform`} />
