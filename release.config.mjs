@@ -43,13 +43,16 @@ export default {
     [
       "@semantic-release/exec",
       {
-        prepareCmd: 'sed -i \'s/^version = ".*"/version = "${nextRelease.version}"/\' Cargo.toml',
+        prepareCmd: [
+          'sed -i \'s/^version = ".*"/version = "${nextRelease.version}"/\' Cargo.toml',
+          "node update-deps.js ${nextRelease.version}",
+        ],
       },
     ],
     [
       "@semantic-release/git",
       {
-        assets: ["CHANGELOG.md", "Cargo.toml"],
+        assets: ["CHANGELOG.md", "Cargo.toml", "crates/*/Cargo.toml"],
       },
     ],
     [
