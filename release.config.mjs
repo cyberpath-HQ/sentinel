@@ -56,7 +56,7 @@ export default {
       "@semantic-release/exec",
       {
         publishCmd:
-          "cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml --token $CARGO_REGISTRY_TOKEN && cargo publish --manifest-path crates/sentinel/Cargo.toml --token $CARGO_REGISTRY_TOKEN && cargo publish --manifest-path crates/cli/Cargo.toml --token $CARGO_REGISTRY_TOKEN",
+          "cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml && cargo publish --manifest-path crates/sentinel/Cargo.toml && cargo publish --manifest-path crates/cli/Cargo.toml",
       },
     ],
     "@semantic-release/github",
