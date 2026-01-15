@@ -1,13 +1,11 @@
 [package]
 name = "sentinel-cli"
+version.workspace = true
 authors.workspace = true
 edition.workspace = true
-rust-version.workspace = true
-version.workspace = true
-readme.workspace = true
-description = "Command-line interface for Cyberpath Sentinel DBMS."
 license.workspace = true
 repository.workspace = true
+description = "Command-line interface for Cyberpath Sentinel DBMS."
 keywords = ["cli", "database", "document", "dbms"]
 categories = ["command-line-utilities", "database-implementations"]
 
