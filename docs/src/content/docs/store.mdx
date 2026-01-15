@@ -1,0 +1,253 @@
+---
+title: Store
+description: Learn about the Store, the top-level container for collections in Sentinel.
+section: Core Concepts
+order: 10
+keywords: ["store", "database", "root", "passphrase", "signing"]
+related: ["collection", "document", "quick-start"]
+---
+
+The Store is the top-level container in Sentinel that manages all your collections. It represents a single database
+instance backed by a directory on your filesystem. This guide covers creating stores, configuring signing, and
+understanding the directory structure.
+
+## Creating a Store
+
+Create a new store by specifying a path and an optional passphrase:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create a store without signing
+    let store = Store::new("./my-data", None).await?;
+
+    // Or create a store with signing enabled
+    let signed_store = Store::new("./secure-data", Some("my-passphrase")).await?;
+
+    Ok(())
+}
+```
+
+When you create a store, Sentinel creates the root directory if it doesn't exist. This operation is idempotent, creating
+a store that already exists simply opens it for use.
+
+## Store Path and Structure
+
+The store path becomes the root directory for all your data. Sentinel creates a `data/` subdirectory to hold
+collections:
+
+```text
+my-data/              # Store root (your specified path)
+└── data/             # Data directory
+    ├── users/        # A collection
+    ├── audit_logs/   # Another collection
+    └── .keys/        # Internal: encrypted signing key (if using passphrase)
+```
+
+The `.keys/` directory is created automatically when you provide a passphrase. It stores your encrypted signing key.
+
+## Signing with Passphrases
+
+When you provide a passphrase, Sentinel generates an Ed25519 signing key and encrypts it for secure storage. This key
+signs all documents created in the store, providing tamper-evident storage.
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // First run: generates and stores a new signing key
+    let store = Store::new("./secure-data", Some("my-secret")).await?;
+
+    // Subsequent runs: loads the existing signing key
+    // You must use the same passphrase!
+    let store = Store::new("./secure-data", Some("my-secret")).await?;
+
+    Ok(())
+}
+```
+
+The signing key is derived and encrypted using your configured key derivation function (Argon2id by default) and
+encryption algorithm (XChaCha20-Poly1305 by default). Even if someone accesses your store files, they cannot sign new
+documents without your passphrase.
+
+## Key Derivation Process
+
+When you provide a passphrase, Sentinel performs these steps:
+
+1. **First Run**: Generates a random 32-byte salt, derives an encryption key from your passphrase using the configured
+   KDF, generates a new Ed25519 signing key, encrypts the signing key with the derived encryption key, and stores the
+   encrypted key and salt in `.keys/signing_key.json`.
+
+2. **Subsequent Runs**: Reads the stored salt, re-derives the encryption key from your passphrase, decrypts the signing
+   key, and uses it for signing documents.
+
+This approach means you never store the raw passphrase, only the salt needed to re-derive the encryption key.
+
+## Opening Existing Stores
+
+Opening an existing store is the same as creating one:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Opens existing store or creates if it doesn't exist
+    let store = Store::new("./existing-data", None).await?;
+
+    Ok(())
+}
+```
+
+If the store was created with a passphrase, you must provide the same passphrase to access it with signing capabilities.
+You can open a signed store without a passphrase, but new documents won't be signed:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Store was created with passphrase, but opened without
+    let store = Store::new("./secure-data", None).await?;
+
+    // You can still read documents, but new ones won't be signed
+    let users = store.collection("users").await?;
+
+    Ok(())
+}
+```
+
+## Accessing Collections
+
+Use the `collection` method to get or create a collection:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+
+    // Get or create collections
+    let users = store.collection("users").await?;
+    let products = store.collection("products").await?;
+    let audit_logs = store.collection("audit_logs").await?;
+
+    // Use them immediately
+    users.insert("alice", json!({"name": "Alice"})).await?;
+    products.insert("prod-1", json!({"name": "Widget"})).await?;
+
+    Ok(())
+}
+```
+
+Collection names must be valid filesystem directory names. Sentinel validates names to ensure cross-platform
+compatibility.
+
+## Collection Name Validation
+
+Collection names follow strict validation rules for filesystem safety:
+
+| Rule                     | Description                                      |
+| ------------------------ | ------------------------------------------------ |
+| Not empty                | Names cannot be empty strings                    |
+| Valid characters         | Only alphanumeric, underscore, hyphen, and dot   |
+| No path separators       | Forward slash and backslash are forbidden        |
+| No control characters    | ASCII 0x00-0x1F and 0x7F are forbidden           |
+| Not Windows reserved     | CON, PRN, AUX, NUL, COM1-9, LPT1-9 are forbidden |
+| No Windows special chars | `< > : " \| ? *` are forbidden                   |
+
+Examples of valid names: `users`, `audit_logs`, `products-v2`, `data.backup`
+
+Examples of invalid names: `users/admin`, `CON`, `file:name`, empty string
+
+## Error Handling
+
+Store operations return `Result<T, SentinelError>`. Common errors include:
+
+```rust {9-10,13-14}
+use sentinel_dbms::{Store, SentinelError};
+
+#[tokio::main]
+async fn main() {
+    match Store::new("./my-data", Some("wrong-passphrase")).await {
+        Ok(store) => {
+            println!("Store opened successfully");
+        }
+        Err(SentinelError::CryptoFailed { operation }) => {
+            eprintln!("Cryptographic error: {}", operation);
+            // Likely wrong passphrase for existing store
+        }
+        Err(SentinelError::Io { source }) => {
+            eprintln!("I/O error: {}", source);
+            // Permission denied, disk full, etc.
+        }
+        Err(e) => {
+            eprintln!("Unexpected error: {}", e);
+        }
+    }
+}
+```
+
+## Thread Safety
+
+The Store struct is safe to share across threads. You can create multiple collections concurrently and perform
+operations from different threads. Each collection manages its own synchronization internally.
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Arc::new(Store::new("./my-data", None).await?);
+
+    let store1 = store.clone();
+    let store2 = store.clone();
+
+    let handle1 = tokio::spawn(async move {
+        let users = store1.collection("users").await.unwrap();
+        users.insert("alice", json!({"name": "Alice"})).await.unwrap();
+    });
+
+    let handle2 = tokio::spawn(async move {
+        let products = store2.collection("products").await.unwrap();
+        products.insert("widget", json!({"name": "Widget"})).await.unwrap();
+    });
+
+    handle1.await?;
+    handle2.await?;
+
+    Ok(())
+}
+```
+
+## Best Practices
+
+When working with stores, keep these recommendations in mind:
+
+- **Choose meaningful paths.** Use paths that describe your application's purpose: `./audit-logs`, `./certificates`,
+`./config-store`.
+
+- **Secure your passphrase.** Don't hardcode passphrases. Load them from environment variables, secret managers, or secure
+configuration.
+
+- **Use separate stores for separate purposes.** Don't mix audit logs with user data in the same store if they have
+different security requirements.
+
+- **Back up regularly.** Since stores are just directories, use `rsync`, `tar`, or your preferred backup tool.
+
+- **Version with Git.** Your entire store can be a Git repository for complete change history.
+
+## Next Steps
+
+Now that you understand stores, learn about:
+
+- **[Collection](/docs/collection)**: Working with collections and CRUD operations
+- **[Document](/docs/document)**: Understanding document structure and metadata
+- **[Cryptography](/docs/cryptography)**: Configuring hashing, signing, and encryption

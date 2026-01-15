@@ -1,0 +1,193 @@
+---
+import "@fontsource-variable/nunito";
+import "@/styles/global.css";
+import type { AstroSeoProps } from "@astrolib/seo";
+import { AstroSeo } from "@astrolib/seo";
+import { getCollection } from "astro:content";
+import type { CollectionEntry } from "astro:content";
+import { ChevronRight } from "lucide-react";
+import TableOfContents from "@/components/TableOfContents";
+import SearchModal from "@/components/SearchModal";
+import SidebarNavigation from "@/components/SidebarNavigation";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
+
+interface Props {
+  JSON_LD?: string;
+  seo?: AstroSeoProps;
+  frontmatter?: CollectionEntry<"docs">["data"];
+  currentSlug?: string;
+}
+
+const { seo, JSON_LD, frontmatter, currentSlug } = Astro.props;
+
+// Fetch all documentation pages
+const allDocs = await getCollection("docs", ({ data }) => !data.draft);
+
+// Group docs by section
+type DocEntry = CollectionEntry<"docs">;
+const sections: Record<string, Array<DocEntry>> = {};
+
+for (const doc of allDocs) {
+  const section = doc.data.section || "General";
+  if (!sections[section]) {
+    sections[section] = [];
+  }
+  sections[section].push(doc);
+}
+
+// Sort docs within each section by order
+for (const section of Object.keys(sections)) {
+  sections[section].sort((a, b) => (a.data.order || 100) - (b.data.order || 100));
+}
+
+// Define section order
+const sectionOrder = ["Getting Started", "Core Concepts", "Cryptography", "API Reference", "Advanced", "General"];
+
+// Sort sections
+const sortedSections = Object.keys(sections).sort((a, b) => {
+  const aIndex = sectionOrder.indexOf(a);
+  const bIndex = sectionOrder.indexOf(b);
+  if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+  if (aIndex === -1) return 1;
+  if (bIndex === -1) return -1;
+  return aIndex - bIndex;
+});
+
+---
+
+<!doctype html>
+<html lang="en" class="scroll-smooth scroll-pt-24 overflow-x-hidden">
+  <head>
+    {JSON_LD && <script is:inline type="application/ld+json" set:html={JSON_LD} />}
+    <slot name="head" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    {seo && <AstroSeo {...seo} />}
+  </head>
+  <body class="font-sans bg-background text-foreground min-h-screen flex flex-col">
+    <!-- Header -->
+    <SiteHeader client:load activePage="docs" />
+
+    <!-- Search Modal -->
+    <SearchModal client:load isOpen={false} onClose={() => {}} />
+
+    <div class="flex flex-1">
+      <!-- Sidebar -->
+      <aside
+        id="sidebar"
+        class="fixed lg:sticky top-16 z-40 h-[calc(100vh-4rem)] w-72 -translate-x-full lg:translate-x-0 transition-transform duration-200 border-r border-border bg-sidebar overflow-hidden"
+      >
+        <nav class="h-full overflow-y-auto py-6 px-4">
+          <SidebarNavigation
+            client:load
+            sections={sections}
+            sortedSections={sortedSections}
+            currentSlug={currentSlug}
+          />
+        </nav>
+      </aside>
+
+      <!-- Mobile sidebar overlay -->
+      <div id="sidebar-overlay" class="fixed inset-0 z-30 bg-background/80 backdrop-blur-sm lg:hidden hidden"></div>
+
+      <!-- Main content -->
+      <main class="flex-1 min-w-0">
+        <div class="flex gap-12">
+          <div class="max-w-4xl ml-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 xl:pr-72">
+            {
+              frontmatter && (
+                <div class="mb-8">
+                  <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                    <a href="/docs/introduction" class="hover:text-foreground transition-colors">
+                      Docs
+                    </a>
+                    <ChevronRight className="h-4 w-4" />
+                    <span class="text-foreground">{frontmatter.title}</span>
+                  </nav>
+                  <h1 class="text-4xl font-bold tracking-tight mb-4">{frontmatter.title}</h1>
+                  <p class="text-lg text-muted-foreground">{frontmatter.description}</p>
+                </div>
+              )
+            }
+
+            <article class="prose">
+              <slot />
+            </article>
+
+            {
+              frontmatter?.related && frontmatter.related.length > 0 && (
+                <div class="mt-12 pt-8 border-t border-border">
+                  <h2 class="text-lg font-semibold mb-4">Related Pages</h2>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {frontmatter.related.map((slug) => {
+                      const relatedDoc = allDocs.find((d) => d.id === slug);
+                      if (!relatedDoc) return null;
+                      return (
+                        <a
+                          href={`/docs/${slug}`}
+                          class="flex items-center gap-3 p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors group"
+                        >
+                          <div>
+                            <div class="font-medium group-hover:text-primary transition-colors">
+                              {relatedDoc.data.title}
+                            </div>
+                            <div class="text-sm text-muted-foreground line-clamp-1">{relatedDoc.data.description}</div>
+                          </div>
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              )
+            }
+          </div>
+          <!-- Table of Contents (floating right) -->
+          <TableOfContents client:load />
+        </div>
+
+        <!-- Footer -->
+        <SiteFooter client:load />
+      </main>
+    </div>
+
+    <script>
+      // Close sidebar when clicking a link (mobile only)
+      const sidebar = document.getElementById("sidebar");
+      sidebar?.querySelectorAll("a").forEach((link) => {
+        link.addEventListener("click", () => {
+          if (window.innerWidth < 1024) {
+            // lg breakpoint - close the sidebar when a link is clicked
+            const overlay = document.getElementById("sidebar-overlay");
+            sidebar?.classList.add("-translate-x-full");
+            overlay?.classList.add("hidden");
+          }
+        });
+      });
+
+      // Search modal handling from keyboard and any search trigger
+      let searchModalOpen = false;
+
+      function toggleSearchModal() {
+        searchModalOpen = !searchModalOpen;
+        // Dispatch custom event that React component will listen to
+        window.dispatchEvent(new CustomEvent("toggle-search", { detail: { isOpen: searchModalOpen } }));
+      }
+
+      // Keyboard shortcut for search (Cmd+K or Ctrl+K)
+      document.addEventListener("keydown", (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+          e.preventDefault();
+          toggleSearchModal();
+        }
+      });
+
+      // Listen for close events from the modal
+      window.addEventListener("close-search", () => {
+        searchModalOpen = false;
+      });
+    </script>
+  </body>
+</html>

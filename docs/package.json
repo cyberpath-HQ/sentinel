@@ -9,6 +9,8 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@astrojs/markdown-remark": "^6.3.10",
+    "@astrojs/mdx": "^4.3.13",
     "@astrojs/react": "^4.4.2",
     "@astrojs/sitemap": "^3.6.0",
     "@astrolib/seo": "1.0.0-beta.8",
@@ -28,6 +30,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@shikijs/transformers": "^3.21.0",
     "@types/dom-to-image": "^2.6.7",
     "astro": "^5.16.6",
     "class-variance-authority": "^0.7.1",
@@ -35,12 +38,16 @@
     "dayjs": "^1.11.19",
     "dom-to-image": "^2.6.0",
     "dom-to-image-more": "^3.7.2",
+    "fuse.js": "^7.1.0",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.562.0",
     "radash": "^12.1.1",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "recharts": "^3.6.0",
+    "rehype-autolink-headings": "^7.1.0",
+    "rehype-slug": "^6.0.0",
+    "shiki": "^3.21.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0"
   },

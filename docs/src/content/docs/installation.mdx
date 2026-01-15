@@ -1,0 +1,162 @@
+---
+title: Installation
+description: Install Cyberpath Sentinel in your Rust project using Cargo.
+section: Getting Started
+order: 2
+keywords: ["installation", "cargo", "setup", "dependencies"]
+related: ["introduction", "quick-start"]
+---
+
+Installing Sentinel is straightforward using Cargo, Rust's package manager. This guide walks you through adding Sentinel
+to your project and configuring the necessary dependencies.
+
+## Prerequisites
+
+Before installing Sentinel, ensure you have the following:
+
+- **Rust 1.92 or later**: Sentinel uses modern Rust features and async/await
+- **Cargo**: Rust's built-in package manager
+- And the easy one, **a filesystem**: Sentinel works on any POSIX-compliant or Windows filesystem
+
+If you don't have Rust installed, get it from [rustup.rs](https://rustup.rs):
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+## Adding Sentinel to Your Project
+
+Add Sentinel to your `Cargo.toml` dependencies:
+
+```toml
+[dependencies]
+sentinel-dbms = "^1.0"
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+```
+
+Sentinel is split into two crates:
+
+| Crate             | Description                                                      |
+| ----------------- | ---------------------------------------------------------------- |
+| `sentinel-dbms`   | The main database crate with Store, Collection, and Document     |
+| `sentinel-crypto` | Cryptographic utilities (automatically included as a dependency) |
+
+You only need to depend on `sentinel-dbms` directly, it re-exports everything you need from `sentinel-crypto`.
+
+## Async Runtime
+
+Sentinel is fully asynchronous and requires a Tokio runtime. Make sure your `main` function is annotated with
+`#[tokio::main]`:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", None).await?;
+    // Your code here
+    Ok(())
+}
+```
+
+If you're integrating Sentinel into an existing application that already has a Tokio runtime, you're all set. Sentinel
+will use the existing runtime context.
+
+## Optional Features
+
+Sentinel and its crypto module support different encryption and key derivation algorithms. You can configure which
+algorithms to use at runtime through the global crypto configuration:
+
+```rust
+use sentinel_dbms::{
+    CryptoConfig,
+    EncryptionAlgorithmChoice,
+    KeyDerivationAlgorithmChoice,
+    set_global_crypto_config,
+};
+
+fn main() {
+    // Configure before any crypto operations
+    let config = CryptoConfig {
+        hash_algorithm: Default::default(),           // BLAKE3
+        signature_algorithm: Default::default(),      // Ed25519
+        encryption_algorithm: EncryptionAlgorithmChoice::Aes256GcmSiv,
+        key_derivation_algorithm: KeyDerivationAlgorithmChoice::Pbkdf2,
+    };
+
+    set_global_crypto_config(config).expect("Config already set");
+}
+```
+
+## Verifying Installation
+
+Create a simple test to verify everything is working:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create a temporary store
+    let store = Store::new("./test-data", None).await?;
+
+    // Create a collection
+    let test = store.collection("test").await?;
+
+    // Insert a document
+    test.insert("hello", json!({ "message": "Sentinel is working!" })).await?;
+
+    // Read it back
+    let doc = test.get("hello").await?;
+    println!("{:?}", doc);
+
+    // Clean up
+    std::fs::remove_dir_all("./test-data")?;
+
+    println!("✓ Sentinel is installed correctly!");
+    Ok(())
+}
+```
+
+Run your project:
+
+```bash
+cargo run
+```
+
+If you see "Sentinel is installed correctly!" printed, you're ready to go!
+
+## Building from Source
+
+If you want to build Sentinel from source or contribute to development:
+
+```bash
+# Clone the repository
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel
+
+# Build all crates
+cargo build --release
+
+# Run tests
+cargo test
+
+# Run benchmarks
+cargo bench
+```
+
+The repository is organized as a Cargo workspace with multiple crates:
+
+```text
+crates/
+├── sentinel/          # Main DBMS crate
+├── sentinel-crypto/   # Cryptographic utilities
+└── cli/               # Command-line interface (coming soon)
+```
+
+## Next Steps
+
+Now that you have Sentinel installed, continue with the [Quick Start](/docs/quick-start) guide to create your first
+store and documents.

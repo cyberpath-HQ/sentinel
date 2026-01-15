@@ -1,0 +1,61 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { getCollection, render } from "astro:content";
+import { makeJsonLd } from "@/lib/make-json-ld";
+import type { WebPage } from "schema-dts";
+import Code from "@/components/code.astro";
+
+export async function getStaticPaths() {
+  const docs = await getCollection("docs", ({ data }) => !data.draft);
+  return docs.map((doc) => ({
+    params: { slug: doc.id },
+    props: { doc },
+  }));
+}
+
+const { doc } = Astro.props;
+const { Content } = await render(doc);
+
+const date = new Date();
+const json_ld = makeJsonLd<WebPage>({
+  "@type": "WebPage",
+  "@context": "https://schema.org",
+  "@id": `https://sentinel.cyberpath-hq.com/docs/${doc.id}`,
+  url: `https://sentinel.cyberpath-hq.com/docs/${doc.id}`,
+  name: `${doc.data.title} - Sentinel Documentation`,
+  description: doc.data.description,
+  inLanguage: "en-US",
+  author: "CyberPath <support@cyberpath-hq.com>",
+  datePublished: date.toISOString().split("T")[0],
+  dateModified: date.toISOString().split("T")[0],
+  publisher: {
+    "@type": "Organization",
+    name: "CyberPath",
+    email: "support@cyberpath-hq.com",
+  },
+});
+---
+
+<DocsLayout
+  JSON_LD={json_ld}
+  seo={{
+    title: `${doc.data.title} - Sentinel Documentation`,
+    canonical: `https://sentinel.cyberpath-hq.com/docs/${doc.id}`,
+    description: doc.data.description,
+    openGraph: {
+      url: `https://sentinel.cyberpath-hq.com/docs/${doc.id}`,
+      title: `${doc.data.title} - Sentinel Documentation`,
+      description: doc.data.description,
+      site_name: "Sentinel",
+    },
+    twitter: {
+      cardType: "summary",
+      handle: "@cyberpath_hq",
+      site: "@cyberpath_hq",
+    },
+  }}
+  frontmatter={doc.data}
+  currentSlug={doc.id}
+>
+  <Content components={{ pre: Code }} />
+</DocsLayout>

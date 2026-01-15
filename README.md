@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source srcset="./.assets/logo-white.svg" media="(prefers-color-scheme: dark)" />
-    <source srcset="./.assets/logo.svg" media="(prefers-color-scheme: light)" />
-    <img src="./.assets/logo.svg" alt="Sentinel Logo" height="64"/>
+    <source srcset="https://raw.githubusercontent.com/cyberpath-HQ/sentinel/refs/heads/main/.assets/logo-white.svg" media="(prefers-color-scheme: dark)" />
+    <source srcset="https://raw.githubusercontent.com/cyberpath-HQ/sentinel/refs/heads/main/.assets/logo.svg" media="(prefers-color-scheme: light)" />
+    <img src="https://raw.githubusercontent.com/cyberpath-HQ/sentinel/refs/heads/main/.assets/logo.svg" alt="Sentinel Logo" height="64"/>
   </picture>
 </p>
 
