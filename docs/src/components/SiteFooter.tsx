@@ -5,7 +5,7 @@
  */
 
 import type { FC } from "react";
-import { Shield, Github, ExternalLink, Heart } from "lucide-react";
+import { ExternalLink, Heart } from "lucide-react";
 
 export const SiteFooter: FC = () => {
     const currentYear = new Date().getFullYear();
@@ -59,29 +59,13 @@ export const SiteFooter: FC = () => {
                 <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
                     {/* Brand */}
                     <div className="lg:col-span-1 space-y-4">
-                        <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 border border-primary/20">
-                                <Shield className="h-5 w-5 text-primary" />
-                            </div>
-                            <div>
-                                <span className="font-bold text-lg">Sentinel</span>
-                            </div>
+                        <div className="flex items-center gap-3 h-9">
+                            <img src="/logo-white.svg" alt="Sentinel Logo" className="h-8 w-auto" />
                         </div>
                         <p className="text-sm text-muted-foreground leading-relaxed">
                             A filesystem-backed document DBMS designed for organizations that prioritize trust,
                             transparency, and compliance over raw throughput.
                         </p>
-                        <div className="flex items-center gap-4">
-                            <a
-                                href="https://github.com/cyberpath-HQ/sentinel"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                                aria-label="GitHub"
-                            >
-                                <Github className="h-5 w-5" />
-                            </a>
-                        </div>
                     </div>
 
                     {/* Documentation Links */}

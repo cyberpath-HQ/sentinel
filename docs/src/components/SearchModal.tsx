@@ -7,7 +7,7 @@ import { FuseConfig } from "@/pages/fuse.config";
 
 interface SearchModalProps {
     isOpen: boolean;
-    onClose: () => void;
+    onClose?: () => void;
 }
 
 /**
@@ -35,16 +35,18 @@ export default function SearchModal({ isOpen: initialIsOpen, onClose }: SearchMo
     const handleClose = useCallback(() => {
         setIsOpen(false);
         window.dispatchEvent(new CustomEvent("close-search"));
-        onClose();
+        if (typeof onClose === 'function') {
+            onClose();
+        }
     }, [onClose]);
 
     // Load search index when modal opens
     useEffect(() => {
         if (isOpen && !fuse) {
             all({
-            data:  fetch(`/data.json`),
-            index: fetch(`/data-index.json`),
-        })
+                data: fetch(`/data.json`),
+                index: fetch(`/data-index.json`),
+            })
                 .then(async ({ data, index }) => {
                     const all_data: DocsMetadataCollection = await data.json();
                     const parsed_index = Fuse.parseIndex<DocsMetadata>(await index.json());

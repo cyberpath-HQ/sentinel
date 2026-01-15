@@ -96,7 +96,7 @@ export default function TableOfContents({ headings: propHeadings }: TableOfConte
 
     return (
         <nav
-            className="hidden xl:block fixed top-24 right-8 w-64 max-h-[calc(100vh-8rem)] overflow-y-auto overscroll-contain"
+            className="hidden xl:block bg-background fixed top-24 right-8 w-64 max-h-[calc(92dvh-8rem)] overflow-y-auto overscroll-contain"
             aria-label="Table of contents"
         >
             <div className="sticky top-0 bg-background pb-2 z-10">
