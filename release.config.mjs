@@ -43,7 +43,7 @@ export default {
     [
       "@semantic-release/exec",
       {
-        prepareCmd: `sed -i 's/^version = ".*"/version = "${nextRelease.version}"/' Cargo.toml && node update-deps.js ${nextRelease.version} && node update-deps.js ${nextRelease.version}`,
+        prepareCmd: 'sed -i \'s/^version = ".*"/version = "${nextRelease.version}"/\' Cargo.toml && node update-deps.js ${nextRelease.version}',
       },
     ],
     [
