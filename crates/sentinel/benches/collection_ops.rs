@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use sentinel::{Collection, Store};
+use sentinel_dbms::{Collection, Store};
 use serde_json::json;
 use tempfile::tempdir;
 

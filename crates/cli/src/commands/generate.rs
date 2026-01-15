@@ -41,7 +41,7 @@ pub enum KeyType {
 ///
 /// # Returns
 /// Returns `Ok(())` on success.
-pub async fn run(args: GenArgs) -> sentinel::Result<()> {
+pub async fn run(args: GenArgs) -> sentinel_dbms::Result<()> {
     match args.subcommand {
         GenCommands::Key(key_args) => run_key(key_args).await,
     }
@@ -54,7 +54,7 @@ pub async fn run(args: GenArgs) -> sentinel::Result<()> {
 ///
 /// # Returns
 /// Returns `Ok(())` on success.
-pub async fn run_key(args: KeyArgs) -> sentinel::Result<()> {
+pub async fn run_key(args: KeyArgs) -> sentinel_dbms::Result<()> {
     match args.key_type {
         KeyType::Signing => {
             let key = sentinel_crypto::SigningKeyManager::generate_key();

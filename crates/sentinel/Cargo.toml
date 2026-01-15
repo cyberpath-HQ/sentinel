@@ -1,5 +1,5 @@
 [package]
-name = "sentinel"
+name = "sentinel-dbms"
 authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true

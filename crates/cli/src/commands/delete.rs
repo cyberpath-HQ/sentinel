@@ -37,7 +37,7 @@ pub struct DeleteArgs {
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: DeleteArgs) -> sentinel::Result<()> {
+pub async fn run(args: DeleteArgs) -> sentinel_dbms::Result<()> {
     let store_path = args.store_path;
     let collection = args.collection;
     let id = args.id;
@@ -45,7 +45,7 @@ pub async fn run(args: DeleteArgs) -> sentinel::Result<()> {
         "Deleting document '{}' from collection '{}' in store {}",
         id, collection, store_path
     );
-    let store = sentinel::Store::new(&store_path, None).await?;
+    let store = sentinel_dbms::Store::new(&store_path, None).await?;
     let coll = store.collection(&collection).await?;
     match coll.delete(&id).await {
         Ok(_) => {

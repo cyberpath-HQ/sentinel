@@ -12,7 +12,7 @@ use crate::{
 ///
 /// # Returns
 /// Returns `Ok(())` on successful execution, or a `SentinelError` on failure.
-pub async fn run() -> sentinel::Result<()> {
+pub async fn run() -> sentinel_dbms::Result<()> {
     let cli = Cli::parse();
 
     init_tracing(cli.json, cli.verbose);

@@ -47,7 +47,7 @@ pub struct InsertArgs {
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: InsertArgs) -> sentinel::Result<()> {
+pub async fn run(args: InsertArgs) -> sentinel_dbms::Result<()> {
     let store_path = args.store_path;
     let collection = args.collection;
     let id = args.id;
@@ -56,13 +56,13 @@ pub async fn run(args: InsertArgs) -> sentinel::Result<()> {
         "Inserting document '{}' into collection '{}' in store {}",
         id, collection, store_path
     );
-    let store = sentinel::Store::new(&store_path, args.passphrase.as_deref()).await?;
+    let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
     let coll = store.collection(&collection).await?;
     let value: Value = match serde_json::from_str(&data) {
         Ok(v) => v,
         Err(e) => {
             error!("Invalid JSON data: {}", e);
-            return Err(sentinel::SentinelError::Json {
+            return Err(sentinel_dbms::SentinelError::Json {
                 source: e,
             });
         },

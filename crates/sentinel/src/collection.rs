@@ -25,10 +25,10 @@ use crate::{
 /// # Example
 ///
 /// ```rust
-/// use sentinel::{Store, Collection};
+/// use sentinel_dbms::{Store, Collection};
 /// use serde_json::json;
 ///
-/// # async fn example() -> sentinel::Result<()> {
+/// # async fn example() -> sentinel_dbms::Result<()> {
 /// // Create a store and get a collection
 /// let store = Store::new("/path/to/data", None).await?;
 /// let collection = store.collection("users").await?;
@@ -82,10 +82,10 @@ impl Collection {
     /// # Example
     ///
     /// ```rust
-    /// use sentinel::{Store, Collection};
+    /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
     ///
-    /// # async fn example() -> sentinel::Result<()> {
+    /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
     /// let collection = store.collection("users").await?;
     ///
@@ -134,10 +134,10 @@ impl Collection {
     /// # Example
     ///
     /// ```rust
-    /// use sentinel::{Store, Collection};
+    /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
     ///
-    /// # async fn example() -> sentinel::Result<()> {
+    /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
     /// let collection = store.collection("users").await?;
     ///
@@ -192,10 +192,10 @@ impl Collection {
     /// # Example
     ///
     /// ```rust
-    /// use sentinel::{Store, Collection};
+    /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
     ///
-    /// # async fn example() -> sentinel::Result<()> {
+    /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
     /// let collection = store.collection("users").await?;
     ///
@@ -235,10 +235,10 @@ impl Collection {
     /// # Example
     ///
     /// ```rust
-    /// use sentinel::{Store, Collection};
+    /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
     ///
-    /// # async fn example() -> sentinel::Result<()> {
+    /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
     /// let collection = store.collection("users").await?;
     ///

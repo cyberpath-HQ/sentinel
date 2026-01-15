@@ -29,7 +29,7 @@ use crate::{
 /// # Examples
 ///
 /// ```no_run
-/// use sentinel::Store;
+/// use sentinel_dbms::Store;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create a new store at the specified path
@@ -75,7 +75,7 @@ impl Store {
     /// # Examples
     ///
     /// ```no_run
-    /// use sentinel::Store;
+    /// use sentinel_dbms::Store;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// // Create a store with a string path
@@ -183,7 +183,7 @@ impl Store {
     /// # Examples
     ///
     /// ```no_run
-    /// use sentinel::Store;
+    /// use sentinel_dbms::Store;
     /// use serde_json::json;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -252,7 +252,7 @@ impl Store {
 ///
 /// # Examples
 /// ```no_run
-/// # use sentinel::{Store, SentinelError};
+/// # use sentinel_dbms::{Store, SentinelError};
 /// # use std::path::Path;
 /// # async fn example() -> Result<(), SentinelError> {
 /// let store = Store::new(Path::new("/tmp/test"), None).await?;

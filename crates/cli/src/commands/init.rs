@@ -36,12 +36,12 @@ pub struct InitArgs {
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: InitArgs) -> sentinel::Result<()> {
+pub async fn run(args: InitArgs) -> sentinel_dbms::Result<()> {
     let path = args.path;
     info!("Initializing store at {}", path);
 
     let passphrase = args.passphrase.as_deref();
-    match sentinel::Store::new(&path, passphrase).await {
+    match sentinel_dbms::Store::new(&path, passphrase).await {
         Ok(mut store) => {
             #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
             if let Some(hex) = &args.signing_key {

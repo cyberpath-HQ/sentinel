@@ -1186,30 +1186,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
 
 [[package]]
-name = "sentinel"
-version = "1.0.2"
-dependencies = [
- "async-trait",
- "chrono",
- "criterion",
- "hex",
- "rand 0.8.5",
- "sentinel-crypto",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "sentinel-cli"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "clap",
  "hex",
- "sentinel",
  "sentinel-crypto",
+ "sentinel-dbms",
  "serde_json",
  "tempfile",
  "tokio",
@@ -1219,7 +1202,7 @@ dependencies = [
 
 [[package]]
 name = "sentinel-crypto"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "aes-gcm",
  "aes-gcm-siv",
@@ -1238,6 +1221,23 @@ dependencies = [
  "signature",
  "thiserror",
  "zeroize",
+]
+
+[[package]]
+name = "sentinel-dbms"
+version = "1.0.3"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "criterion",
+ "hex",
+ "rand 0.8.5",
+ "sentinel-crypto",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

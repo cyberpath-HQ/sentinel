@@ -39,11 +39,11 @@ pub struct CreateCollectionArgs {
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: CreateCollectionArgs) -> sentinel::Result<()> {
+pub async fn run(args: CreateCollectionArgs) -> sentinel_dbms::Result<()> {
     let store_path = args.store_path;
     let name = args.name;
     info!("Creating collection '{}' in store {}", name, store_path);
-    let store = sentinel::Store::new(&store_path, args.passphrase.as_deref()).await?;
+    let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
     match store.collection(&name).await {
         Ok(_) => {
             info!("Collection '{}' created successfully", name);

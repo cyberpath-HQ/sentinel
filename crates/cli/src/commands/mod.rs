@@ -162,25 +162,25 @@ pub enum Commands {
 /// let cli = Cli::parse();
 /// run_command(cli).await?;
 /// ```
-pub async fn run_command(cli: Cli) -> sentinel::Result<()> {
+pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
     // Parse algorithms
     let hash_alg = parse_hash_algorithm(&cli.hash_algorithm).map_err(|e| {
-        sentinel::SentinelError::ConfigError {
+        sentinel_dbms::SentinelError::ConfigError {
             message: e,
         }
     })?;
     let sig_alg = parse_signature_algorithm(&cli.signature_algorithm).map_err(|e| {
-        sentinel::SentinelError::ConfigError {
+        sentinel_dbms::SentinelError::ConfigError {
             message: e,
         }
     })?;
     let enc_alg = parse_encryption_algorithm(&cli.encryption_algorithm).map_err(|e| {
-        sentinel::SentinelError::ConfigError {
+        sentinel_dbms::SentinelError::ConfigError {
             message: e,
         }
     })?;
     let kd_alg = parse_key_derivation_algorithm(&cli.key_derivation_algorithm).map_err(|e| {
-        sentinel::SentinelError::ConfigError {
+        sentinel_dbms::SentinelError::ConfigError {
             message: e,
         }
     })?;
@@ -194,7 +194,7 @@ pub async fn run_command(cli: Cli) -> sentinel::Result<()> {
 
     sentinel_crypto::set_global_crypto_config(config.clone())
         .map_err(|err| {
-            sentinel::SentinelError::ConfigError {
+            sentinel_dbms::SentinelError::ConfigError {
                 message: err.to_string(),
             }
         })
@@ -205,7 +205,7 @@ pub async fn run_command(cli: Cli) -> sentinel::Result<()> {
                 Ok(())
             }
             else {
-                Err(sentinel::SentinelError::ConfigError {
+                Err(sentinel_dbms::SentinelError::ConfigError {
                     message: "Crypto config already set with different values".to_owned(),
                 })
             }

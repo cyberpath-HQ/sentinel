@@ -42,7 +42,7 @@ pub struct UpdateArgs {
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: UpdateArgs) -> sentinel::Result<()> {
+pub async fn run(args: UpdateArgs) -> sentinel_dbms::Result<()> {
     let store_path = args.store_path;
     let collection = args.collection;
     let id = args.id;
@@ -51,13 +51,13 @@ pub async fn run(args: UpdateArgs) -> sentinel::Result<()> {
         "Updating document '{}' in collection '{}' in store {}",
         id, collection, store_path
     );
-    let store = sentinel::Store::new(&store_path, None).await?;
+    let store = sentinel_dbms::Store::new(&store_path, None).await?;
     let coll = store.collection(&collection).await?;
     let value: Value = match serde_json::from_str(&data) {
         Ok(v) => v,
         Err(e) => {
             error!("Invalid JSON data: {}", e);
-            return Err(sentinel::SentinelError::Json {
+            return Err(sentinel_dbms::SentinelError::Json {
                 source: e,
             });
         },

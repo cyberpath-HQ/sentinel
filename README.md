@@ -122,7 +122,7 @@ cargo build --release
 ### Basic Usage
 
 ```rust
-use cyberpath_sentinel::Store;
+use cyberpath_sentinel_dbms::Store;
 
 // Create a store (creates data/ folder)
 let store = Store::new("./data").expect("Failed to create store");

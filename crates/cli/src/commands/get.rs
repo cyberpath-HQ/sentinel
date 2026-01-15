@@ -42,7 +42,7 @@ pub struct GetArgs {
 /// };
 /// run(args).await?;
 /// ```
-pub async fn run(args: GetArgs) -> sentinel::Result<()> {
+pub async fn run(args: GetArgs) -> sentinel_dbms::Result<()> {
     let store_path = args.store_path;
     let collection = args.collection;
     let id = args.id;
@@ -50,7 +50,7 @@ pub async fn run(args: GetArgs) -> sentinel::Result<()> {
         "Getting document '{}' from collection '{}' in store {}",
         id, collection, store_path
     );
-    let store = sentinel::Store::new(&store_path, args.passphrase.as_deref()).await?;
+    let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
     let coll = store.collection(&collection).await?;
     match coll.get(&id).await {
         Ok(Some(doc)) => {
@@ -65,7 +65,7 @@ pub async fn run(args: GetArgs) -> sentinel::Result<()> {
                 },
                 Err(e) => {
                     error!("Failed to serialize document to JSON: {}", e);
-                    Err(sentinel::SentinelError::Json {
+                    Err(sentinel_dbms::SentinelError::Json {
                         source: e,
                     })
                 },
