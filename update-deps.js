@@ -16,13 +16,13 @@ crates.forEach((crate) => {
 
   // Add version to path dependencies
   content = content.replace(
-    /sentinel-crypto = \{ path = "\.\.\/sentinel-crypto" \}/g,
+    /sentinel-crypto = \{ (version = "[^"]+",\s*)?path = "\.\.\/sentinel-crypto" \}/g,
     `sentinel-crypto = { version = "${newVersion}", path = "../sentinel-crypto" }`
   );
 
   if (crate === "cli") {
     content = content.replace(
-      /sentinel = \{ path = "\.\.\/sentinel" \}/g,
+      /sentinel = \{ (version = "[^"]+",\s*)?path = "\.\.\/sentinel" \}/g,
       `sentinel = { version = "${newVersion}", path = "../sentinel" }`
     );
   }
