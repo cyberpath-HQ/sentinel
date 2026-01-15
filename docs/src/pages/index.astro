@@ -1,74 +1,135 @@
 ---
-import Layout from "../layouts/Layout.astro";
-import { Header } from "@/components/Header";
-import { Footer } from "@/components/Footer";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { makeJsonLd } from "@/lib/make-json-ld";
 import type { WebPage } from "schema-dts";
+import {
+  Shield,
+  Database,
+  Lock,
+  FileText,
+  GitBranch,
+  Terminal,
+  Zap,
+  CheckCircle,
+  ArrowRight,
+  Code,
+  Eye,
+  Key,
+  Folder,
+  Clock,
+} from "lucide-react";
+import { Code as CodeComponent } from "astro:components";
 
 const date = new Date();
 const json_ld = makeJsonLd<WebPage>({
   "@type": "WebPage",
   "@context": "https://schema.org",
-  "@id": "https://quant.cyberpath-hq.com/",
-  url: "https://quant.cyberpath-hq.com/",
-  name: "Quant - Nextgen CVSS Score Calculator",
+  "@id": "https://sentinel.cyberpath-hq.com/",
+  url: "https://sentinel.cyberpath-hq.com/",
+  name: "Sentinel - Filesystem-Backed Document DBMS",
   description:
-    "Master vulnerability assessment with Quant's intuitive CVSS calculator. Support for CVSS v4.0, v3.1, v3.0, and v2.0 with real-time scoring and advanced analytics.",
+    "A document-based DBMS written in Rust that stores all data as files on disk. Every piece of data is inspectable, auditable, and compliant by design.",
   inLanguage: "en-US",
   author: "CyberPath <support@cyberpath-hq.com>",
-  image: {
-    "@type": "ImageObject",
-    url: "https://quant.cyberpath-hq.com/og-image.svg",
-    width: "1200",
-    height: "630",
-    description: "Quant - Nextgen CVSS Score Calculator",
-  },
-  mainEntityOfPage: {
-    "@type": "WebPage",
-    "@id": "https://quant.cyberpath-hq.com/",
-  },
   datePublished: `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`,
   dateModified: `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`,
   publisher: {
-    "@type": "Person",
+    "@type": "Organization",
     name: "CyberPath",
     email: "support@cyberpath-hq.com",
   },
 });
+
+const features = [
+  {
+    icon: Eye,
+    title: "Native Auditability",
+    description:
+      "Every change is a file, every file is Git-versionable. Full transparency built into the architecture.",
+  },
+  {
+    icon: Shield,
+    title: "Compliance Ready",
+    description: "GDPR, SOC 2, HIPAA, PCI-DSS support built-in. Your data is always forensic-friendly.",
+  },
+  {
+    icon: Terminal,
+    title: "Operational Simplicity",
+    description: "Use standard UNIX tools: rsync for replication, tar for backups, grep for queries.",
+  },
+  {
+    icon: Folder,
+    title: "Zero Lock-In",
+    description: "Pure JSON data, not trapped in proprietary formats. Migrate anywhere with standard tools.",
+  },
+  {
+    icon: Lock,
+    title: "Security First",
+    description:
+      "AES-256-GCM, XChaCha20-Poly1305, and Ascon-128 encryption. Ed25519 signatures for integrity. Blake3 hashing.",
+  },
+  {
+    icon: Zap,
+    title: "Edge & Offline First",
+    description: "Works on any filesystem without a server. Perfect for disconnected environments.",
+  },
+];
+
+const useCases = [
+  { icon: FileText, title: "Audit Logs", description: "Every entry is a file, versioned with Git" },
+  { icon: Key, title: "Certificate Management", description: "Secure, inspectable, with OS-level ACLs" },
+  {
+    icon: Database,
+    title: "Compliance Rules",
+    description: "GDPR right-to-delete is literally <code class='text-xs!'>rm file</code>",
+  },
+  { icon: Lock, title: "Key Management", description: "Keys stored as files with filesystem security" },
+  { icon: Clock, title: "Regulatory Reporting", description: "All data is immediately forensic-friendly" },
+  { icon: GitBranch, title: "Edge Devices", description: "No server required, works with Git sync" },
+];
+
+const codeExample = `use sentinel_dbms::{Store, SentinelError};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), SentinelError> {
+    // Create a store with encryption
+    let store = Store::new("./data", Some("secret_passphrase")).await?;
+
+    // Get a collection (creates directory if needed)
+    let users = store.collection("users").await?;
+
+    // Insert a document (creates JSON file with hash & signature)
+    users.insert("user-123", json!({
+        "name": "Alice",
+        "email": "alice@example.com",
+        "role": "admin"
+    })).await?;
+
+    // Retrieve the document
+    let doc = users.get("user-123").await?;
+    println!("Found: {:?}", doc);
+
+    Ok(())
+}`;
 ---
 
-<Layout
+<BaseLayout
   JSON_LD={json_ld}
   seo={{
-    title: "Quant - Nextgen CVSS Score Calculator",
-    canonical: "https://quant.cyberpath-hq.com/",
+    title: "Sentinel - Filesystem-Backed Document DBMS | CyberPath",
+    canonical: "https://sentinel.cyberpath-hq.com/",
     description:
-      "Master vulnerability assessment with Quant's intuitive CVSS calculator. Support for CVSS v4.0, v3.1, v3.0, and v2.0 with real-time scoring and advanced analytics.",
+      "A document-based DBMS written in Rust that stores all data as files on disk. Every piece of data is inspectable, auditable, and compliant by design.",
     openGraph: {
-      url: "https://quant.cyberpath-hq.com/",
-      title: "Quant - Nextgen CVSS Score Calculator",
-      description:
-        "Master vulnerability assessment with Quant's intuitive CVSS calculator supporting all CVSS versions.",
-      site_name: "Quant",
-      images: [
-        {
-          url: "https://quant.cyberpath-hq.com/og-image.svg",
-          width: 1200,
-          height: 630,
-          alt: "Quant - Nextgen CVSS Score Calculator",
-        },
-      ],
+      url: "https://sentinel.cyberpath-hq.com/",
+      title: "Sentinel - Filesystem-Backed Document DBMS",
+      description: "Trust, transparency, and compliance over raw throughput. Your data, your files, your control.",
+      site_name: "Sentinel",
     },
-    additionalMetaTags: [
-      {
-        name: "keywords",
-        content:
-          "CVSS, vulnerability scoring, security assessment, CVSS v4.0, CVSS v3.1, nextgen CVSS calculator, cybersecurity",
-      },
-    ],
     twitter: {
       cardType: "summary_large_image",
       handle: "@cyberpath_hq",
@@ -76,402 +137,258 @@ const json_ld = makeJsonLd<WebPage>({
     },
   }}
 >
-  <Header client:load />
+  <SiteHeader client:load activePage="home" />
 
-  <!-- Hero Section -->
-  <section class="overflow-hidden relative bg-background">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
-      {/* Sky Orb Grid Background */}
+  <main>
+    <!-- Hero Section -->
+    <section class="relative overflow-hidden border-b border-border">
+      <!-- Grid background -->
+      <div class="absolute inset-0 grid-pattern opacity-50"></div>
+
+      <!-- Gradient orb -->
       <div
-        class="absolute inset-0 z-0 block dark:hidden"
-        style={{
-          backgroundImage: `
-     linear-gradient(to right, oklch(27.4% 0.006 286.033 / 0.1) 1px, transparent 1px),
-     linear-gradient(to bottom, oklch(27.4% 0.006 286.033 / 0.1) 1px, transparent 1px),
-     radial-gradient(circle at 50% 60%, oklch(82.8% 0.111 230.318 / 0.25) 0%, oklch(95.1% 0.026 236.824 / 0.15) 40%, transparent 70%)
-   `,
-          backgroundSize: "40px 40px, 40px 40px, 100% 100%",
-        }}
+        class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full opacity-20"
+        style="background: radial-gradient(circle, oklch(76.5% 0.177 163.223 / 40%) 0%, transparent 70%);"
       >
       </div>
-      <div
-        class="absolute inset-0 z-0 dark:block hidden"
-        style={{
-          backgroundImage: `
-     linear-gradient(to right, oklch(70.5% 0.015 286.067 / 0.1) 1px, transparent 1px),
-     linear-gradient(to bottom, oklch(70.5% 0.015 286.067 / 0.1) 1px, transparent 1px),
-     radial-gradient(circle at 50% 60%, oklch(50% 0.134 242.749 / 0.25) 0%, oklch(39.1% 0.09 240.876 / 0.15) 40%, transparent 70%)
-   `,
-          backgroundSize: "40px 40px, 40px 40px, 100% 100%",
-        }}
-      >
-      </div>
-      <div class="mx-auto max-w-4xl text-center space-y-8 relative">
-        <div class="space-y-4 animate-fade-in-up">
-          <Badge variant="outline" className="px-3 py-1 text-sm font-medium bg-background">
-            <div class="size-2 bg-sky-500 rounded-full animate-pulse mr-1"></div>
-            Next-Generation CVSS Calculator
-          </Badge>
-          <h1
-            class="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight bg-linear-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent"
+
+      <div class="relative container mx-auto px-4 lg:px-8 py-24 lg:py-32">
+        <div class="max-w-4xl mx-auto text-center">
+          <div
+            class="inline-flex items-center gap-2 px-4 py-2 mb-8 text-sm font-medium bg-primary/10 border border-primary/20 rounded-full text-primary"
           >
-            Master Vulnerability
-            <span class="block text-primary">Assessment</span>
+            <Shield className="h-4 w-4" />
+            <span>Filesystem-Backed Document DBMS</span>
+          </div>
+
+          <h1 class="text-5xl lg:text-7xl font-bold tracking-tight mb-6">
+            Your data as <span class="gradient-text">files</span>, not black boxes
           </h1>
-          <p class="text-xl sm:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-            Quant makes CVSS scoring fast, accurate, and accessible. Support for all versions with real-time
-            visualization and advanced analytics.
+
+          <p class="text-xl lg:text-2xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
+            A document database written in Rust where every piece of data is inspectable, auditable, and compliant by
+            design. Trust and transparency over raw throughput.
           </p>
-        </div>
 
-        <div class="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in-up animation-delay-200">
-          <a href="/docs">
-            <Button
-              variant="outline"
-              size="lg"
-              className="px-8 py-6 text-lg font-semibold hover:bg-muted/50 transition-all duration-300"
-            >
-              View Documentation
-            </Button>
-          </a>
-          <a href="/calculator">
-            <Button
-              size="lg"
-              className="px-8 py-6 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-            >
-              Start Calculating
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="lucide lucide-chevron-right-icon lucide-chevron-right ml-2 size-5"
-              >
-                <path d="m9 18 6-6-6-6"></path>
-              </svg>
-            </Button>
-          </a>
-        </div>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a href="/docs/introduction">
+              <Button size="lg" className="gap-2 text-base">
+                Get Started
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </a>
+            <a href="https://github.com/cyberpath-HQ/sentinel" target="_blank" rel="noopener">
+              <Button variant="outline" size="lg" className="gap-2 text-base">
+                <GitBranch className="h-4 w-4" />
+                View on GitHub
+              </Button>
+            </a>
+          </div>
 
-        <div class="pt-8 animate-fade-in-up animation-delay-400">
-          <div class="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
-            <div class="flex items-center gap-2">
-              <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>CVSS v4.0 Support</span>
+          <!-- Stats -->
+          <div class="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-8">
+            <div class="text-center">
+              <div class="text-3xl font-bold text-primary mb-1">100%</div>
+              <div class="text-sm text-muted-foreground">Transparent</div>
             </div>
-            <div class="flex items-center gap-2">
-              <div class="w-2 h-2 bg-blue-500 rounded-full animate-pulse animation-delay-100"></div>
-              <span>Real-Time Scoring</span>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-primary mb-1">Zero</div>
+              <div class="text-sm text-muted-foreground">Vendor Lock-in</div>
             </div>
-            <div class="flex items-center gap-2">
-              <div class="w-2 h-2 bg-purple-500 rounded-full animate-pulse animation-delay-200"></div>
-              <span>Offline Capable</span>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-primary mb-1">Git</div>
+              <div class="text-sm text-muted-foreground">Native Versioning</div>
+            </div>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-primary mb-1">Rust</div>
+              <div class="text-sm text-muted-foreground">Memory Safe</div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Features Section -->
-  <section class="py-24 lg:py-32 relative bg-background">
-    {/* Dark White Dotted Grid Background */}
-    <div
-      class="absolute inset-0 z-0"
-      style={{
-        background: "#000000",
-        backgroundImage: `radial-gradient(circle, rgba(255, 255, 255, 0.2) 2px, transparent 2px)`,
-        backgroundSize: "40px 40px",
-        backgroundPosition: "-19px -19px",
-      }}
-    >
-    </div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative text-background/90 dark:text-foreground">
-      <div class="mx-auto max-w-2xl text-center mb-16">
-        <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-4">Why Choose Quant?</h2>
-        <p class="text-xl text-muted-foreground">
-          Built for security professionals who demand precision and efficiency
-        </p>
+    <!-- Code Example Section -->
+    <section class="py-20 lg:py-28 border-b border-border bg-card/30">
+      <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-6xl mx-auto">
+          <div class="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 class="text-3xl lg:text-4xl font-bold tracking-tight mb-6">
+                Simple, async, and <span class="text-primary">intuitive</span>
+              </h2>
+              <p class="text-lg text-muted-foreground mb-8 leading-relaxed">
+                Sentinel provides a clean, async API that feels natural for Rust developers. Create stores, manage
+                collections, and work with documents using familiar patterns. Every document is automatically hashed and
+                optionally signed for integrity verification.
+              </p>
+              <ul class="space-y-4">
+                <li class="flex items-start gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                  <span class="text-muted-foreground">Full async/await support with Tokio</span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                  <span class="text-muted-foreground">Automatic BLAKE3 hashing for integrity</span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                  <span class="text-muted-foreground">Optional Ed25519 signatures with passphrase</span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <CheckCircle className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                  <span class="text-muted-foreground">Pretty-printed JSON for easy inspection</span>
+                </li>
+              </ul>
+            </div>
+            <div class="relative">
+              <div
+                class="absolute -inset-4 bg-gradient-to-r from-primary/20 to-transparent rounded-2xl blur-xl opacity-50"
+              >
+              </div>
+              <div class="relative rounded-xl border border-border bg-card p-1 overflow-x-auto text-sm">
+                <CodeComponent lang="rust" code={codeExample} theme={"aurora-x"} />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+    </section>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <Card
-          className="group hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 border-2 border-primary bg-foreground text-background/90 dark:bg-background dark:text-foreground/90 backdrop-blur"
-        >
-          <CardHeader>
-            <div
-              class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors"
-            >
-              <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                ></path>
-              </svg>
-            </div>
-            <CardTitle className="text-xl">Multi-Version Support</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-base">
-              Full support for CVSS v4.0, v3.1, v3.0, and v2.0. Automatically stay current with the latest standards.
-            </CardDescription>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="group hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 border-2 border-primary bg-foreground text-background/90 dark:bg-background dark:text-foreground/90 backdrop-blur"
-        >
-          <CardHeader>
-            <div
-              class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors"
-            >
-              <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"
-                ></path>
-              </svg>
-            </div>
-            <CardTitle className="text-xl">Lightning Fast</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-base">
-              Real-time scoring with instant updates as you adjust metrics. No waiting, no delays.
-            </CardDescription>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="group hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 border-2 border-primary bg-foreground text-background/90 dark:bg-background dark:text-foreground/90 backdrop-blur"
-        >
-          <CardHeader>
-            <div
-              class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors"
-            >
-              <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                ></path>
-              </svg>
-            </div>
-            <CardTitle className="text-xl">Visual Analytics</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-base">
-              Color-coded severity indicators and interactive charts help you understand impact at a glance.
-            </CardDescription>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="group hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 border-2 border-primary bg-foreground text-background/90 dark:bg-background dark:text-foreground/90 backdrop-blur"
-        >
-          <CardHeader>
-            <div
-              class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors"
-            >
-              <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                ></path>
-              </svg>
-            </div>
-            <CardTitle className="text-xl">Privacy First</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-base">
-              All calculations happen locally. Your vulnerability data never leaves your device.
-            </CardDescription>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="group hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 border-2 border-primary bg-foreground text-background/90 dark:bg-background dark:text-foreground/90 backdrop-blur"
-        >
-          <CardHeader>
-            <div
-              class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors"
-            >
-              <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                ></path>
-              </svg>
-            </div>
-            <CardTitle className="text-xl">Open Source</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-base">
-              Transparent, auditable code. Contribute to the project and help improve vulnerability assessment
-              worldwide.
-            </CardDescription>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="group hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 border-2 border-primary bg-foreground text-background/90 dark:bg-background dark:text-foreground/90 backdrop-blur"
-        >
-          <CardHeader>
-            <div
-              class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors"
-            >
-              <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9"></path>
-              </svg>
-            </div>
-            <CardTitle className="text-xl">Export & Share</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="text-base">
-              Generate shareable links, copy vectors, and export data in multiple formats for seamless collaboration.
-            </CardDescription>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  </section>
-
-  <!-- CTA Section -->
-  <section class="py-24 lg:py-32 relative bg-background text-foreground">
-    {/* Sky Orb Grid Background */}
-    <div
-      class="absolute inset-0 z-0 block dark:hidden"
-      style={{
-        backgroundImage: `
-     linear-gradient(to right, oklch(27.4% 0.006 286.033 / 0.1) 1px, transparent 1px),
-     linear-gradient(to bottom, oklch(27.4% 0.006 286.033 / 0.1) 1px, transparent 1px),
-     radial-gradient(circle at 50% 60%, transparent 0%, transparent 40%, transparent 70%)
-   `,
-        backgroundSize: "40px 40px, 40px 40px, 100% 100%",
-      }}
-    >
-    </div>
-    <div
-      class="absolute inset-0 z-0 dark:block hidden"
-      style={{
-        backgroundImage: `
-     linear-gradient(to right, oklch(70.5% 0.015 286.067 / 0.1) 1px, transparent 1px),
-     linear-gradient(to bottom, oklch(70.5% 0.015 286.067 / 0.1) 1px, transparent 1px),
-     radial-gradient(circle at 50% 60%, transparent 0%, transparent 40%, transparent 70%)
-   `,
-        backgroundSize: "40px 40px, 40px 40px, 100% 100%",
-      }}
-    >
-    </div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative">
-      <div class="mx-auto max-w-4xl text-center space-y-8">
-        <div class="space-y-4">
-          <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight">Ready to Assess Vulnerabilities?</h2>
-          <p class="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Join thousands of security professionals using Quant for accurate, efficient vulnerability scoring.
+    <!-- Features Section -->
+    <section class="py-20 lg:py-28 border-b border-border">
+      <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-4xl mx-auto text-center mb-16">
+          <h2 class="text-3xl lg:text-4xl font-bold tracking-tight mb-4">
+            Why choose <span class="text-primary">Sentinel</span>?
+          </h2>
+          <p class="text-lg text-muted-foreground">
+            Modern databases prioritize speed. Sentinel prioritizes trust, transparency, and compliance.
           </p>
         </div>
 
-        <div class="flex flex-col sm:flex-row gap-4 justify-center">
-          <a href="https://newsletter.cyberpath-hq.com/" target="_blank" rel="noopener">
-            <Button
-              variant="outline"
-              size="lg"
-              className="px-8 py-6 text-lg font-semibold hover:bg-muted/50 transition-all duration-300"
-            >
-              Subscribe to Newsletter
-            </Button>
-          </a>
-          <a href="/calculator">
-            <Button
-              size="lg"
-              className="px-8 py-6 text-lg font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-            >
-              Get Started Now
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="lucide lucide-chevron-right-icon lucide-chevron-right ml-2 size-5"
-              >
-                <path d="m9 18 6-6-6-6"></path>
-              </svg>
-            </Button>
-          </a>
+        <div class="max-w-6xl mx-auto grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {
+            features.map((feature) => (
+              <div class="group relative p-6 rounded-xl border border-border bg-card/50 hover:bg-card transition-colors">
+                <div class="flex items-center justify-center w-12 h-12 mb-4 rounded-lg bg-primary/10 border border-primary/20 group-hover:bg-primary/20 transition-colors">
+                  <feature.icon className="h-6 w-6 text-primary" />
+                </div>
+                <h3 class="text-lg font-semibold mb-2">{feature.title}</h3>
+                <p class="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
+              </div>
+            ))
+          }
         </div>
       </div>
-    </div>
-  </section>
-</Layout>
+    </section>
 
-<Footer />
+    <!-- Use Cases Section -->
+    <section class="py-20 lg:py-28 border-b border-border bg-card/30">
+      <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-4xl mx-auto text-center mb-16">
+          <h2 class="text-3xl lg:text-4xl font-bold tracking-tight mb-4">
+            Perfect for <span class="text-primary">critical data</span>
+          </h2>
+          <p class="text-lg text-muted-foreground">
+            Sentinel shines in environments where auditability and compliance are non-negotiable.
+          </p>
+        </div>
 
-<style>
-  @keyframes fade-in-up {
-    from {
-      opacity: 0;
-      transform: translateY(30px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+        <div class="max-w-4xl mx-auto grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {
+            useCases.map((useCase) => (
+              <div class="flex items-start gap-4 p-4 rounded-lg border border-border bg-card/50 hover:bg-card transition-colors">
+                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 shrink-0">
+                  <useCase.icon className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 class="font-semibold mb-1">{useCase.title}</h3>
+                  <p class="text-sm text-muted-foreground" set:html={useCase.description} />
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- Data Structure Section -->
+    <section class="py-20 lg:py-28 border-b border-border">
+      <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-6xl mx-auto">
+          <div class="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 class="text-3xl lg:text-4xl font-bold tracking-tight mb-6">
+                Data you can <span class="text-primary">actually see</span>
+              </h2>
+              <p class="text-lg text-muted-foreground mb-6 leading-relaxed">
+                Every document is stored as a pretty-printed JSON file. No binary blobs, no proprietary formats—just
+                plain text that you can inspect with `cat`, edit with any text editor, and version with Git.
+              </p>
+              <p class="text-lg text-muted-foreground mb-8 leading-relaxed">
+                Each document includes metadata for versioning, timestamps, cryptographic hashes, and optional
+                signatures. You always know what changed, when, and can verify integrity at any time.
+              </p>
+              <a href="/docs/document">
+                <Button variant="outline" className="gap-2">
+                  Learn about documents
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </a>
+            </div>
+            <div class="relative">
+              <div class="rounded-xl border border-border bg-card p-1 overflow-x-auto text-sm">
+                <CodeComponent
+                  lang={`json5`}
+                  theme={`aurora-x`}
+                  code={`{
+  "id": "user-123",
+  "version": 1,
+  "created_at": "2026-01-15T12:00:00Z",
+  "updated_at": "2026-01-15T12:00:00Z",
+  "hash": "a1b2c3d4e5f6...",
+  "signature": "ed25519:...",
+  "data": {
+    "name": "Alice",
+    "email": "alice@example.com",
+    "role": "admin"
   }
+}`}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-  @keyframes float {
-    0%,
-    100% {
-      transform: translateY(0px);
-    }
-    50% {
-      transform: translateY(-20px);
-    }
-  }
+    <!-- CTA Section -->
+    <section class="py-20 lg:py-28">
+      <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-3xl mx-auto text-center">
+          <h2 class="text-3xl lg:text-4xl font-bold tracking-tight mb-6">
+            Ready to make your data <span class="text-primary">transparent</span>?
+          </h2>
+          <p class="text-lg text-muted-foreground mb-10">
+            Get started with Sentinel in minutes. Add it to your Rust project and start storing data as inspectable,
+            auditable files.
+          </p>
+          <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a href="/docs/installation">
+              <Button className="gap-2 text-base" size={"lg"}>
+                Installation Guide
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </a>
+            <a href="/docs/quick-start">
+              <Button variant="outline" className="gap-2 text-base" size={"lg"}> Quick Start Tutorial </Button>
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
 
-  .animate-fade-in-up {
-    animation: fade-in-up 0.8s ease-out forwards;
-    opacity: 0;
-  }
-
-  .animate-float {
-    animation: float 6s ease-in-out infinite;
-  }
-
-  .animation-delay-200 {
-    animation-delay: 0.2s;
-  }
-
-  .animation-delay-400 {
-    animation-delay: 0.4s;
-  }
-
-  .animation-delay-1000 {
-    animation-delay: 1s;
-  }
-
-  .bg-grid-pattern {
-    background-image:
-      linear-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
-    background-size: 20px 20px;
-  }
-</style>
+  <SiteFooter client:load />
+</BaseLayout>
