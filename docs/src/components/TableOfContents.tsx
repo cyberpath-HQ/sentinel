@@ -102,7 +102,7 @@ export default function TableOfContents({ headings: propHeadings }: TableOfConte
             <div className="sticky top-0 bg-background pb-2 z-10">
                 <h4 className="text-sm font-semibold text-foreground mb-2">On This Page</h4>
             </div>
-            <ul className="text-sm pb-4 border-l-2">
+            <ul className="text-sm border-l-2 mb-4">
                 {headings.map((heading) => {
                     const isActive = activeId === heading.id;
                     const indent = (heading.level - 2) * 16; // Indent based on heading level
