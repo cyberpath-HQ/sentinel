@@ -1,3 +1,14 @@
+## [1.0.3](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.2...v1.0.3) (2026-01-15)
+
+
+### Bug Fixes
+
+* bump version for sentinel, sentinel-cli, and sentinel-crypto to 1.0.1 ([da38dc4](https://github.com/cyberpath-HQ/sentinel/commit/da38dc48cf8f07c1678206f362284f72078ebb67))
+* bump version for sentinel, sentinel-cli, and sentinel-crypto to 1.0.2; update release configuration for command simplification ([9859fd6](https://github.com/cyberpath-HQ/sentinel/commit/9859fd630dbd3ac43471742dcc82cbc06def7e62))
+* remove redundant command in prepareCmd for release configuration ([d9a3c89](https://github.com/cyberpath-HQ/sentinel/commit/d9a3c898342eb01b935f54624e9c351121deab3f))
+* specify version for sentinel and sentinel-crypto dependencies in Cargo.toml ([8e9ffb0](https://github.com/cyberpath-HQ/sentinel/commit/8e9ffb0bc5b845c74c0e58a9bb88e3656e2ae2d3))
+* update release configuration to include dependency version updates ([05a027e](https://github.com/cyberpath-HQ/sentinel/commit/05a027e5b9b1c10e4f703d4e83c0af719dfb4d7e))
+
 ## [1.0.2](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.1...v1.0.2) (2026-01-15)
 
 
