@@ -103,57 +103,58 @@ const sectionIcons: Record<string, string> = {
       <div id="sidebar-overlay" class="fixed inset-0 z-30 bg-background/80 backdrop-blur-sm lg:hidden hidden"></div>
 
       <!-- Main content -->
-      <main class="flex-1 min-w-0 relative">
-        <!-- Table of Contents (floating right) -->
-        <TableOfContents client:load />
-
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 xl:pr-72">
-          {
-            frontmatter && (
-              <div class="mb-8">
-                <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-                  <a href="/docs/introduction" class="hover:text-foreground transition-colors">
-                    Docs
-                  </a>
-                  <ChevronRight className="h-4 w-4" />
-                  <span class="text-foreground">{frontmatter.title}</span>
-                </nav>
-                <h1 class="text-4xl font-bold tracking-tight mb-4">{frontmatter.title}</h1>
-                <p class="text-lg text-muted-foreground">{frontmatter.description}</p>
-              </div>
-            )
-          }
-
-          <article class="prose">
-            <slot />
-          </article>
-
-          {
-            frontmatter?.related && frontmatter.related.length > 0 && (
-              <div class="mt-12 pt-8 border-t border-border">
-                <h2 class="text-lg font-semibold mb-4">Related Pages</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {frontmatter.related.map((slug) => {
-                    const relatedDoc = allDocs.find((d) => d.id === slug);
-                    if (!relatedDoc) return null;
-                    return (
-                      <a
-                        href={`/docs/${slug}`}
-                        class="flex items-center gap-3 p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors group"
-                      >
-                        <div>
-                          <div class="font-medium group-hover:text-primary transition-colors">
-                            {relatedDoc.data.title}
-                          </div>
-                          <div class="text-sm text-muted-foreground line-clamp-1">{relatedDoc.data.description}</div>
-                        </div>
-                      </a>
-                    );
-                  })}
+      <main class="flex-1 min-w-0">
+        <div class="flex gap-12 relative">
+          <div class="max-w-4xl ml-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 xl:pr-72">
+            {
+              frontmatter && (
+                <div class="mb-8">
+                  <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+                    <a href="/docs/introduction" class="hover:text-foreground transition-colors">
+                      Docs
+                    </a>
+                    <ChevronRight className="h-4 w-4" />
+                    <span class="text-foreground">{frontmatter.title}</span>
+                  </nav>
+                  <h1 class="text-4xl font-bold tracking-tight mb-4">{frontmatter.title}</h1>
+                  <p class="text-lg text-muted-foreground">{frontmatter.description}</p>
                 </div>
-              </div>
-            )
-          }
+              )
+            }
+
+            <article class="prose">
+              <slot />
+            </article>
+
+            {
+              frontmatter?.related && frontmatter.related.length > 0 && (
+                <div class="mt-12 pt-8 border-t border-border">
+                  <h2 class="text-lg font-semibold mb-4">Related Pages</h2>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {frontmatter.related.map((slug) => {
+                      const relatedDoc = allDocs.find((d) => d.id === slug);
+                      if (!relatedDoc) return null;
+                      return (
+                        <a
+                          href={`/docs/${slug}`}
+                          class="flex items-center gap-3 p-4 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors group"
+                        >
+                          <div>
+                            <div class="font-medium group-hover:text-primary transition-colors">
+                              {relatedDoc.data.title}
+                            </div>
+                            <div class="text-sm text-muted-foreground line-clamp-1">{relatedDoc.data.description}</div>
+                          </div>
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              )
+            }
+          </div>
+          <!-- Table of Contents (floating right) -->
+          <TableOfContents client:load />
         </div>
 
         <!-- Footer -->
