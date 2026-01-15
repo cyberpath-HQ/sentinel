@@ -31,7 +31,8 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          repositories: cyberpath-HQ/sentinel
+          owner: cyberpath-HQ
+          repositories: sentinel
       - run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
