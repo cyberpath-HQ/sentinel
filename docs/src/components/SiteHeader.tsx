@@ -179,14 +179,16 @@ export const SiteHeader: FC<HeaderProps> = ({ activePage = "home" }) => {
                                     </div>
                                 )}
                                 {activePage === "docs" && (
-                                    <button
-                                        id="search-button"
-                                        onClick={openSearch}
-                                        className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground bg-muted/50 border border-border rounded-lg hover:bg-muted transition-colors"
-                                    >
-                                        <Search className="h-4 w-4" />
-                                        <span>Search docs...</span>
-                                    </button>
+                                    <div className="pt-4 border-t border-border flex justify-center w-full">
+                                        <button
+                                            id="search-button"
+                                            onClick={openSearch}
+                                            className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground bg-muted/50 border border-border rounded-lg hover:bg-muted transition-colors"
+                                        >
+                                            <Search className="h-4 w-4" />
+                                            <span>Search docs...</span>
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </SheetContent>
