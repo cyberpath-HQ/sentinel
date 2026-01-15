@@ -21,7 +21,7 @@ impl EncryptionAlgorithm for Aes256GcmSivEncryptor {
     fn encrypt_data(data: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
         let cipher = Aes256GcmSiv::new(Key::<Aes256GcmSiv>::from_slice(key));
         let mut nonce_bytes = [0u8; 12];
-        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        rand::rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let ciphertext = cipher

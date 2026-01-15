@@ -23,7 +23,7 @@ impl EncryptionAlgorithm for Ascon128Encryptor {
         let key_16: &[u8; 16] = key[.. 16].try_into().unwrap();
         let cipher = Ascon128::new(Key::<Ascon128>::from_slice(key_16));
         let mut nonce_bytes = [0u8; 16]; // Ascon uses 128-bit nonce
-        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        rand::rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::<Ascon128>::from_slice(&nonce_bytes);
 
         let ciphertext = cipher

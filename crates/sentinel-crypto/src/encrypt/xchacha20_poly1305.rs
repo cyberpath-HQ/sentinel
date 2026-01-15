@@ -22,7 +22,7 @@ impl EncryptionAlgorithm for XChaCha20Poly1305Encryptor {
     fn encrypt_data(data: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
         let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
         let mut nonce_bytes = [0u8; 24]; // XChaCha20 uses 24-byte nonce
-        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+        rand::rng().fill_bytes(&mut nonce_bytes);
         let nonce = XNonce::from_slice(&nonce_bytes);
 
         let ciphertext = cipher

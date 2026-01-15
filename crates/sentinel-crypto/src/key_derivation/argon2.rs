@@ -23,7 +23,7 @@ pub struct Argon2KeyDerivation;
 impl KeyDerivationFunction for Argon2KeyDerivation {
     fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> {
         let mut salt = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut salt);
+        rand::rng().fill_bytes(&mut salt);
         let salt_vec = salt.to_vec();
 
         let mut output_key_material = [0u8; 32];
