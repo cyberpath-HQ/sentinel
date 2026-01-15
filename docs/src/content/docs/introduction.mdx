@@ -62,7 +62,7 @@ choices. Sentinel is for when you need to **trust your data completely** and raw
 
 Sentinel follows a simple, hierarchical model:
 
-```text
+```plaintext
 Store
 └── Collection (directory)
     └── Document (JSON file)
@@ -72,7 +72,7 @@ A **Store** is the top-level container that manages all your collections. Each *
 directory containing your documents. Every **Document** is an individual JSON file with embedded metadata including
 versioning, timestamps, cryptographic hashes, and optional digital signatures.
 
-```text
+```plaintext
 data/
 ├── users/
 │   ├── user-123.json
