@@ -1,3 +1,11 @@
+## [1.0.6](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.5...v1.0.6) (2026-01-15)
+
+
+### Bug Fixes
+
+* update regex patterns to include version in path dependencies ([e724acd](https://github.com/cyberpath-HQ/sentinel/commit/e724acde2989a3af3694269a7d9a36822b31a4e2))
+* update sentinel package versions to 1.0.5 ([16943e5](https://github.com/cyberpath-HQ/sentinel/commit/16943e53b2423b1ecd1803aa0dfe9a5c4e216e0f))
+
 ## [1.0.5](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.4...v1.0.5) (2026-01-15)
 
 
