@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.4...v1.0.5) (2026-01-15)
+
+
+### Bug Fixes
+
+* update sentinel package versions to 1.0.4 and adjust asset globbing in release config ([af325b8](https://github.com/cyberpath-HQ/sentinel/commit/af325b8c1d78ab9142d90d56f5d342e475729063))
+
 ## [1.0.4](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.3...v1.0.4) (2026-01-15)
 
 
