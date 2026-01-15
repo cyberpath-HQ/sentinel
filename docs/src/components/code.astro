@@ -3,7 +3,7 @@ const code = await Astro.slots.render("default");
 const id = `code-${Math.random().toString(36).substring(2, 9)}`;
 ---
 
-<div class="relative group max-w-[calc(100vw-2rem)] overflow-hidden astro-code astro-code-themes aurora-x aurora-x border border-border rounded-lg [&_pre]:m-0! [&_pre]:bg-transparent [&_pre]:border-none">
+<div class="relative group max-w-[calc(100vw-2rem)] overflow-hidden astro-code astro-code-themes aurora-x aurora-x border border-border rounded-lg mb-4 [&_pre]:m-0! [&_pre]:bg-transparent [&_pre]:border-none">
   <pre
     class="overflow-x-auto"
     tabindex="0"
