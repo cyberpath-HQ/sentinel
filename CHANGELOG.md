@@ -1,3 +1,55 @@
+# [1.1.0](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.6...v1.1.0) (2026-01-15)
+
+
+### Bug Fixes
+
+* Replace thread_rng with rng for nonce and salt generation in encryption and key derivation implementations ([b59fabd](https://github.com/cyberpath-HQ/sentinel/commit/b59fabd8cdb59194eb8db385771d38a9b4a24c27))
+
+
+### Features
+
+* Add accordion animations for smooth content transitions ([9f16764](https://github.com/cyberpath-HQ/sentinel/commit/9f16764bc243309be2eecb390c622c3ec5c8a31d))
+* Add API routes for generating metadata JSON and Fuse.js configuration ([eb9ba6e](https://github.com/cyberpath-HQ/sentinel/commit/eb9ba6e4fd5cc41f6c92d472a849b74bf0f9b68a))
+* Add BaseLayout and DocsLayout for improved documentation structure and navigation ([c4be089](https://github.com/cyberpath-HQ/sentinel/commit/c4be089b19805b4093d8dc589d9213e59b70fff5))
+* Add CLI Commands and CLI Reference documentation ([df4e877](https://github.com/cyberpath-HQ/sentinel/commit/df4e877e6daf6bff968c332826113f1907277ef6))
+* Add code component with clipboard copy functionality for improved documentation interactivity ([fada0fb](https://github.com/cyberpath-HQ/sentinel/commit/fada0fb68c4b4d9e7627b09daac361ac1898c95d))
+* Add DocsMetadata and DocsMetadataCollection types for documentation structure ([705b5aa](https://github.com/cyberpath-HQ/sentinel/commit/705b5aaf7b562a7451956d597de00380e0b56c37))
+* Add documentation collection schema for structured content management ([4a5d471](https://github.com/cyberpath-HQ/sentinel/commit/4a5d47176294ad498825433d9ee3ee908a85ebed))
+* Add dynamic documentation pages and enhance homepage layout for Sentinel DBMS ([b5e3b7b](https://github.com/cyberpath-HQ/sentinel/commit/b5e3b7b085ef36a27cfe52b17b7fcc6c50dccdc1))
+* Add fuse.js dependency for enhanced search functionality ([c9f66e1](https://github.com/cyberpath-HQ/sentinel/commit/c9f66e1c12b6ab2339dc578ee95a00cbf3c56295))
+* Add margin to code block styling for improved spacing in documentation ([287c60e](https://github.com/cyberpath-HQ/sentinel/commit/287c60e9a2ef223f6a63892acd57067c20f28e99))
+* Add MDX integration for enhanced documentation capabilities ([6dd6e65](https://github.com/cyberpath-HQ/sentinel/commit/6dd6e65b2e8da535a2687fe0f5aadeeabc594926))
+* Add missing dependencies for enhanced documentation features ([03938af](https://github.com/cyberpath-HQ/sentinel/commit/03938af545ac45cc0d3820f6ef7a92ff5711d483))
+* Add missing dependencies for enhanced documentation features ([b5dca60](https://github.com/cyberpath-HQ/sentinel/commit/b5dca60f41215b0babfdb92c417353e5f35d57ea))
+* Add SiteHeader and SiteFooter components for improved documentation layout and navigation ([e513795](https://github.com/cyberpath-HQ/sentinel/commit/e513795165e52f2d00d703ac42a6e74ab0ad4fe0))
+* Add Table of Contents component for documentation pages ([fcb5186](https://github.com/cyberpath-HQ/sentinel/commit/fcb518678a045f551a87677bfe7d2d83b0359e40))
+* Adjust margin for Table of Contents list for improved layout ([25f73c5](https://github.com/cyberpath-HQ/sentinel/commit/25f73c565de89d8897566929fe1d1a2776b7e5ac))
+* Clean up SidebarNavigation component by removing console log and formatting code ([9a0d916](https://github.com/cyberpath-HQ/sentinel/commit/9a0d9165466260e7a94e4537abb8ac7c7ded6d46))
+* Enhance code styling with highlighted background and line numbering ([6f6dc18](https://github.com/cyberpath-HQ/sentinel/commit/6f6dc187d84f255977d03025e84491610728a85d))
+* Enhance DocsLayout with Table of Contents, Search Modal, and Sidebar Navigation components ([60dc3f4](https://github.com/cyberpath-HQ/sentinel/commit/60dc3f4cb40e66f67373ea5143d182980ec3f355))
+* Enhance Document and Collection structs with additional derive traits for improved functionality ([7eb8351](https://github.com/cyberpath-HQ/sentinel/commit/7eb8351b39232ba2d7f4c9bf389fa71c131de55c))
+* Enhance global styles with new font settings and improved dark theme colors ([e286abe](https://github.com/cyberpath-HQ/sentinel/commit/e286abed41cb1305519f6681f571d9b783d7853b))
+* Implement search modal with Fuse.js fuzzy search functionality ([4b0de50](https://github.com/cyberpath-HQ/sentinel/commit/4b0de504eceddf0a2d5aeb4a8088b061d0f8a5ca))
+* Implement SidebarNavigation component with accordion functionality for improved document navigation ([36b72e6](https://github.com/cyberpath-HQ/sentinel/commit/36b72e6ef188dab802cddb816bea83f2a2e15fd9))
+* Integrate code component for enhanced documentation rendering ([73a280f](https://github.com/cyberpath-HQ/sentinel/commit/73a280f7d2f7cb5b0af3156be1f5c76241da9fbb))
+* Refactor DocsLayout component to streamline header and footer structure ([60b4ed0](https://github.com/cyberpath-HQ/sentinel/commit/60b4ed091b35ad697272aa914baceced04664706))
+* Refactor DocsLayout to improve layout and structure of main content and Table of Contents ([43e7298](https://github.com/cyberpath-HQ/sentinel/commit/43e72985679240d15eaf36bf916d6aa0ba821c71))
+* Remove section icons mapping from DocsLayout ([e0e9274](https://github.com/cyberpath-HQ/sentinel/commit/e0e9274078a27935cdad16735370c18cba139e46))
+* Remove unnecessary 'relative' class from main content wrapper for improved layout ([0acfc7c](https://github.com/cyberpath-HQ/sentinel/commit/0acfc7cffed678013e1e7aa4b4d1f089cdd502a3))
+* Remove unused Code import from index.astro ([d1ca82d](https://github.com/cyberpath-HQ/sentinel/commit/d1ca82dccb8f5bb2948c5162af5a4b3d07eed7fc))
+* Reorder Node.js installation step in deployment workflow ([f474559](https://github.com/cyberpath-HQ/sentinel/commit/f47455961d52fda3fe6a3839c10e4fded4c19575))
+* Replace logo placeholder with actual logo image in SiteHeader component ([034675f](https://github.com/cyberpath-HQ/sentinel/commit/034675f0b54a11ab04b32e4b28b9eaff4b560ba1))
+* Standardize formatting in documentation for consistency ([01d55a5](https://github.com/cyberpath-HQ/sentinel/commit/01d55a5ac207afd02151584a4624b7df9a00cf2f))
+* Update Astro configuration for improved documentation and add markdown enhancements ([289566a](https://github.com/cyberpath-HQ/sentinel/commit/289566a112ce4b3f9e5b2f40bf0bcc59fd838b42))
+* Update date formatting in JSON-LD for better consistency ([a3d351d](https://github.com/cyberpath-HQ/sentinel/commit/a3d351d1a04d3ab7ed7d9bf810d3fcfccc8f3f68))
+* Update formatting for consistency in cryptography documentation links ([9f4fe1b](https://github.com/cyberpath-HQ/sentinel/commit/9f4fe1b5744a7f622319b225de0c62d03a565db6))
+* Update Node.js installation step in deployment workflow ([7daa021](https://github.com/cyberpath-HQ/sentinel/commit/7daa0219f017a138d11303cc104c386de138342e))
+* Update package.json and pnpm-lock.yaml to add new dependencies for enhanced documentation features ([5dea6b7](https://github.com/cyberpath-HQ/sentinel/commit/5dea6b7cf65b455aff23468f702a114a45b5ac04))
+* Update Rust version requirement to 1.92 in installation documentation ([5ccd070](https://github.com/cyberpath-HQ/sentinel/commit/5ccd07072138e7eeba79eb5f9bbee6eaa0b77b02))
+* Update SearchModal and Site components for improved functionality and layout ([84dbdf0](https://github.com/cyberpath-HQ/sentinel/commit/84dbdf0a40eefecb0659c3d9a83290517b970d14))
+* Update TableOfContents component styles for improved layout and visibility ([d937781](https://github.com/cyberpath-HQ/sentinel/commit/d9377812031721a16347a0d4cbcb137b96e18b0e))
+* Update TableOfContents component styles for improved layout and visibility ([44cdd95](https://github.com/cyberpath-HQ/sentinel/commit/44cdd95398b8aad1a4f9d0bfac6f5dc5cab61f4e))
+
 ## [1.0.6](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.5...v1.0.6) (2026-01-15)
 
 
