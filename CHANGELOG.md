@@ -1,3 +1,11 @@
+## [1.0.1](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.0...v1.0.1) (2026-01-15)
+
+
+### Bug Fixes
+
+* remove CARGO_REGISTRY_TOKEN from publish command in release configuration ([663c39c](https://github.com/cyberpath-HQ/sentinel/commit/663c39c7fdaf99cfd43f22a8a49e55b82bd4004c))
+* update readme paths in Cargo.toml files for cli, sentinel-crypto, and sentinel crates ([ed97933](https://github.com/cyberpath-HQ/sentinel/commit/ed9793369d6219d7303f978c895879238be13e55))
+
 # 1.0.0 (2026-01-15)
 
 
