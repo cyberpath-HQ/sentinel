@@ -151,6 +151,25 @@ code {
   @apply font-mono text-sm;
 }
 
+.highlighted {
+  @apply bg-muted py-1 pr-1 rounded;
+}
+
+code {
+  counter-reset: step;
+  counter-increment: step 0;
+}
+
+code .line::before {
+  content: counter(step);
+  counter-increment: step;
+  width: 1rem;
+  margin-right: 1.5rem;
+  display: inline-block;
+  text-align: right;
+  @apply text-muted-foreground;
+}
+
 :not(pre) > code {
   @apply bg-muted px-1.5 py-0.5 rounded text-primary;
 }
