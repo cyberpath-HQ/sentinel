@@ -49,7 +49,7 @@ export default {
     [
       "@semantic-release/git",
       {
-        assets: ["CHANGELOG.md", "Cargo.toml", "crates/*/Cargo.toml"],
+        assets: ["CHANGELOG.md", "Cargo.toml", "crates/**/Cargo.toml"],
       },
     ],
     [
