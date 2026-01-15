@@ -96,13 +96,13 @@ export default function TableOfContents({ headings: propHeadings }: TableOfConte
 
     return (
         <nav
-            className="hidden xl:block bg-background fixed top-24 right-8 w-64 max-h-[calc(92dvh-8rem)] overflow-y-auto overscroll-contain"
+            className="hidden xl:block py-8 lg:py-12 w-64 sticky mr-4 overflow-y-auto overscroll-contain"
             aria-label="Table of contents"
         >
-            <div className="sticky top-0 bg-background pb-2 z-10">
+            <div className="bg-background pb-2 z-10">
                 <h4 className="text-sm font-semibold text-foreground mb-2">On This Page</h4>
             </div>
-            <ul className="text-sm border-l-2 mb-4">
+            <ul className="text-sm border-l-2 mb-4 max-h-[calc(100vh-10rem)] overflow-y-auto overscroll-contain">
                 {headings.map((heading) => {
                     const isActive = activeId === heading.id;
                     const indent = (heading.level - 2) * 16; // Indent based on heading level
