@@ -1,0 +1,64 @@
+/**
+ * @type {import('semantic-release').GlobalConfig}
+ */
+export default {
+  branches: [
+    "main",
+    /^v?\d+\.x$/,
+    { name: "beta", prerelease: true },
+    { name: "alpha", prerelease: true },
+    { name: "rc", prerelease: true },
+  ],
+  plugins: [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        preset: "angular",
+        releaseRules: [
+          { type: "perf", release: "minor" },
+          { type: "chore", release: "patch" },
+          { type: "style", release: "patch" },
+          { type: "refactor", release: "patch" },
+          { type: "docs", release: false },
+          { type: "test", release: false },
+        ],
+        parserOpts: {
+          noteKeywords: ["BREAKING CHANGE", "BREAKING CHANGES"],
+        },
+      },
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        preset: "angular",
+        parserOpts: {
+          noteKeywords: ["BREAKING CHANGE", "BREAKING CHANGES", "BREAKING"],
+        },
+        writerOpts: {
+          commitsSort: ["subject", "scope"],
+        },
+      },
+    ],
+    "@semantic-release/changelog",
+    [
+      "@semantic-release/exec",
+      {
+        prepareCmd: 'sed -i \'s/^version = ".*"/version = "${nextRelease.version}"/\' Cargo.toml',
+      },
+    ],
+    [
+      "@semantic-release/git",
+      {
+        assets: ["CHANGELOG.md", "Cargo.toml"],
+      },
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        publishCmd:
+          "cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml --token $CARGO_REGISTRY_TOKEN && cargo publish --manifest-path crates/sentinel/Cargo.toml --token $CARGO_REGISTRY_TOKEN && cargo publish --manifest-path crates/cli/Cargo.toml --token $CARGO_REGISTRY_TOKEN",
+      },
+    ],
+    "@semantic-release/github",
+  ],
+};
