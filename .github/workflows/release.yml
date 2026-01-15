@@ -24,7 +24,12 @@ jobs:
         with:
           node-version: '24'
       - run: npm ci
+      - id: generate-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
       - run: npx semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.SEMANTIC_GH_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
