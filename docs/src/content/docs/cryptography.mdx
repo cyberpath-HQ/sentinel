@@ -100,11 +100,8 @@ Ed25519 is a modern elliptic curve signature scheme:
 ```rust
 use sentinel_dbms::{sign_hash, verify_signature, SigningKeyManager};
 
-// Create a signing key manager
-let manager = SigningKeyManager {};
-
 // Generate a signing key
-let key = manager.generate_key();
+let key = SigningKeyManager::generate_key();
 
 // Sign a hash
 let hash = "a1b2c3d4...";
@@ -135,10 +132,7 @@ The default encryption algorithm provides excellent security with nonce misuse r
 ```rust
 use sentinel_dbms::{encrypt_data, decrypt_data, EncryptionKeyManager};
 
-// Create an encryption key manager
-let manager = EncryptionKeyManager {};
-
-let key = manager.generate_key();
+let key = EncryptionKeyManager::generate_key();
 let plaintext = b"sensitive data";
 
 // Encrypt
