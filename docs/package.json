@@ -38,6 +38,7 @@
     "dayjs": "^1.11.19",
     "dom-to-image": "^2.6.0",
     "dom-to-image-more": "^3.7.2",
+    "fuse.js": "^7.1.0",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.562.0",
     "radash": "^12.1.1",
