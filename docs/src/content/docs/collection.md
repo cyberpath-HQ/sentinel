@@ -1,0 +1,362 @@
+---
+title: Collection
+description: Learn about Collections, the namespaces for organizing documents in Sentinel.
+section: Core Concepts
+order: 11
+keywords: ["collection", "namespace", "directory", "CRUD", "operations"]
+related: ["store", "document", "quick-start"]
+---
+
+Collections are namespaces for organizing related documents within a Sentinel store. Each collection corresponds to a
+directory on your filesystem, making it easy to manage and browse your data using standard tools.
+
+## Creating and Accessing Collections
+
+Collections are created automatically when you access them through a store:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+
+    // Creates the collection directory if it doesn't exist
+    let users = store.collection("users").await?;
+    let products = store.collection("products").await?;
+    let audit_logs = store.collection("audit_logs").await?;
+
+    Ok(())
+}
+```
+
+Each call to `collection()` returns a `Collection` instance that provides CRUD operations for documents within that
+namespace.
+
+## Collection Structure
+
+A collection is represented as a directory within your store's `data/` folder:
+
+```text
+my-data/
+└── data/
+    └── users/              # Collection directory
+        ├── alice.json      # Document: "alice"
+        ├── bob.json        # Document: "bob"
+        └── charlie.json    # Document: "charlie"
+```
+
+Document IDs become filenames with a `.json` extension. This means you can browse your data with any file manager or
+command-line tool.
+
+## CRUD Operations
+
+Collections provide four primary operations for document management.
+
+### Insert
+
+The `insert` method creates a new document or overwrites an existing one:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Insert a new document
+    users.insert("alice", json!({
+        "name": "Alice Johnson",
+        "email": "alice@example.com",
+        "role": "admin"
+    })).await?;
+
+    // Overwriting is allowed - same ID replaces the document
+    users.insert("alice", json!({
+        "name": "Alice Smith",  // Updated name
+        "email": "alice.smith@example.com",
+        "role": "admin"
+    })).await?;
+
+    Ok(())
+}
+```
+
+When you insert a document, Sentinel automatically computes a BLAKE3 hash of the data and optionally signs it if the
+store was created with a passphrase.
+
+### Get
+
+The `get` method retrieves a document by its ID:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Insert first
+    users.insert("alice", json!({"name": "Alice"})).await?;
+
+    // Get returns Option<Document>
+    match users.get("alice").await? {
+        Some(doc) => {
+            println!("Found: {}", doc.data()["name"]);
+            println!("ID: {}", doc.id());
+            println!("Hash: {}", doc.hash());
+        }
+        None => {
+            println!("Document not found");
+        }
+    }
+
+    // Non-existent documents return None, not an error
+    let missing = users.get("nonexistent").await?;
+    assert!(missing.is_none());
+
+    Ok(())
+}
+```
+
+### Update
+
+The `update` method replaces a document's contents:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Create initial document
+    users.insert("alice", json!({
+        "name": "Alice",
+        "level": 1
+    })).await?;
+
+    // Update with new data (full replacement)
+    users.update("alice", json!({
+        "name": "Alice",
+        "level": 2,  // Leveled up!
+        "badges": ["early_adopter"]
+    })).await?;
+
+    Ok(())
+}
+```
+
+Note that `update` performs a **full replacement**, not a partial merge. If you want to preserve existing fields, read
+the document first, modify the data, then update.
+
+### Delete
+
+The `delete` method removes a document from the collection:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    users.insert("temp-user", json!({"name": "Temporary"})).await?;
+
+    // Delete the document
+    users.delete("temp-user").await?;
+
+    // Deleting again is safe (idempotent)
+    users.delete("temp-user").await?;
+
+    // Verify it's gone
+    assert!(users.get("temp-user").await?.is_none());
+
+    Ok(())
+}
+```
+
+The delete operation is idempotent—deleting a non-existent document succeeds without error.
+
+## Document ID Validation
+
+Document IDs must be valid filenames across all platforms. Sentinel validates IDs before any operation:
+
+**Valid characters include:**
+
+- Letters: `a-z`, `A-Z`
+- Numbers: `0-9`
+- Underscore: `_`
+- Hyphen: `-`
+
+**Invalid characters include:**
+
+- Path separators: `/`, `\`
+- Windows reserved characters: `< > : " | ? *`
+- Control characters: ASCII 0x00-0x1F, 0x7F
+- Dots (to avoid confusion with file extensions)
+
+**Examples of valid IDs:**
+
+- `user-123`
+- `alice`
+- `DOCUMENT_001`
+- `config-v2-backup`
+
+**Examples of invalid IDs:**
+
+- `user/admin` (contains path separator)
+- `file.name` (contains dot)
+- `CON` (Windows reserved name)
+- `` (empty string)
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // This works
+    users.insert("valid-id-123", json!({})).await?;
+
+    // This fails with InvalidDocumentId error
+    match users.insert("invalid/id", json!({})).await {
+        Err(sentinel_dbms::SentinelError::InvalidDocumentId { id }) => {
+            println!("Invalid ID: {}", id);
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+```
+
+## Working with JSON Data
+
+Sentinel uses `serde_json::Value` for document data, giving you flexibility in what you store:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let data = store.collection("data").await?;
+
+    // Store various JSON types
+    data.insert("string-example", json!("just a string")).await?;
+    data.insert("number-example", json!(42)).await?;
+    data.insert("array-example", json!([1, 2, 3, 4, 5])).await?;
+    data.insert("nested-example", json!({
+        "level1": {
+            "level2": {
+                "level3": "deep value"
+            }
+        }
+    })).await?;
+
+    // Read and navigate nested data
+    if let Some(doc) = data.get("nested-example").await? {
+        let deep = &doc.data()["level1"]["level2"]["level3"];
+        println!("Deep value: {}", deep);
+    }
+
+    Ok(())
+}
+```
+
+## Collection Names
+
+Like document IDs, collection names must be valid directory names:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+
+    // Valid collection names
+    store.collection("users").await?;
+    store.collection("audit_logs").await?;
+    store.collection("products-v2").await?;
+    store.collection("config.backup").await?;  // Dots allowed in collections
+
+    // Invalid - would fail with InvalidCollectionName
+    // store.collection("users/admin").await?;
+    // store.collection("CON").await?;
+
+    Ok(())
+}
+```
+
+Note that collection names allow dots (for patterns like `config.backup`), while document IDs do not (to avoid confusion
+with the `.json` extension).
+
+## Error Handling
+
+Collection operations return `Result<T, SentinelError>`. Handle errors appropriately:
+
+```rust
+use sentinel_dbms::{Store, SentinelError};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() {
+    let store = Store::new("./my-data", None).await.unwrap();
+    let users = store.collection("users").await.unwrap();
+
+    match users.insert("test", json!({})).await {
+        Ok(()) => println!("Document created"),
+        Err(SentinelError::InvalidDocumentId { id }) => {
+            eprintln!("Invalid document ID: {}", id);
+        }
+        Err(SentinelError::Io { source }) => {
+            eprintln!("I/O error: {}", source);
+        }
+        Err(SentinelError::Json { source }) => {
+            eprintln!("JSON error: {}", source);
+        }
+        Err(e) => {
+            eprintln!("Other error: {}", e);
+        }
+    }
+}
+```
+
+## Best Practices
+
+When working with collections, consider these recommendations:
+
+**Use meaningful collection names.** Choose names that describe the data: `users`, `audit_logs`, `certificates`,
+`api_keys`.
+
+**Keep related documents together.** Group documents by type and access patterns in the same collection.
+
+**Use consistent ID schemes.** Adopt a naming convention for IDs: `user-{uuid}`, `log-{timestamp}`,
+`cert-{fingerprint}`.
+
+**Validate data before insertion.** Sentinel stores whatever JSON you give it—validate your data first.
+
+**Consider using prefixes for large collections.** If you expect millions of documents, use ID prefixes to help with
+manual navigation: `a/alice`, `b/bob`.
+
+## Next Steps
+
+Now that you understand collections, learn about:
+
+- **[Document](/docs/document)** — Understanding document structure, metadata, and verification
+- **[Cryptography](/docs/cryptography)** — Configuring hashing, signing, and encryption algorithms
+- **[Error Handling](/docs/errors)** — Comprehensive guide to Sentinel errors

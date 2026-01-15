@@ -1,0 +1,327 @@
+---
+title: Error Handling
+description: Understanding and handling errors in Sentinel.
+section: Core Concepts
+order: 13
+keywords: ["errors", "error handling", "Result", "SentinelError"]
+related: ["store", "collection", "document"]
+---
+
+Sentinel uses Rust's `Result` type for error handling, with a custom `SentinelError` enum that categorizes all possible
+failure modes. This guide explains the error types, how to handle them, and best practices for robust error management.
+
+## The SentinelError Type
+
+All Sentinel operations return `Result<T, SentinelError>`. The error enum covers all failure scenarios:
+
+```rust
+pub enum SentinelError {
+    Io { source: std::io::Error },
+    Json { source: serde_json::Error },
+    DocumentNotFound { id: String, collection: String },
+    CollectionNotFound { name: String },
+    DocumentAlreadyExists { id: String, collection: String },
+    InvalidDocumentId { id: String },
+    InvalidCollectionName { name: String },
+    StoreCorruption { reason: String },
+    TransactionFailed { reason: String },
+    LockFailed { reason: String },
+    CryptoFailed { operation: String },
+    ConfigError { message: String },
+    Internal { message: String },
+}
+```
+
+## Error Categories
+
+Sentinel errors fall into several categories based on their cause and how you should handle them.
+
+### I/O Errors
+
+File system operations can fail for various reasons:
+
+```rust
+use sentinel_dbms::{Store, SentinelError};
+
+async fn handle_io_errors() {
+    match Store::new("/root/protected", None).await {
+        Ok(_) => println!("Store created"),
+        Err(SentinelError::Io { source }) => {
+            match source.kind() {
+                std::io::ErrorKind::PermissionDenied => {
+                    eprintln!("Permission denied: {}", source);
+                }
+                std::io::ErrorKind::NotFound => {
+                    eprintln!("Path not found: {}", source);
+                }
+                _ => {
+                    eprintln!("I/O error: {}", source);
+                }
+            }
+        }
+        Err(e) => eprintln!("Other error: {}", e),
+    }
+}
+```
+
+Common I/O error causes include permission denied when creating directories, disk full when writing documents, and
+network errors on remote filesystems.
+
+### JSON Errors
+
+Serialization and deserialization can fail with malformed data:
+
+```rust
+use sentinel_dbms::{Store, SentinelError};
+
+async fn handle_json_errors() {
+    let store = Store::new("./data", None).await.unwrap();
+    let collection = store.collection("test").await.unwrap();
+
+    // If someone manually edited a JSON file incorrectly...
+    match collection.get("corrupted-doc").await {
+        Ok(Some(doc)) => println!("Found: {:?}", doc),
+        Ok(None) => println!("Not found"),
+        Err(SentinelError::Json { source }) => {
+            eprintln!("Invalid JSON: {}", source);
+            // The file exists but contains invalid JSON
+        }
+        Err(e) => eprintln!("Other error: {}", e),
+    }
+}
+```
+
+### Validation Errors
+
+Invalid document IDs or collection names produce validation errors:
+
+```rust
+use sentinel_dbms::{Store, SentinelError};
+use serde_json::json;
+
+async fn handle_validation_errors() {
+    let store = Store::new("./data", None).await.unwrap();
+    let collection = store.collection("users").await.unwrap();
+
+    match collection.insert("invalid/id", json!({})).await {
+        Ok(()) => println!("Created"),
+        Err(SentinelError::InvalidDocumentId { id }) => {
+            eprintln!("Invalid document ID '{}': contains path separator", id);
+        }
+        Err(e) => eprintln!("Other error: {}", e),
+    }
+
+    match store.collection("CON").await {
+        Ok(_) => println!("Collection created"),
+        Err(SentinelError::InvalidCollectionName { name }) => {
+            eprintln!("Invalid collection name '{}': Windows reserved name", name);
+        }
+        Err(e) => eprintln!("Other error: {}", e),
+    }
+}
+```
+
+### Cryptographic Errors
+
+Crypto operations can fail for several reasons:
+
+```rust
+use sentinel_dbms::{Store, SentinelError};
+
+async fn handle_crypto_errors() {
+    // Wrong passphrase for existing store
+    match Store::new("./encrypted-data", Some("wrong-password")).await {
+        Ok(_) => println!("Store opened"),
+        Err(SentinelError::CryptoFailed { operation }) => {
+            eprintln!("Crypto error: {}", operation);
+            // Likely decryption failed due to wrong passphrase
+        }
+        Err(e) => eprintln!("Other error: {}", e),
+    }
+}
+```
+
+### Store Corruption
+
+Detected when internal data structures are invalid:
+
+```rust
+use sentinel_dbms::{Store, SentinelError};
+
+async fn handle_corruption() {
+    match Store::new("./data", Some("passphrase")).await {
+        Ok(_) => println!("Store opened"),
+        Err(SentinelError::StoreCorruption { reason }) => {
+            eprintln!("Store corrupted: {}", reason);
+            // The .keys/signing_key.json may be damaged
+        }
+        Err(e) => eprintln!("Other error: {}", e),
+    }
+}
+```
+
+## Using the Result Type Alias
+
+Sentinel provides a `Result` type alias for convenience:
+
+```rust
+use sentinel_dbms::{Result, Store, Collection, Document};
+
+async fn my_function() -> Result<Document> {
+    let store = Store::new("./data", None).await?;
+    let users = store.collection("users").await?;
+
+    users.get("alice").await?.ok_or_else(|| {
+        sentinel_dbms::SentinelError::DocumentNotFound {
+            id: "alice".to_string(),
+            collection: "users".to_string(),
+        }
+    })
+}
+```
+
+## Pattern: Propagating Errors
+
+Use the `?` operator to propagate errors up the call stack:
+
+```rust
+use sentinel_dbms::{Store, Result};
+use serde_json::json;
+
+async fn create_user(store: &Store, id: &str, name: &str) -> Result<()> {
+    let users = store.collection("users").await?;
+    users.insert(id, json!({ "name": name })).await?;
+    Ok(())
+}
+
+async fn main_operation() -> Result<()> {
+    let store = Store::new("./data", None).await?;
+
+    create_user(&store, "alice", "Alice").await?;
+    create_user(&store, "bob", "Bob").await?;
+
+    Ok(())
+}
+```
+
+## Pattern: Converting to Application Errors
+
+Convert Sentinel errors to your application's error type:
+
+```rust
+use sentinel_dbms::{Store, SentinelError};
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+enum AppError {
+    #[error("Database error: {0}")]
+    Database(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+}
+
+impl From<SentinelError> for AppError {
+    fn from(err: SentinelError) -> Self {
+        match err {
+            SentinelError::DocumentNotFound { id, .. } => {
+                AppError::NotFound(format!("Document '{}' not found", id))
+            }
+            SentinelError::InvalidDocumentId { id } => {
+                AppError::InvalidInput(format!("Invalid ID: {}", id))
+            }
+            SentinelError::InvalidCollectionName { name } => {
+                AppError::InvalidInput(format!("Invalid collection: {}", name))
+            }
+            other => AppError::Database(other.to_string()),
+        }
+    }
+}
+
+async fn get_user(store: &Store, id: &str) -> Result<String, AppError> {
+    let users = store.collection("users").await?;
+    let doc = users.get(id).await?.ok_or_else(|| {
+        AppError::NotFound(format!("User '{}' not found", id))
+    })?;
+
+    Ok(doc.data()["name"].as_str().unwrap_or("").to_string())
+}
+```
+
+## Pattern: Handling Optional Documents
+
+The `get` method returns `Option<Document>`, not an error for missing documents:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+async fn safe_get_or_create(
+    store: &Store,
+    collection_name: &str,
+    id: &str,
+) -> sentinel_dbms::Result<sentinel_dbms::Document> {
+    let collection = store.collection(collection_name).await?;
+
+    match collection.get(id).await? {
+        Some(doc) => Ok(doc),
+        None => {
+            // Create default document
+            collection.insert(id, json!({
+                "created_automatically": true
+            })).await?;
+
+            // Fetch and return it
+            collection.get(id).await?.ok_or_else(|| {
+                sentinel_dbms::SentinelError::Internal {
+                    message: "Document not found after creation".to_string(),
+                }
+            })
+        }
+    }
+}
+```
+
+## Best Practices
+
+When handling errors in Sentinel applications, follow these recommendations:
+
+**Be specific when possible.** Match on specific error variants rather than catching all errors generically.
+
+**Log errors with context.** Include document IDs, collection names, and operation context in error logs.
+
+**Don't panic in libraries.** Return errors instead of using `.unwrap()` or `.expect()` in library code.
+
+**Consider retry strategies.** Some I/O errors are transient and may succeed on retry.
+
+**Validate inputs early.** Check document IDs and data before calling Sentinel methods.
+
+## Error Messages
+
+All Sentinel errors implement `Display` and provide human-readable messages:
+
+```rust
+use sentinel_dbms::SentinelError;
+
+fn format_error(error: SentinelError) -> String {
+    // All variants have descriptive messages
+    error.to_string()
+}
+
+// Example outputs:
+// "I/O error: Permission denied"
+// "Invalid document ID: user/admin"
+// "Store corruption detected: stored signing key has an invalid length"
+// "Cryptographic operation failed: decryption error"
+```
+
+## Next Steps
+
+Now that you understand error handling, explore:
+
+- **[Store](/docs/store)** — Store creation and configuration
+- **[Collection](/docs/collection)** — Collection operations
+- **[Document](/docs/document)** — Working with documents

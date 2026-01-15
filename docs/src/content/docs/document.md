@@ -1,0 +1,394 @@
+---
+title: Document
+description: Learn about the Document structure, metadata fields, and integrity verification in Sentinel.
+section: Core Concepts
+order: 12
+keywords: ["document", "metadata", "hash", "signature", "JSON", "versioning"]
+related: ["collection", "cryptography", "store"]
+---
+
+Documents are the fundamental unit of storage in Sentinel. Each document is a JSON file containing your data along with
+metadata for versioning, timestamps, and cryptographic integrity verification. This guide explains the document
+structure and how to work with document metadata.
+
+## Document Structure
+
+Every document stored in Sentinel has this structure:
+
+```json
+{
+  "id": "user-123",
+  "version": 1,
+  "created_at": "2026-01-15T12:00:00.000000Z",
+  "updated_at": "2026-01-15T12:00:00.000000Z",
+  "hash": "a1b2c3d4e5f6789abcdef...",
+  "signature": "ed25519:xyz789...",
+  "data": {
+    "name": "Alice",
+    "email": "alice@example.com"
+  }
+}
+```
+
+The structure has two main parts: **metadata fields** managed by Sentinel and a **data field** containing your actual
+content.
+
+## Metadata Fields
+
+Each document includes several metadata fields that Sentinel manages automatically.
+
+### ID
+
+The document identifier, which becomes the filename:
+
+```rust
+let doc = users.get("alice").await?.unwrap();
+println!("Document ID: {}", doc.id());  // "alice"
+```
+
+The ID must be a valid filename—see the [Collection](/docs/collection) documentation for validation rules.
+
+### Version
+
+The metadata format version used by Sentinel:
+
+```rust
+println!("Version: {}", doc.version());  // Currently 1
+```
+
+This allows future versions of Sentinel to handle documents created by older versions.
+
+### Timestamps
+
+Two timestamps track document lifecycle:
+
+```rust
+println!("Created: {}", doc.created_at());   // When first inserted
+println!("Updated: {}", doc.updated_at());   // When last modified
+```
+
+Timestamps are in UTC using RFC 3339 format with microsecond precision.
+
+### Hash
+
+A BLAKE3 cryptographic hash of the document data:
+
+```rust
+println!("Hash: {}", doc.hash());  // 64-character hex string
+```
+
+The hash is computed from the `data` field only (not metadata). It enables integrity verification—if the data changes,
+the hash changes.
+
+### Signature
+
+An optional Ed25519 digital signature:
+
+```rust
+println!("Signature: {}", doc.signature());
+```
+
+If the store was created with a passphrase, documents are signed automatically. The signature covers the hash, providing
+tamper-evident storage. An empty string indicates an unsigned document.
+
+### Data
+
+Your actual document content as a JSON value:
+
+```rust
+let data = doc.data();
+println!("Name: {}", data["name"]);
+println!("Email: {}", data["email"]);
+```
+
+The data field can contain any valid JSON: objects, arrays, strings, numbers, booleans, or null.
+
+## Creating Documents
+
+Documents are created through the Collection `insert` method:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", Some("passphrase")).await?;
+    let users = store.collection("users").await?;
+
+    // Insert creates a new document with all metadata
+    users.insert("alice", json!({
+        "name": "Alice",
+        "email": "alice@example.com",
+        "role": "admin"
+    })).await?;
+
+    // The file now contains full metadata
+    Ok(())
+}
+```
+
+Sentinel handles:
+
+1. Setting the ID to match the provided key
+2. Setting version to the current metadata version
+3. Setting `created_at` and `updated_at` to now
+4. Computing the BLAKE3 hash of your data
+5. Signing with Ed25519 if a passphrase was provided
+
+## Reading Document Properties
+
+Access document properties through dedicated methods:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", Some("passphrase")).await?;
+    let users = store.collection("users").await?;
+
+    users.insert("alice", json!({"name": "Alice", "level": 5})).await?;
+
+    if let Some(doc) = users.get("alice").await? {
+        // Metadata
+        println!("ID: {}", doc.id());
+        println!("Version: {}", doc.version());
+        println!("Created: {}", doc.created_at());
+        println!("Updated: {}", doc.updated_at());
+        println!("Hash: {}", doc.hash());
+        println!("Signature: {}", doc.signature());
+
+        // Data access
+        let data = doc.data();
+        println!("Name: {}", data["name"]);
+        println!("Level: {}", data["level"]);
+
+        // Check if data is an object
+        if let Some(obj) = data.as_object() {
+            for (key, value) in obj {
+                println!("  {}: {}", key, value);
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+## Document Integrity
+
+Sentinel provides two layers of integrity verification.
+
+### Hash Verification
+
+The BLAKE3 hash allows you to verify data hasn't been corrupted:
+
+```rust
+use sentinel_dbms::Store;
+use sentinel_crypto::hash_data;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", None).await?;
+    let users = store.collection("users").await?;
+
+    users.insert("alice", json!({"name": "Alice"})).await?;
+
+    if let Some(doc) = users.get("alice").await? {
+        // Recompute hash from data
+        let computed_hash = hash_data(doc.data())?;
+
+        // Compare with stored hash
+        if doc.hash() == computed_hash {
+            println!("✓ Data integrity verified");
+        } else {
+            println!("✗ Data may be corrupted!");
+        }
+    }
+
+    Ok(())
+}
+```
+
+### Signature Verification
+
+For signed documents, verify the signature using the store's public key:
+
+```rust
+use sentinel_dbms::Store;
+use sentinel_crypto::{verify_signature, hash_data};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", Some("passphrase")).await?;
+    let users = store.collection("users").await?;
+
+    users.insert("alice", json!({"name": "Alice"})).await?;
+
+    // Note: Signature verification requires access to the public key
+    // which is derived from the signing key in the store
+    // This is a simplified example
+
+    if let Some(doc) = users.get("alice").await? {
+        if !doc.signature().is_empty() {
+            println!("Document is signed");
+            // Full verification would use the public key
+        } else {
+            println!("Document is unsigned");
+        }
+    }
+
+    Ok(())
+}
+```
+
+## File Format
+
+Documents are stored as pretty-printed JSON files:
+
+```json
+{
+  "id": "alice",
+  "version": 1,
+  "created_at": "2026-01-15T12:00:00.000000Z",
+  "updated_at": "2026-01-15T12:00:00.000000Z",
+  "hash": "a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789a",
+  "signature": "ed25519:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "data": {
+    "name": "Alice",
+    "email": "alice@example.com"
+  }
+}
+```
+
+The pretty-printed format makes files easy to read with any text editor, diff tool, or version control system.
+
+## Working with Complex Data
+
+The data field can contain any JSON structure:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", None).await?;
+    let records = store.collection("records").await?;
+
+    // Nested objects
+    records.insert("config", json!({
+        "database": {
+            "host": "localhost",
+            "port": 5432,
+            "credentials": {
+                "username": "admin",
+                "password_hash": "sha256:..."
+            }
+        },
+        "features": {
+            "caching": true,
+            "compression": false
+        }
+    })).await?;
+
+    // Arrays
+    records.insert("tags", json!({
+        "items": ["rust", "database", "filesystem"],
+        "count": 3
+    })).await?;
+
+    // Mixed types
+    records.insert("mixed", json!({
+        "string": "hello",
+        "number": 42,
+        "float": 3.14,
+        "boolean": true,
+        "null_value": null,
+        "array": [1, "two", false],
+        "object": {"nested": "value"}
+    })).await?;
+
+    Ok(())
+}
+```
+
+## Accessing Nested Data
+
+Navigate nested structures using serde_json's indexing:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", None).await?;
+    let config = store.collection("config").await?;
+
+    config.insert("app", json!({
+        "server": {
+            "host": "0.0.0.0",
+            "port": 8080,
+            "tls": {
+                "enabled": true,
+                "cert_path": "/etc/certs/server.crt"
+            }
+        }
+    })).await?;
+
+    if let Some(doc) = config.get("app").await? {
+        let data = doc.data();
+
+        // Direct access
+        let host = &data["server"]["host"];
+        let port = &data["server"]["port"];
+        let tls_enabled = &data["server"]["tls"]["enabled"];
+
+        println!("Server: {}:{}", host, port);
+        println!("TLS: {}", tls_enabled);
+
+        // Safe access with type conversion
+        if let Some(port_num) = data["server"]["port"].as_u64() {
+            println!("Port as number: {}", port_num);
+        }
+
+        // Check for existence
+        if data["server"]["tls"]["enabled"].as_bool().unwrap_or(false) {
+            println!("TLS is enabled");
+        }
+    }
+
+    Ok(())
+}
+```
+
+## Best Practices
+
+When working with documents, keep these recommendations in mind:
+
+**Design your data schema thoughtfully.** Even though Sentinel is schema-less, consistent structures make querying and
+maintenance easier.
+
+**Keep documents reasonably sized.** While there's no hard limit, very large documents (megabytes) may impact
+performance.
+
+**Use meaningful IDs.** Choose IDs that help identify documents: `user-{uuid}`, `order-{date}-{sequence}`,
+`cert-{fingerprint}`.
+
+**Validate before inserting.** Sentinel stores whatever JSON you provide—validate your data in your application.
+
+**Consider document relationships.** Store related IDs as references: `{"user_id": "user-123"}` rather than embedding
+entire documents.
+
+## Next Steps
+
+Now that you understand documents, explore:
+
+- **[Cryptography](/docs/cryptography)** — Deep dive into hashing, signing, and encryption
+- **[Error Handling](/docs/errors)** — Understanding Sentinel errors
+- **[Collection](/docs/collection)** — Advanced collection operations
