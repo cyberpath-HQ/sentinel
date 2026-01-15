@@ -285,20 +285,6 @@ async fn safe_get_or_create(
 }
 ```
 
-## Best Practices
-
-When handling errors in Sentinel applications, follow these recommendations:
-
-**Be specific when possible.** Match on specific error variants rather than catching all errors generically.
-
-**Log errors with context.** Include document IDs, collection names, and operation context in error logs.
-
-**Don't panic in libraries.** Return errors instead of using `.unwrap()` or `.expect()` in library code.
-
-**Consider retry strategies.** Some I/O errors are transient and may succeed on retry.
-
-**Validate inputs early.** Check document IDs and data before calling Sentinel methods.
-
 ## Error Messages
 
 All Sentinel errors implement `Display` and provide human-readable messages:
@@ -322,6 +308,6 @@ fn format_error(error: SentinelError) -> String {
 
 Now that you understand error handling, explore:
 
-- **[Store](/docs/store)** — Store creation and configuration
-- **[Collection](/docs/collection)** — Collection operations
-- **[Document](/docs/document)** — Working with documents
+- **[Store](/docs/store)**: Store creation and configuration
+- **[Collection](/docs/collection)**: Collection operations
+- **[Document](/docs/document)**: Working with documents

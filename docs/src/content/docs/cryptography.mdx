@@ -14,10 +14,10 @@ derivation. This guide explains the available algorithms, how to configure them,
 
 The Sentinel crypto module (`sentinel-crypto`) provides four categories of cryptographic operations:
 
-1. **Hashing** — Compute content hashes for integrity verification
-2. **Signing** — Create and verify digital signatures for tamper evidence
-3. **Encryption** — Encrypt and decrypt sensitive data
-4. **Key Derivation** — Derive encryption keys from passphrases
+1. **Hashing**: Compute content hashes for integrity verification
+2. **Signing**: Create and verify digital signatures for tamper evidence
+3. **Encryption**: Encrypt and decrypt sensitive data
+4. **Key Derivation**: Derive encryption keys from passphrases
 
 Each category has multiple algorithm choices, allowing you to balance security, performance, and compatibility for your
 use case.
@@ -98,10 +98,13 @@ Signatures provide tamper-evident storage by cryptographically binding documents
 Ed25519 is a modern elliptic curve signature scheme:
 
 ```rust
-use sentinel_dbms::{sign_hash, verify_signature, SigningKey};
+use sentinel_dbms::{sign_hash, verify_signature, SigningKeyManager};
+
+// Create a signing key manager
+let manager = SigningKeyManager {};
 
 // Generate a signing key
-let key = SigningKey::from_bytes(&rand::random::<[u8; 32]>());
+let key = manager.generate_key();
 
 // Sign a hash
 let hash = "a1b2c3d4...";
@@ -130,9 +133,12 @@ Sentinel supports three authenticated encryption algorithms for protecting sensi
 The default encryption algorithm provides excellent security with nonce misuse resistance:
 
 ```rust
-use sentinel_dbms::{encrypt_data, decrypt_data};
+use sentinel_dbms::{encrypt_data, decrypt_data, EncryptionKeyManager};
 
-let key = [0u8; 32];  // Your 256-bit key
+// Create an encryption key manager
+let manager = EncryptionKeyManager {};
+
+let key = manager.generate_key();
 let plaintext = b"sensitive data";
 
 // Encrypt
@@ -241,18 +247,18 @@ systems. However, it's less resistant to hardware-accelerated attacks than Argon
 
 When using Sentinel's cryptography module, keep these security principles in mind.
 
-**Never hardcode passphrases.** Load them from environment variables, secret managers, or secure configuration files.
+- **Never hardcode passphrases.** Load them from environment variables, secret managers, or secure configuration files.
 
-**Use the defaults unless you have specific requirements.** The default algorithms provide excellent security for most
+- **Use the defaults unless you have specific requirements.** The default algorithms provide excellent security for most
 use cases.
 
-**Understand the trade-offs.** Stronger algorithms may be slower. Choose based on your security requirements and
+- **Understand the trade-offs.** Stronger algorithms may be slower. Choose based on your security requirements and
 performance constraints.
 
-**Protect your signing keys.** The passphrase-derived key stored in `.keys/` is encrypted, but the passphrase itself
+- **Protect your signing keys.** The passphrase-derived key stored in `.keys/` is encrypted, but the passphrase itself
 must remain secret.
 
-**Verify signatures when consuming data.** If documents should be signed, verify signatures before trusting the data.
+- **Verify signatures when consuming data.** If documents should be signed, verify signatures before trusting the data.
 
 ## Algorithm Comparison
 
