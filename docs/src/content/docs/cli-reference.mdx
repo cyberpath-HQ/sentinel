@@ -1,0 +1,179 @@
+---
+title: CLI Reference
+description: Global options, flags, environment variables, and configuration for the Sentinel command-line interface.
+section: Command Line Interface
+order: 1
+keywords: ["cli", "flags", "options", "environment", "configuration"]
+related: ["cli-commands", "quick-start"]
+---
+
+The Sentinel CLI provides a powerful command-line interface for managing stores, collections, and documents. All
+operations are performed through the `sentinel` command with various subcommands.
+
+For detailed documentation of all available subcommands, see [CLI Commands](cli-commands).
+
+## Global Options
+
+These options are available for all commands:
+
+### Logging Options
+
+- `--json`: Output logs in JSON format (useful for automated parsing)
+- `-v, --verbose`: Increase verbosity (use `-v` for debug, `-vv` for trace)
+
+### Cryptographic Algorithm Options
+
+#### Hash Algorithm
+
+Controls the hashing algorithm used for data integrity and cryptographic operations.
+
+```bash
+--hash-algorithm <ALGORITHM>
+```
+
+**Options:**
+
+- `blake3` - Fast, secure, default choice (recommended)
+
+**Default:** `blake3`
+
+#### Signature Algorithm
+
+Controls the digital signature algorithm for authentication and tamper detection.
+
+```bash
+--signature-algorithm <ALGORITHM>
+```
+
+**Options:**
+
+- `ed25519` - Secure, performant, industry standard (recommended)
+
+**Default:** `ed25519`
+
+#### Encryption Algorithm
+
+Controls the encryption algorithm for data protection.
+
+```bash
+--encryption-algorithm <ALGORITHM>
+```
+
+**Options:**
+
+- `xchacha20poly1305` - Strongest security, nonce-misuse resistant (default, recommended)
+- `aes256gcmsiv` - Strong security, nonce-misuse resistant, hardware-accelerated on modern CPUs
+- `ascon128` - Lightweight, good security for constrained/embedded environments
+
+**Default:** `xchacha20poly1305`
+
+#### Key Derivation Algorithm
+
+Controls the key derivation function for passphrase-based key generation.
+
+```bash
+--key-derivation-algorithm <ALGORITHM>
+```
+
+**Options:**
+
+- `argon2id` - Strong security against attacks, memory-hard (default, recommended)
+- `pbkdf2` - Widely supported, good for constrained environments
+
+**Default:** `argon2id`
+
+---
+
+## Environment Variables
+
+While Sentinel doesn't *currently* support environment variables for configuration, you can use shell variables for
+convenience:
+
+```bash
+# Set common paths
+export SENTINEL_STORE="/data/my-store"
+
+# Use in commands
+sentinel create-collection --store $SENTINEL_STORE --name users
+sentinel insert --store $SENTINEL_STORE --collection users --id user-1 --data '{...}'
+```
+
+---
+
+## Logging
+
+Sentinel uses structured logging with different verbosity levels:
+
+```bash
+# Default (info level)
+sentinel insert ...
+
+# Debug level
+sentinel -v insert ...
+
+# Trace level
+sentinel -vv insert ...
+
+# JSON format (for automated parsing)
+sentinel --json insert ...
+```
+
+---
+
+## Tips and Best Practices
+
+### 1. **Always Use Passphrases in Production**
+
+```bash
+sentinel init --path /prod/store --passphrase "strong-passphrase"
+```
+
+### 2. **Store Keys Securely**
+
+```bash
+# Generate and save keys securely
+sentinel gen key signing | gpg --encrypt > signing-key.gpg
+```
+
+### 3. **Use Verbose Logging for Debugging**
+
+```bash
+sentinel -vv insert ... 2>&1 | tee debug.log
+```
+
+### 4. **Combine with Standard UNIX Tools**
+
+```bash
+# Count documents
+ls /data/my-store/users/*.json | wc -l
+
+# Backup with tar
+tar -czf store-backup.tar.gz /data/my-store
+
+# Version control with git
+cd /data/my-store
+git init
+git add .
+git commit -m "Initial commit"
+```
+
+### 5. **Validate JSON Before Inserting**
+
+```bash
+# Validate with jq
+if jq empty < data.json 2>/dev/null; then
+  sentinel insert --store $STORE --collection users --id user-1 --data "$(cat data.json)"
+else
+  echo "Invalid JSON"
+fi
+```
+
+---
+
+## See Also
+
+- [CLI Commands](cli-commands) - All available subcommands and their usage
+- [Quick Start](quick-start) - Get started with Sentinel quickly
+- [Store API](store) - Programmatic store management
+- [Collection API](collection) - Collection operations
+- [Document API](document) - Document structure and operations

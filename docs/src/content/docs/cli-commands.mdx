@@ -1,0 +1,422 @@
+---
+title: CLI Commands
+description:
+  Complete reference for all Sentinel CLI subcommands.
+section: Command Line Interface
+order: 2
+keywords: ["cli", "commands", "subcommands", "operations", "reference"]
+related: ["cli-reference", "quick-start"]
+---
+
+This page documents all available Sentinel CLI subcommands and their usage patterns.
+
+## Initialize a Store
+
+Creates a new Sentinel store at the specified path with the necessary directory structure and metadata.
+
+**Usage:**
+
+```bash
+sentinel init --path <PATH> [OPTIONS]
+```
+
+**Required Arguments:**
+
+- `-p, --path <PATH>`: Path to the store directory
+
+**Optional Arguments:**
+
+- `--passphrase <PASSPHRASE>`: Passphrase for encrypting the signing key
+- `--signing-key <KEY>`: Hex-encoded signing key to use. If not provided, a new one is generated if initializing a new store
+
+**Examples:**
+
+```bash
+# Initialize a new store
+sentinel init --path /data/my-store
+
+# Initialize with a specific signing key
+sentinel init --path /data/my-store --signing-key 1234abcd...
+
+# Initialize with passphrase protection
+sentinel init --path /data/my-store --passphrase "my-secure-passphrase"
+
+# Combine all options
+sentinel init --path /data/my-store \
+  --passphrase "my-secure-passphrase" \
+  --signing-key 1234abcd... \
+  --encryption-algorithm aes256gcmsiv
+```
+
+**What It Does:**
+
+1. Creates the store directory if it doesn't exist
+2. Initializes metadata files
+3. Generates or imports a signing key
+4. Optionally encrypts the signing key with the provided passphrase
+5. Sets up the internal `.keys` collection for key storage (if applicable)
+
+## Generate Cryptographic Keys
+
+Generates cryptographic keys and other artifacts for use with Sentinel.
+
+> **Tip**: The `generate` command can be abbreviated as `gen`.
+
+### Generate a Cryptographic Key
+
+Generates a new cryptographic key of the specified type and outputs it as a hex string.
+
+**Usage:**
+
+```bash
+sentinel generate key <KEY_TYPE>
+sentinel gen key <KEY_TYPE>
+```
+
+**Key Types:**
+
+- `signing` Generate an Ed25519 signing key pair
+- `encryption` Generate a 256-bit encryption key
+
+**Examples:**
+
+```bash
+# Generate a signing key
+sentinel generate key signing
+# Output: 1a2b3c4d5e6f...
+
+# Generate an encryption key
+sentinel gen key encryption
+# Output: 9f8e7d6c5b4a...
+
+# Save to a file
+sentinel gen key signing > signing-key.txt
+
+# Use with init command
+SIGNING_KEY=$(sentinel gen key signing)
+sentinel init --path /data/my-store --signing-key $SIGNING_KEY
+```
+
+## Create a Collection
+
+Creates a new collection within an existing store. Refer to the [Collection API](/docs/collection) for more details.
+
+**Usage:**
+
+```bash
+sentinel create-collection --store <STORE_PATH> --name <COLLECTION_NAME>
+```
+
+**Required Arguments:**
+
+- `-s, --store <STORE_PATH>` - Path to the store directory
+- `-n, --name <COLLECTION_NAME>` - Name of the collection to create
+
+**Examples:**
+
+```bash
+# Create a users collection
+sentinel create-collection --store /data/my-store --name users
+
+# Create an audit logs collection
+sentinel create-collection --store /data/my-store --name audit_logs
+
+# Create with custom encryption
+sentinel create-collection \
+  --store /data/my-store \
+  --name sensitive-data \
+  --encryption-algorithm aes256gcmsiv
+```
+
+**What It Does:**
+
+1. Creates a subdirectory within the store for the collection
+2. Initializes collection metadata (`.metadata.json`)
+3. Sets up subdirectories for indices, deleted documents, and WAL
+
+## Insert a Document
+
+Inserts a new document into a collection. The document must be valid JSON.
+
+**Usage:**
+
+```bash
+sentinel insert --store <STORE_PATH> --collection <COLLECTION_NAME> --id <DOCUMENT_ID> --data <JSON_DATA>
+```
+
+**Required Arguments:**
+
+- `-s, --store <STORE_PATH>`: Path to the store directory
+- `-c, --collection <COLLECTION_NAME>`: Name of the collection
+- `-i, --id <DOCUMENT_ID>`: Unique identifier for the document
+- `-d, --data <JSON_DATA>`: JSON data for the document
+
+**Examples:**
+
+```bash
+# Insert a simple document
+sentinel insert \
+  --store /data/my-store \
+  --collection users \
+  --id user-123 \
+  --data '{"name": "Alice", "email": "alice@example.com"}'
+
+# Insert from a file
+sentinel insert \
+  --store /data/my-store \
+  --collection users \
+  --id user-456 \
+  --data "$(cat user.json)"
+
+# Insert with verbose logging
+sentinel insert -v \
+  --store /data/my-store \
+  --collection audit_logs \
+  --id audit-2026-01-15 \
+  --data '{"action": "login", "user": "bob", "timestamp": "2026-01-15T10:30:00Z"}'
+```
+
+**What It Does:**
+
+1. Validates the JSON data
+2. Adds metadata fields (`id`, `version`, `created_at`, `hash`, `signature`)
+3. Writes the document to disk as `<collection>/<id>.json`
+4. Updates indices
+5. Logs the operation to the WAL
+
+## Retrieve a Document
+
+Retrieves a document from a collection and prints it to stdout.
+
+**Usage:**
+
+```bash
+sentinel get --store <STORE_PATH> --collection <COLLECTION_NAME> --id <DOCUMENT_ID>
+```
+
+**Required Arguments:**
+
+- `-s, --store <STORE_PATH>`: Path to the store directory
+- `-c, --collection <COLLECTION_NAME>`: Name of the collection
+- `-i, --id <DOCUMENT_ID>`: Document identifier
+
+**Examples:**
+
+```bash
+# Get a document
+sentinel get \
+  --store /data/my-store \
+  --collection users \
+  --id user-123
+
+# Save to a file
+sentinel get \
+  --store /data/my-store \
+  --collection users \
+  --id user-123 > user-123.json
+
+# Pretty-print with jq
+sentinel get \
+  --store /data/my-store \
+  --collection users \
+  --id user-123 | jq .
+```
+
+**What It Does:**
+
+1. Reads the document file from disk
+2. Verifies the document hash for integrity
+3. Optionally verifies the signature
+4. Prints the document JSON to stdout
+
+## Update a Document
+
+Updates an existing document in a collection. The entire document is replaced with the new data.
+
+**Usage:**
+
+```bash
+sentinel update --store <STORE_PATH> --collection <COLLECTION_NAME> --id <DOCUMENT_ID> --data <JSON_DATA>
+```
+
+**Required Arguments:**
+
+- `-s, --store <STORE_PATH>`: Path to the store directory
+- `-c, --collection <COLLECTION_NAME>`: Name of the collection
+- `-i, --id <DOCUMENT_ID>`: Document identifier
+- `-d, --data <JSON_DATA>`: New JSON data for the document
+
+**Examples:**
+
+```bash
+# Update a document
+sentinel update \
+  --store /data/my-store \
+  --collection users \
+  --id user-123 \
+  --data '{"name": "Alice Smith", "email": "alice.smith@example.com"}'
+
+# Update from a file
+sentinel update \
+  --store /data/my-store \
+  --collection users \
+  --id user-123 \
+  --data "$(cat updated-user.json)"
+
+# Incremental update with jq
+CURRENT=$(sentinel get --store /data/my-store --collection users --id user-123)
+UPDATED=$(echo "$CURRENT" | jq '.email = "newemail@example.com"')
+sentinel update \
+  --store /data/my-store \
+  --collection users \
+  --id user-123 \
+  --data "$UPDATED"
+```
+
+**What It Does:**
+
+1. Validates the new JSON data
+2. Updates metadata (`version`, `updated_at`, `hash`, `signature`)
+3. Replaces the document file on disk
+4. Updates indices
+5. Logs the operation to the WAL
+
+## Delete a Document
+
+Deletes a document from a collection (soft delete by default).
+
+**Usage:**
+
+```bash
+sentinel delete --store <STORE_PATH> --collection <COLLECTION_NAME> --id <DOCUMENT_ID>
+```
+
+**Required Arguments:**
+
+- `-s, --store <STORE_PATH>`: Path to the store directory
+- `-c, --collection <COLLECTION_NAME>`: Name of the collection
+- `-i, --id <DOCUMENT_ID>`: Document identifier
+
+**Examples:**
+
+```bash
+# Delete a document
+sentinel delete \
+  --store /data/my-store \
+  --collection users \
+  --id user-123
+
+# Delete with verbose logging
+sentinel delete -v \
+  --store /data/my-store \
+  --collection audit_logs \
+  --id audit-2025-12-31
+```
+
+**What It Does:**
+
+1. Moves the document to the `.deleted/` subdirectory (soft delete)
+2. Updates indices
+3. Logs the operation to the WAL
+4. The document can still be accessed for audit purposes
+
+**Note:** Sentinel uses soft deletes by default for audit compliance. The document is moved to a `.deleted/` directory
+within the collection but remains accessible.
+
+## Complete Workflow Examples
+
+### Setting Up a New Store
+
+```bash
+# Generate keys
+SIGNING_KEY=$(sentinel gen key signing)
+ENCRYPTION_KEY=$(sentinel gen key encryption)
+
+# Initialize the store
+sentinel init \
+  --path /data/my-store \
+  --signing-key $SIGNING_KEY \
+  --passphrase "my-secure-passphrase" \
+  --encryption-algorithm xchacha20poly1305
+
+# Create collections
+sentinel create-collection --store /data/my-store --name users
+sentinel create-collection --store /data/my-store --name audit_logs
+sentinel create-collection --store /data/my-store --name certificates
+```
+
+### Managing Documents
+
+```bash
+# Insert documents
+sentinel insert \
+  --store /data/my-store \
+  --collection users \
+  --id user-001 \
+  --data '{"name": "Alice", "role": "admin"}'
+
+sentinel insert \
+  --store /data/my-store \
+  --collection users \
+  --id user-002 \
+  --data '{"name": "Bob", "role": "user"}'
+
+# Retrieve and modify
+USER=$(sentinel get --store /data/my-store --collection users --id user-001)
+MODIFIED=$(echo "$USER" | jq '.role = "superadmin"')
+sentinel update \
+  --store /data/my-store \
+  --collection users \
+  --id user-001 \
+  --data "$MODIFIED"
+
+# Delete
+sentinel delete --store /data/my-store --collection users --id user-002
+```
+
+### Audit Trail Operations
+
+```bash
+# Create audit log entries
+sentinel insert \
+  --store /data/my-store \
+  --collection audit_logs \
+  --id "$(date +%Y%m%d-%H%M%S)-login" \
+  --data "{\"action\": \"login\", \"user\": \"alice\", \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+
+# View all audit logs (using filesystem tools)
+ls -la /data/my-store/audit_logs/
+
+# Search audit logs with grep
+grep -r "alice" /data/my-store/audit_logs/
+```
+
+### Algorithm Configuration Examples
+
+```bash
+# High-security configuration
+sentinel init \
+  --path /data/high-security-store \
+  --hash-algorithm blake3 \
+  --signature-algorithm ed25519 \
+  --encryption-algorithm xchacha20poly1305 \
+  --key-derivation-algorithm argon2id
+
+# Constrained environment configuration
+sentinel init \
+  --path /data/embedded-store \
+  --hash-algorithm blake3 \
+  --signature-algorithm ed25519 \
+  --encryption-algorithm ascon128 \
+  --key-derivation-algorithm pbkdf2
+```
+
+---
+
+## See Also
+
+- [CLI Reference](cli-reference) - Global options, flags, and configuration
+- [Quick Start](quick-start) - Get started with Sentinel quickly
+- [Store API](store) - Programmatic store management
+- [Collection API](collection) - Collection operations
+- [Document API](document) - Document structure and operations
