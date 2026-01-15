@@ -26,8 +26,8 @@ const json_ld = makeJsonLd<WebPage>({
   description: doc.data.description,
   inLanguage: "en-US",
   author: "CyberPath <support@cyberpath-hq.com>",
-  datePublished: `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`,
-  dateModified: `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`,
+  datePublished: date.toISOString().split("T")[0],
+  dateModified: date.toISOString().split("T")[0],
   publisher: {
     "@type": "Organization",
     name: "CyberPath",
