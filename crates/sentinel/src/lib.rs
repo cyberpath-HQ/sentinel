@@ -1,8 +1,12 @@
 pub mod collection;
+pub mod comparison;
 pub mod document;
 pub mod error;
+pub mod filtering;
+pub mod projection;
 pub mod query;
 pub mod store;
+pub mod streaming;
 pub mod validation;
 
 pub use collection::Collection;
