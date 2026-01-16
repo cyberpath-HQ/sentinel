@@ -452,9 +452,18 @@ impl Collection {
 
     /// Filters documents in the collection using a predicate function.
     ///
-    /// This method performs in-memory filtering by loading all documents
-    /// from the collection and applying the predicate to each one.
-    /// For large collections, this may be slow and memory-intensive.
+    /// This method performs streaming filtering by loading and checking documents
+    /// one by one, keeping only matching documents in memory. This approach
+    /// minimizes memory usage while maintaining good performance for most use cases.
+    ///
+    /// # Arguments
+    ///
+    /// * `predicate` - A function that takes a `&Document` and returns `true` if the document
+    ///   should be included in the results.
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of documents that match the predicate.
     ///
     /// # Arguments
     ///
@@ -500,10 +509,11 @@ impl Collection {
         let mut results = Vec::new();
 
         for id in ids {
-            if let Some(doc) = self.get(&id).await? &&
-                predicate(&doc)
-            {
-                results.push(doc);
+            // Load document only when needed
+            if let Some(doc) = self.get(&id).await? {
+                if predicate(&doc) {
+                    results.push(doc);
+                }
             }
         }
 
@@ -517,7 +527,18 @@ impl Collection {
     /// Executes a structured query against the collection.
     ///
     /// This method supports complex filtering, sorting, pagination, and field projection.
-    /// All operations are performed in-memory for basic query support.
+    /// For optimal performance and memory usage:
+    /// - Queries without sorting use streaming processing with early limit application
+    /// - Queries with sorting collect filtered documents in memory for sorting
+    /// - Projection is applied only to final results to minimize memory usage
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query to execute
+    ///
+    /// # Returns
+    ///
+    /// Returns a `QueryResult` containing the matching documents and metadata.
     ///
     /// # Arguments
     ///
@@ -561,30 +582,51 @@ impl Collection {
 
         trace!("Executing query on collection: {}", self.name());
 
-        // Get all documents
+        // Get all document IDs
         let all_ids = self.list().await?;
-        let mut all_docs = Vec::new();
+        let total_collection_size = all_ids.len();
+
+        // If we need sorting, we must collect all matching documents first
+        // to determine sort order. Otherwise, we can stream and apply limit early.
+        let final_docs = if query.sort.is_some() {
+            self.execute_sorted_query(&all_ids, &query).await?
+        }
+        else {
+            self.execute_streaming_query(&all_ids, &query).await?
+        };
+
+        let execution_time = start_time.elapsed();
+        debug!(
+            "Query completed in {:?}, returned {} documents out of {} total",
+            execution_time,
+            final_docs.len(),
+            total_collection_size
+        );
+
+        Ok(crate::QueryResult {
+            documents: final_docs,
+            total_count: total_collection_size, // Note: this is approximate for streaming queries
+            execution_time,
+        })
+    }
+
+    /// Executes a query that requires sorting by collecting all matching documents first.
+    async fn execute_sorted_query(&self, all_ids: &[String], query: &crate::Query) -> Result<Vec<Document>> {
+        // For sorted queries, we need to collect all matching documents to sort them
+        // But we can optimize by only keeping document IDs and sort values during filtering
+        let mut matching_docs = Vec::new();
 
         for id in all_ids {
-            if let Some(doc) = self.get(&id).await? {
-                all_docs.push(doc);
-            }
-        }
-
-        let total_count = all_docs.len();
-        debug!("Loaded {} documents for querying", total_count);
-
-        // Apply filters
-        let mut filtered_docs = Vec::new();
-        for doc in &all_docs {
-            if self.matches_filters(doc, &query.filters) {
-                filtered_docs.push(doc.clone());
+            if let Some(doc) = self.get(id).await? {
+                if self.matches_filters(&doc, &query.filters) {
+                    matching_docs.push(doc);
+                }
             }
         }
 
         // Apply sorting
-        if let Some((ref field, order)) = query.sort {
-            filtered_docs.sort_by(|a, b| {
+        if let Some((field, order)) = &query.sort {
+            matching_docs.sort_by(|a, b| {
                 let a_val = a.data().get(field);
                 let b_val = b.data().get(field);
                 match order {
@@ -594,27 +636,23 @@ impl Collection {
             });
         }
 
-        // Apply offset
+        // Apply offset and limit
         let offset = query.offset.unwrap_or(0);
-        if offset > 0 {
-            if let Some(sliced) = filtered_docs.get(offset ..) {
-                filtered_docs = sliced.to_vec();
-            }
-            else {
-                filtered_docs.clear();
-            }
+        let start_idx = offset.min(matching_docs.len());
+        let end_idx = if let Some(limit) = query.limit {
+            (start_idx + limit).min(matching_docs.len())
         }
+        else {
+            matching_docs.len()
+        };
 
-        // Apply limit
-        if let Some(limit) = query.limit &&
-            limit < filtered_docs.len()
-        {
-            filtered_docs.truncate(limit);
-        }
-
-        // Apply projection
+        // Apply projection to the final results
         let mut final_docs = Vec::new();
-        for doc in filtered_docs {
+        for doc in matching_docs
+            .into_iter()
+            .skip(start_idx)
+            .take(end_idx - start_idx)
+        {
             let projected_doc = if let Some(ref fields) = query.projection {
                 self.project_document(&doc, fields)
             }
@@ -624,19 +662,45 @@ impl Collection {
             final_docs.push(projected_doc);
         }
 
-        let execution_time = start_time.elapsed();
-        debug!(
-            "Query completed in {:?}, returned {} documents out of {} total",
-            execution_time,
-            final_docs.len(),
-            total_count
-        );
+        Ok(final_docs)
+    }
 
-        Ok(crate::QueryResult {
-            documents: final_docs,
-            total_count,
-            execution_time,
-        })
+    /// Executes a query without sorting, allowing streaming with early limit application.
+    async fn execute_streaming_query(&self, all_ids: &[String], query: &crate::Query) -> Result<Vec<Document>> {
+        let mut results = Vec::new();
+        let limit = query.limit.unwrap_or(usize::MAX);
+        let offset = query.offset.unwrap_or(0);
+        let mut collected = 0;
+
+        for id in all_ids {
+            if let Some(doc) = self.get(id).await? {
+                if self.matches_filters(&doc, &query.filters) {
+                    collected += 1;
+
+                    // Skip documents before offset
+                    if collected <= offset {
+                        continue;
+                    }
+
+                    // Apply projection
+                    let projected_doc = if let Some(ref fields) = query.projection {
+                        self.project_document(&doc, fields)
+                    }
+                    else {
+                        doc
+                    };
+
+                    results.push(projected_doc);
+
+                    // Early termination if we've reached the limit
+                    if results.len() >= limit {
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(results)
     }
 
     /// Checks if a document matches all the given filters.
