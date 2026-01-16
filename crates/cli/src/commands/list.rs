@@ -1,4 +1,5 @@
 use clap::Args;
+use futures::TryStreamExt;
 use tracing::{error, info};
 
 /// Arguments for the list command.
@@ -46,7 +47,7 @@ pub async fn run(args: ListArgs) -> sentinel_dbms::Result<()> {
     );
     let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
     let coll = store.collection(&collection).await?;
-    match coll.list().await {
+    match coll.list().try_collect::<Vec<_>>().await {
         Ok(ids) => {
             info!(
                 "Found {} documents in collection '{}'",

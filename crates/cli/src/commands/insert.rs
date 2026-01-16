@@ -1,4 +1,6 @@
 use clap::Args;
+#[cfg(test)]
+use futures::TryStreamExt;
 use serde_json::Value;
 use tracing::{error, info};
 
@@ -612,7 +614,7 @@ mod tests {
         assert!(result.is_ok(), "Bulk insert should succeed");
 
         // Verify documents were inserted
-        let ids = collection.list().await.unwrap();
+        let ids: Vec<String> = collection.list().try_collect().await.unwrap();
         assert_eq!(ids.len(), 3);
         assert!(ids.contains(&"user1".to_string()));
         assert!(ids.contains(&"user2".to_string()));
