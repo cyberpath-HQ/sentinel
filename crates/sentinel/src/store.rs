@@ -314,7 +314,7 @@ fn validate_collection_name(name: &str) -> Result<()> {
 
     // Check if name starts with a dot (hidden directory)
     if name.starts_with('.') && name != ".keys" {
-        warn!("Collection name starts with dot and is not .keys: {}", name);
+        debug!("Collection name starts with dot and is not .keys: {}", name);
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
