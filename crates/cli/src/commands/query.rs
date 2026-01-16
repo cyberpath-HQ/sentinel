@@ -1,5 +1,5 @@
 use clap::Args;
-use sentinel_dbms::futures::{pin_mut, StreamExt};
+use sentinel_dbms::futures::{pin_mut, StreamExt as _};
 use serde_json::Value;
 use tracing::{error, info};
 
@@ -352,7 +352,7 @@ fn parse_value(value_str: &str) -> sentinel_dbms::Result<Value> {
         return Ok(Value::Bool(false));
     }
     // Default to string
-    Ok(Value::String(value_str.to_string()))
+    Ok(Value::String(value_str.to_owned()))
 }
 
 /// Parse a sort string like "field:asc".
@@ -363,7 +363,7 @@ fn parse_sort(sort_str: &str) -> sentinel_dbms::Result<(String, String)> {
             message: format!("Invalid sort format: {}", sort_str),
         });
     }
-    Ok((parts[0].to_string(), parts[1].to_string()))
+    Ok((parts[0].to_owned(), parts[1].to_owned()))
 }
 
 #[cfg(test)]

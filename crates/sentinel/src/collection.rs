@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use async_stream::stream;
-use futures::{StreamExt, TryStreamExt};
+use futures::{StreamExt as _, TryStreamExt as _};
 use serde_json::Value;
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
@@ -524,9 +524,9 @@ impl Collection {
                 };
 
                 let path = entry.path();
-                if path.is_file() {
-                    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                        if file_name.ends_with(".json") && !file_name.starts_with('.') {
+                if path.is_file()
+                    && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
+                        && file_name.ends_with(".json") && !file_name.starts_with('.') {
                             let id = &file_name[..file_name.len() - 5]; // remove .json
                             // Load document
                             let file_path = collection_path.join(format!("{}.json", id));
@@ -545,8 +545,6 @@ impl Collection {
                                 Err(e) => yield Err(e.into()),
                             }
                         }
-                    }
-                }
             }
             debug!("Streaming filter completed");
         })
@@ -635,11 +633,10 @@ impl Collection {
         let mut matching_docs = Vec::new();
 
         for id in all_ids {
-            if let Some(doc) = self.get(id).await? {
-                if matches_filters(&doc, &query.filters) {
+            if let Some(doc) = self.get(id).await?
+                && matches_filters(&doc, &query.filters) {
                     matching_docs.push(doc);
                 }
-            }
         }
 
         // Apply sorting
@@ -722,7 +719,7 @@ impl Collection {
                     Ok(doc) => {
                         // Create a new document with the correct ID
                         Document::new_without_signature(id, doc.data().clone())
-                            .unwrap_or_else(|_| doc)
+                            .unwrap_or(doc)
                     }
                     Err(e) => {
                         yield Err(e.into());
@@ -773,7 +770,7 @@ impl Collection {
 /// # Returns
 /// - `Ok(())` if the ID is valid
 /// - `Err(SentinelError::InvalidDocumentId)` if the ID is invalid
-pub(crate) fn validate_document_id(id: &str) -> Result<()> {
+pub fn validate_document_id(id: &str) -> Result<()> {
     trace!("Validating document id: {}", id);
     // Check if id is empty
     if id.is_empty() {

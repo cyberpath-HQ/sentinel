@@ -1,5 +1,5 @@
 use clap::Args;
-use sentinel_dbms::futures::{pin_mut, StreamExt};
+use sentinel_dbms::futures::{pin_mut, StreamExt as _};
 use tracing::{error, info};
 
 /// Arguments for the list command.

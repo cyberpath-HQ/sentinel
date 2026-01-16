@@ -8,7 +8,7 @@ use crate::{Document, Filter};
 pub fn matches_filters(doc: &Document, filters: &[Filter]) -> bool {
     for filter in filters {
         let matches = match filter {
-            Filter::Equals(field, value) => doc.data().get(field).map_or(false, |v| v == value),
+            Filter::Equals(field, value) => doc.data().get(field) == Some(value),
             Filter::GreaterThan(field, value) => {
                 match (doc.data().get(field), value) {
                     (Some(Value::Number(n)), Value::Number(v)) => n.as_f64().unwrap_or(0.0) > v.as_f64().unwrap_or(0.0),
@@ -37,7 +37,7 @@ pub fn matches_filters(doc: &Document, filters: &[Filter]) -> bool {
                     _ => false,
                 }
             },
-            Filter::In(field, values) => doc.data().get(field).map_or(false, |v| values.contains(v)),
+            Filter::In(field, values) => doc.data().get(field).is_some_and(|v| values.contains(v)),
             Filter::Contains(field, substring) => {
                 match doc.data().get(field) {
                     Some(Value::Array(arr)) => {
