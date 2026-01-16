@@ -84,11 +84,9 @@ mod tests {
     }
 
     #[test]
-    fn test_decrypt_invalid_length() {
+    fn test_decrypt_invalid_hex() {
         let key = [0u8; 32];
-        // Short data that decodes to less than 40 bytes
-        let short_hex = hex::encode(&[0u8; 30]); // 60 hex chars, 30 bytes
-        let result = XChaCha20Poly1305Encryptor::decrypt_data(&short_hex, &key);
+        let result = XChaCha20Poly1305Encryptor::decrypt_data("invalid_hex", &key);
         assert!(result.is_err());
     }
 }

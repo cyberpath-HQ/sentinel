@@ -1,6 +1,5 @@
 use clap::Args;
-#[allow(unused_imports)]
-use serde_json::{json, Value};
+use serde_json::{Value};
 use tracing::{error, info};
 
 /// Arguments for the insert command.
@@ -77,12 +76,12 @@ pub async fn run(args: InsertArgs) -> sentinel_dbms::Result<()> {
     else {
         let id = args.id.ok_or_else(|| {
             sentinel_dbms::SentinelError::Internal {
-                message: "Document ID is required for single insert mode".to_string(),
+                message: "Document ID is required for single insert mode".to_owned(),
             }
         })?;
         let data = args.data.ok_or_else(|| {
             sentinel_dbms::SentinelError::Internal {
-                message: "Document data is required for single insert mode".to_string(),
+                message: "Document data is required for single insert mode".to_owned(),
             }
         })?;
         insert_single_document(coll, &args.store_path, &args.collection, &id, &data).await
@@ -231,7 +230,7 @@ fn validate_bulk_json_object<'a>(
             bulk_file
         );
         sentinel_dbms::SentinelError::Internal {
-            message: "Expected JSON object".to_string(),
+            message: "Expected JSON object".to_owned(),
         }
     })
 }
@@ -251,6 +250,7 @@ fn prepare_bulk_documents(obj: &serde_json::Map<String, Value>) -> Vec<(&str, Va
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
     use tempfile::TempDir;
 
     use super::*;
@@ -331,6 +331,82 @@ mod tests {
 
         let result = run(args).await;
         assert!(result.is_err(), "Insert should fail with invalid JSON");
+    }
+
+    /// Test insert without document ID.
+    ///
+    /// This test checks that insert fails when no ID is provided.
+    #[tokio::test]
+    async fn test_insert_missing_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Init store and collection
+        let init_args = crate::commands::init::InitArgs {
+            path:        store_path.to_string_lossy().to_string(),
+            passphrase:  None,
+            signing_key: None,
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+            ..Default::default()
+        };
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
+
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None, // Missing ID
+            data:       Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk:       None,
+            passphrase: None,
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Insert should fail without ID");
+    }
+
+    /// Test insert without document data.
+    ///
+    /// This test checks that insert fails when no data is provided.
+    #[tokio::test]
+    async fn test_insert_missing_data() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Init store and collection
+        let init_args = crate::commands::init::InitArgs {
+            path:        store_path.to_string_lossy().to_string(),
+            passphrase:  None,
+            signing_key: None,
+        };
+        crate::commands::init::run(init_args).await.unwrap();
+
+        let create_args = crate::commands::create_collection::CreateCollectionArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            name: "test_collection".to_string(),
+            ..Default::default()
+        };
+        crate::commands::create_collection::run(create_args)
+            .await
+            .unwrap();
+
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         Some("doc1".to_string()),
+            data:       None, // Missing data
+            bulk:       None,
+            passphrase: None,
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Insert should fail without data");
     }
 
     /// Test insert into non-existent collection.

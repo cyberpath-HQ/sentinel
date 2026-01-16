@@ -269,4 +269,27 @@ mod tests {
         assert_eq!(derived.1.len(), 32);
         assert_eq!(derived.0.len(), 32);
     }
+
+    #[test]
+    fn test_sign_and_verify_hash() {
+        let data = serde_json::json!({"key": "value"});
+        let hash = hash_data(&data).unwrap();
+        assert_eq!(hash.len(), 64);
+
+        let key_bytes = [0u8; 32];
+        let key = SigningKey::from_bytes(&key_bytes);
+        let signature = sign_hash(&hash, &key).unwrap();
+
+        let public_key = key.verifying_key();
+        let verified = verify_signature(&hash, &signature, &public_key).unwrap();
+        assert!(verified);
+
+        // Test invalid signature (wrong hash)
+        let invalid_verified = verify_signature("wrong_hash", &signature, &public_key).unwrap();
+        assert!(!invalid_verified);
+
+        // Test invalid hex
+        let hex_error = verify_signature(&hash, "invalid", &public_key);
+        assert!(hex_error.is_err());
+    }
 }

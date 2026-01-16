@@ -119,7 +119,10 @@ impl Collection {
             e
         })?;
         tokio_fs::write(&file_path, json).await.map_err(|e| {
-            error!("Failed to write document {} to file {:?}: {}", id, file_path, e);
+            error!(
+                "Failed to write document {} to file {:?}: {}",
+                id, file_path, e
+            );
             e
         })?;
         debug!("Document {} inserted successfully", id);
@@ -293,19 +296,27 @@ impl Collection {
                 debug!("Document {} exists, moving to .deleted", id);
                 // Create .deleted directory if it doesn't exist
                 tokio_fs::create_dir_all(&deleted_dir).await.map_err(|e| {
-                    error!("Failed to create .deleted directory {:?}: {}", deleted_dir, e);
+                    error!(
+                        "Failed to create .deleted directory {:?}: {}",
+                        deleted_dir, e
+                    );
                     e
                 })?;
                 // Move file to .deleted/
-                tokio_fs::rename(&source_path, &dest_path).await.map_err(|e| {
-                    error!("Failed to move document {} to .deleted: {}", id, e);
-                    e
-                })?;
+                tokio_fs::rename(&source_path, &dest_path)
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to move document {} to .deleted: {}", id, e);
+                        e
+                    })?;
                 debug!("Document {} soft deleted successfully", id);
                 Ok(())
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                debug!("Document {} not found, already deleted or never existed", id);
+                debug!(
+                    "Document {} not found, already deleted or never existed",
+                    id
+                );
                 Ok(())
             },
             Err(e) => {
@@ -361,23 +372,24 @@ impl Collection {
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if entry.file_type().await?.is_file() {
-                if let Some(extension) = path.extension() {
-                    if extension == "json" {
-                        if let Some(file_stem) = path.file_stem() {
-                            if let Some(id) = file_stem.to_str() {
-                                ids.push(id.to_string());
-                            }
-                        }
-                    }
-                }
+            if entry.file_type().await?.is_file() &&
+                let Some(extension) = path.extension() &&
+                extension == "json" &&
+                let Some(file_stem) = path.file_stem() &&
+                let Some(id) = file_stem.to_str()
+            {
+                ids.push(id.to_owned());
             }
             // Skip directories (optimization)
         }
 
         // Sort for consistent ordering
         ids.sort();
-        debug!("Found {} documents in collection {}", ids.len(), self.name());
+        debug!(
+            "Found {} documents in collection {}",
+            ids.len(),
+            self.name()
+        );
         trace!("Documents listed successfully");
         Ok(ids)
     }
@@ -426,7 +438,11 @@ impl Collection {
     /// ```
     pub async fn bulk_insert(&self, documents: Vec<(&str, Value)>) -> Result<()> {
         let count = documents.len();
-        trace!("Bulk inserting {} documents into collection {}", count, self.name());
+        trace!(
+            "Bulk inserting {} documents into collection {}",
+            count,
+            self.name()
+        );
         for (id, data) in documents {
             self.insert(id, data).await?;
         }
@@ -752,9 +768,18 @@ mod tests {
     async fn test_list_with_documents() {
         let (collection, _temp_dir) = setup_collection().await;
 
-        collection.insert("user-123", json!({"name": "Alice"})).await.unwrap();
-        collection.insert("user-456", json!({"name": "Bob"})).await.unwrap();
-        collection.insert("user-789", json!({"name": "Charlie"})).await.unwrap();
+        collection
+            .insert("user-123", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-456", json!({"name": "Bob"}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-789", json!({"name": "Charlie"}))
+            .await
+            .unwrap();
 
         let ids = collection.list().await.unwrap();
         assert_eq!(ids.len(), 3);
@@ -765,8 +790,14 @@ mod tests {
     async fn test_list_skips_deleted_documents() {
         let (collection, _temp_dir) = setup_collection().await;
 
-        collection.insert("user-123", json!({"name": "Alice"})).await.unwrap();
-        collection.insert("user-456", json!({"name": "Bob"})).await.unwrap();
+        collection
+            .insert("user-123", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-456", json!({"name": "Bob"}))
+            .await
+            .unwrap();
         collection.delete("user-456").await.unwrap();
 
         let ids = collection.list().await.unwrap();
@@ -907,6 +938,7 @@ mod tests {
         assert!(validate_document_id("file!name").is_err()); // !
         assert!(validate_document_id("file🚀name").is_err()); // emoji
         assert!(validate_document_id("fileéname").is_err()); // accented
+        assert!(validate_document_id("file.name").is_err()); // dot
     }
 
     #[test]
@@ -943,14 +975,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_invalid_document_id() {
+    async fn test_get_corrupted_json() {
         let (collection, _temp_dir) = setup_collection().await;
 
-        // Test empty ID
-        assert!(collection.get("").await.is_err());
+        // Manually create a file with invalid JSON
+        let file_path = collection.path.join("corrupted.json");
+        tokio_fs::write(&file_path, "{ invalid json }")
+            .await
+            .unwrap();
 
-        // Test Windows reserved name
-        assert!(collection.get("CON").await.is_err());
+        let result = collection.get("corrupted").await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

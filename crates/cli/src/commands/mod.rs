@@ -409,6 +409,32 @@ mod tests {
         );
     }
 
+    /// Test run_command with invalid algorithm.
+    ///
+    /// This test verifies that run_command fails with invalid algorithm names.
+    #[tokio::test]
+    async fn test_run_command_invalid_algorithm() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        let args = super::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
+        };
+        let cli = Cli {
+            command:                  Commands::Init(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "invalid".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+
+        let result = run_command(cli).await;
+        assert!(result.is_err(), "run_command should fail with invalid hash algorithm");
+    }
+
     /// Test run_command with Insert command.
     ///
     /// This test verifies that run_command correctly dispatches to insert::run.
@@ -684,7 +710,7 @@ mod tests {
     ///
     /// This test verifies that run_command fails with invalid algorithm strings.
     #[tokio::test]
-    async fn test_run_command_invalid_algorithm() {
+    async fn test_run_command_invalid_algorithm_generate() {
         let args = super::generate::GenArgs {
             subcommand: super::generate::GenCommands::Key(super::generate::KeyArgs {
                 key_type: super::generate::KeyType::Signing,
