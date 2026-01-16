@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use async_stream::stream;
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use serde_json::Value;
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
@@ -357,14 +357,13 @@ impl Collection {
 
     /// Lists all document IDs in the collection.
     ///
-    /// Scans the collection directory for JSON files and returns their IDs
-    /// (filenames without the .json extension). This operation reads the directory
-    /// contents and filters for valid document files, skipping hidden directories
-    /// and metadata directories for optimization.
+    /// Returns a stream of document IDs from the collection directory.
+    /// IDs are streamed as they are discovered, without guaranteed ordering.
+    /// For sorted results, collect the stream and sort manually.
     ///
     /// # Returns
     ///
-    /// Returns `Ok(Vec<String>)` containing all document IDs in the collection,
+    /// Returns a stream of document IDs (filenames without the .json extension),
     /// or a `SentinelError` if the operation fails due to filesystem errors.
     ///
     /// # Example
@@ -372,6 +371,7 @@ impl Collection {
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use futures::TryStreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
@@ -381,38 +381,17 @@ impl Collection {
     /// collection.insert("user-123", json!({"name": "Alice"})).await?;
     /// collection.insert("user-456", json!({"name": "Bob"})).await?;
     ///
-    /// // List all documents
-    /// let ids = collection.list().await?;
+    /// // Stream all document IDs
+    /// let ids: Vec<_> = collection.list().try_collect().await?;
     /// assert_eq!(ids.len(), 2);
     /// assert!(ids.contains(&"user-123".to_string()));
     /// assert!(ids.contains(&"user-456".to_string()));
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn list(&self) -> Result<Vec<String>> {
-        trace!("Listing documents in collection: {}", self.name());
-        let mut id_stream = stream_document_ids(self.path.clone());
-        let mut ids = Vec::new();
-
-        while let Some(id_result) = id_stream.next().await {
-            match id_result {
-                Ok(id) => ids.push(id),
-                Err(e) => {
-                    error!("Error reading document ID from directory: {}", e);
-                    return Err(e);
-                },
-            }
-        }
-
-        // Sort for consistent ordering
-        ids.sort();
-        debug!(
-            "Found {} documents in collection {}",
-            ids.len(),
-            self.name()
-        );
-        trace!("Documents listed successfully");
-        Ok(ids)
+    pub fn list(&self) -> std::pin::Pin<Box<dyn Stream<Item = Result<String>> + Send>> {
+        trace!("Streaming document IDs from collection: {}", self.name());
+        stream_document_ids(self.path.clone())
     }
 
     /// Performs bulk insert operations on multiple documents.
@@ -629,7 +608,7 @@ impl Collection {
         // For non-sorted, we can stream without knowing all IDs
         let documents_stream = if query.sort.is_some() {
             // For sorted queries, we need to collect all matching documents
-            let all_ids = self.list().await?;
+            let all_ids: Vec<String> = self.list().try_collect().await?;
             let docs = self.execute_sorted_query(&all_ids, &query).await?;
             let stream = tokio_stream::iter(docs.into_iter().map(Ok));
             Box::pin(stream) as std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>
@@ -1087,7 +1066,7 @@ mod tests {
     async fn test_list_empty_collection() {
         let (collection, _temp_dir) = setup_collection().await;
 
-        let ids = collection.list().await.unwrap();
+        let ids: Vec<String> = collection.list().try_collect().await.unwrap();
         assert!(ids.is_empty());
     }
 
@@ -1108,7 +1087,8 @@ mod tests {
             .await
             .unwrap();
 
-        let ids = collection.list().await.unwrap();
+        let mut ids: Vec<String> = collection.list().try_collect().await.unwrap();
+        ids.sort(); // Sort for consistent ordering in test
         assert_eq!(ids.len(), 3);
         assert_eq!(ids, vec!["user-123", "user-456", "user-789"]);
     }
@@ -1127,7 +1107,7 @@ mod tests {
             .unwrap();
         collection.delete("user-456").await.unwrap();
 
-        let ids = collection.list().await.unwrap();
+        let ids: Vec<String> = collection.list().try_collect().await.unwrap();
         assert_eq!(ids.len(), 1);
         assert_eq!(ids, vec!["user-123"]);
     }
@@ -1144,7 +1124,7 @@ mod tests {
 
         collection.bulk_insert(documents).await.unwrap();
 
-        let ids = collection.list().await.unwrap();
+        let ids: Vec<String> = collection.list().try_collect().await.unwrap();
         assert_eq!(ids.len(), 3);
         assert!(ids.contains(&"user-123".to_string()));
         assert!(ids.contains(&"user-456".to_string()));
@@ -1162,7 +1142,7 @@ mod tests {
 
         collection.bulk_insert(vec![]).await.unwrap();
 
-        let ids = collection.list().await.unwrap();
+        let ids: Vec<String> = collection.list().try_collect().await.unwrap();
         assert!(ids.is_empty());
     }
 
@@ -1179,7 +1159,7 @@ mod tests {
         assert!(result.is_err());
 
         // First document should have been inserted before error
-        let ids = collection.list().await.unwrap();
+        let ids: Vec<String> = collection.list().try_collect().await.unwrap();
         assert_eq!(ids.len(), 1);
         assert_eq!(ids[0], "user-123");
     }
