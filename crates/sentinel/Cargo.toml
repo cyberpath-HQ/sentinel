@@ -11,6 +11,9 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
 [dependencies]
 tokio = { version = "1.49.0", features = ["full"] }
 serde = { version = "1.0.228", features = ["derive"] }
