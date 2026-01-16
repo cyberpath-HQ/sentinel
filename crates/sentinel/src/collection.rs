@@ -449,6 +449,318 @@ impl Collection {
         debug!("Bulk insert of {} documents completed successfully", count);
         Ok(())
     }
+
+    /// Filters documents in the collection using a predicate function.
+    ///
+    /// This method performs in-memory filtering by loading all documents
+    /// from the collection and applying the predicate to each one.
+    /// For large collections, this may be slow and memory-intensive.
+    ///
+    /// # Arguments
+    ///
+    /// * `predicate` - A function that takes a `&Document` and returns `true` if the document
+    ///   should be included in the results.
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of documents that match the predicate.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert some test data
+    /// collection.insert("user-1", json!({"name": "Alice", "age": 25})).await?;
+    /// collection.insert("user-2", json!({"name": "Bob", "age": 30})).await?;
+    ///
+    /// // Filter for users older than 26
+    /// let adults = collection.filter(|doc| {
+    ///     doc.data().get("age")
+    ///         .and_then(|v| v.as_i64())
+    ///         .map_or(false, |age| age > 26)
+    /// }).await?;
+    ///
+    /// assert_eq!(adults.len(), 1);
+    /// assert_eq!(adults[0].id(), "user-2");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn filter<F>(&self, predicate: F) -> Result<Vec<Document>>
+    where
+        F: Fn(&Document) -> bool,
+    {
+        trace!("Filtering documents in collection: {}", self.name());
+        let ids = self.list().await?;
+        let mut results = Vec::new();
+
+        for id in ids {
+            if let Some(doc) = self.get(&id).await? &&
+                predicate(&doc)
+            {
+                results.push(doc);
+            }
+        }
+
+        debug!(
+            "Filter completed, found {} matching documents",
+            results.len()
+        );
+        Ok(results)
+    }
+
+    /// Executes a structured query against the collection.
+    ///
+    /// This method supports complex filtering, sorting, pagination, and field projection.
+    /// All operations are performed in-memory for basic query support.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query to execute
+    ///
+    /// # Returns
+    ///
+    /// Returns a `QueryResult` containing the matching documents and metadata.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection, QueryBuilder, Operator, SortOrder};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert test data
+    /// collection.insert("user-1", json!({"name": "Alice", "age": 25, "city": "NYC"})).await?;
+    /// collection.insert("user-2", json!({"name": "Bob", "age": 30, "city": "LA"})).await?;
+    /// collection.insert("user-3", json!({"name": "Charlie", "age": 35, "city": "NYC"})).await?;
+    ///
+    /// // Query for users in NYC, sorted by age, limit 2
+    /// let query = QueryBuilder::new()
+    ///     .filter("city", Operator::Equals, json!("NYC"))
+    ///     .sort("age", SortOrder::Ascending)
+    ///     .limit(2)
+    ///     .projection(vec!["name", "age"])
+    ///     .build();
+    ///
+    /// let result = collection.query(query).await?;
+    /// assert_eq!(result.documents.len(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn query(&self, query: crate::Query) -> Result<crate::QueryResult> {
+        use std::time::Instant;
+        let start_time = Instant::now();
+
+        trace!("Executing query on collection: {}", self.name());
+
+        // Get all documents
+        let all_ids = self.list().await?;
+        let mut all_docs = Vec::new();
+
+        for id in all_ids {
+            if let Some(doc) = self.get(&id).await? {
+                all_docs.push(doc);
+            }
+        }
+
+        let total_count = all_docs.len();
+        debug!("Loaded {} documents for querying", total_count);
+
+        // Apply filters
+        let mut filtered_docs = Vec::new();
+        for doc in &all_docs {
+            if self.matches_filters(doc, &query.filters) {
+                filtered_docs.push(doc.clone());
+            }
+        }
+
+        // Apply sorting
+        if let Some((ref field, order)) = query.sort {
+            filtered_docs.sort_by(|a, b| {
+                let a_val = a.data().get(field);
+                let b_val = b.data().get(field);
+                match order {
+                    crate::SortOrder::Ascending => self.compare_values(a_val, b_val),
+                    crate::SortOrder::Descending => self.compare_values(b_val, a_val),
+                }
+            });
+        }
+
+        // Apply offset
+        let offset = query.offset.unwrap_or(0);
+        if offset > 0 {
+            if let Some(sliced) = filtered_docs.get(offset ..) {
+                filtered_docs = sliced.to_vec();
+            }
+            else {
+                filtered_docs.clear();
+            }
+        }
+
+        // Apply limit
+        if let Some(limit) = query.limit &&
+            limit < filtered_docs.len()
+        {
+            filtered_docs.truncate(limit);
+        }
+
+        // Apply projection
+        let mut final_docs = Vec::new();
+        for doc in filtered_docs {
+            let projected_doc = if let Some(ref fields) = query.projection {
+                self.project_document(&doc, fields)
+            }
+            else {
+                doc
+            };
+            final_docs.push(projected_doc);
+        }
+
+        let execution_time = start_time.elapsed();
+        debug!(
+            "Query completed in {:?}, returned {} documents out of {} total",
+            execution_time,
+            final_docs.len(),
+            total_count
+        );
+
+        Ok(crate::QueryResult {
+            documents: final_docs,
+            total_count,
+            execution_time,
+        })
+    }
+
+    /// Checks if a document matches all the given filters.
+    fn matches_filters(&self, doc: &Document, filters: &[crate::Filter]) -> bool {
+        for filter in filters {
+            if !self.matches_filter(doc, filter) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Checks if a document matches a single filter.
+    fn matches_filter(&self, doc: &Document, filter: &crate::Filter) -> bool {
+        match filter {
+            &crate::Filter::Equals(ref field, ref value) => self.get_field_value(doc, field) == Some(value),
+            &crate::Filter::GreaterThan(ref field, ref value) => {
+                self.compare_field_value(doc, field, value, |ord| ord == std::cmp::Ordering::Greater)
+            },
+            &crate::Filter::LessThan(ref field, ref value) => {
+                self.compare_field_value(doc, field, value, |ord| ord == std::cmp::Ordering::Less)
+            },
+            &crate::Filter::GreaterOrEqual(ref field, ref value) => {
+                self.compare_field_value(doc, field, value, |ord| ord != std::cmp::Ordering::Less)
+            },
+            &crate::Filter::LessOrEqual(ref field, ref value) => {
+                self.compare_field_value(doc, field, value, |ord| ord != std::cmp::Ordering::Greater)
+            },
+            &crate::Filter::Contains(ref field, ref substring) => {
+                self.get_field_value(doc, field)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s.contains(substring))
+            },
+            &crate::Filter::StartsWith(ref field, ref prefix) => {
+                self.get_field_value(doc, field)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s.starts_with(prefix))
+            },
+            &crate::Filter::EndsWith(ref field, ref suffix) => {
+                self.get_field_value(doc, field)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s.ends_with(suffix))
+            },
+            &crate::Filter::In(ref field, ref values) => {
+                self.get_field_value(doc, field)
+                    .is_some_and(|v| values.contains(v))
+            },
+            &crate::Filter::Exists(ref field, exists) => {
+                let field_exists = doc.data().get(field).is_some();
+                field_exists == exists
+            },
+            &crate::Filter::And(ref left, ref right) => {
+                self.matches_filter(doc, left) && self.matches_filter(doc, right)
+            },
+            &crate::Filter::Or(ref left, ref right) => {
+                self.matches_filter(doc, left) || self.matches_filter(doc, right)
+            },
+        }
+    }
+
+    /// Gets the value of a field from a document.
+    fn get_field_value<'a>(&self, doc: &'a Document, field: &str) -> Option<&'a Value> { doc.data().get(field) }
+
+    /// Compares a field value with a given value using a comparison function.
+    fn compare_field_value<F>(&self, doc: &Document, field: &str, value: &Value, cmp: F) -> bool
+    where
+        F: Fn(std::cmp::Ordering) -> bool,
+    {
+        self.get_field_value(doc, field)
+            .map(|field_val| cmp(self.compare_json_values(field_val, value)))
+            .unwrap_or(false)
+    }
+
+    /// Compares two values for sorting purposes.
+    fn compare_values(&self, a: Option<&Value>, b: Option<&Value>) -> std::cmp::Ordering {
+        match (a, b) {
+            (None, None) => std::cmp::Ordering::Equal,
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (Some(va), Some(vb)) => self.compare_json_values(va, vb),
+        }
+    }
+
+    /// Compares two JSON values for sorting.
+    fn compare_json_values(&self, a: &Value, b: &Value) -> std::cmp::Ordering {
+        match (a, b) {
+            (&Value::Null, &Value::Null) => std::cmp::Ordering::Equal,
+            (&Value::Null, _) => std::cmp::Ordering::Less,
+            (_, &Value::Null) => std::cmp::Ordering::Greater,
+            (&Value::Bool(ba), &Value::Bool(bb)) => ba.cmp(&bb),
+            (&Value::Bool(_), _) => std::cmp::Ordering::Less,
+            (_, &Value::Bool(_)) => std::cmp::Ordering::Greater,
+            (&Value::Number(ref na), &Value::Number(ref nb)) => {
+                // Compare as f64 for simplicity, may lose precision
+                let fa = na.as_f64().unwrap_or(0.0);
+                let fb = nb.as_f64().unwrap_or(0.0);
+                fa.partial_cmp(&fb).unwrap_or(std::cmp::Ordering::Equal)
+            },
+            (&Value::Number(_), _) => std::cmp::Ordering::Less,
+            (_, &Value::Number(_)) => std::cmp::Ordering::Greater,
+            (&Value::String(ref sa), &Value::String(ref sb)) => sa.cmp(sb),
+            (&Value::String(_), _) => std::cmp::Ordering::Less,
+            (_, &Value::String(_)) => std::cmp::Ordering::Greater,
+            (&Value::Array(ref aa), &Value::Array(ref ab)) => aa.len().cmp(&ab.len()), // Simple length comparison
+            (&Value::Array(_), _) => std::cmp::Ordering::Less,
+            (_, &Value::Array(_)) => std::cmp::Ordering::Greater,
+            (&Value::Object(ref oa), &Value::Object(ref ob)) => oa.len().cmp(&ob.len()), // Simple length comparison
+        }
+    }
+
+    /// Projects a document to include only specified fields.
+    fn project_document(&self, doc: &Document, fields: &[String]) -> Document {
+        let mut projected_data = serde_json::Map::new();
+        for field in fields {
+            if let Some(value) = doc.data().get(field) {
+                projected_data.insert(field.clone(), value.clone());
+            }
+        }
+        // Create a new document with projected data
+        // Note: This creates a new document without proper metadata/signing
+        // For full implementation, we'd need to handle metadata properly
+        Document::new_without_signature(doc.id().to_owned(), Value::Object(projected_data))
+            .unwrap_or_else(|_| doc.clone())
+    }
 }
 
 /// Validates that a document ID is filesystem-safe across all platforms.
@@ -1010,5 +1322,236 @@ mod tests {
 
         // Test Windows reserved name
         assert!(collection.delete("CON").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_filter_empty_collection() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let results = collection.filter(|_| true).await.unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_filter_all_documents() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("user-1", json!({"name": "Alice", "age": 25}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-2", json!({"name": "Bob", "age": 30}))
+            .await
+            .unwrap();
+
+        let results = collection.filter(|_| true).await.unwrap();
+        assert_eq!(results.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_filter_by_predicate() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("user-1", json!({"name": "Alice", "age": 25}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-2", json!({"name": "Bob", "age": 30}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-3", json!({"name": "Charlie", "age": 35}))
+            .await
+            .unwrap();
+
+        let results = collection
+            .filter(|doc| {
+                doc.data()
+                    .get("age")
+                    .and_then(|v| v.as_i64())
+                    .map_or(false, |age| age > 26)
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        let names: Vec<&str> = results
+            .iter()
+            .map(|d| d.data()["name"].as_str().unwrap())
+            .collect();
+        assert!(names.contains(&"Bob"));
+        assert!(names.contains(&"Charlie"));
+    }
+
+    #[tokio::test]
+    async fn test_query_empty_collection() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let query = crate::QueryBuilder::new().build();
+        let result = collection.query(query).await.unwrap();
+        assert!(result.documents.is_empty());
+        assert_eq!(result.total_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_filters() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("user-1", json!({"name": "Alice", "age": 25, "city": "NYC"}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-2", json!({"name": "Bob", "age": 30, "city": "LA"}))
+            .await
+            .unwrap();
+        collection
+            .insert(
+                "user-3",
+                json!({"name": "Charlie", "age": 35, "city": "NYC"}),
+            )
+            .await
+            .unwrap();
+
+        let query = crate::QueryBuilder::new()
+            .filter("city", crate::Operator::Equals, json!("NYC"))
+            .build();
+
+        let result = collection.query(query).await.unwrap();
+        assert_eq!(result.documents.len(), 2);
+        assert_eq!(result.total_count, 3);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_sorting() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("user-1", json!({"name": "Alice", "age": 25}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-2", json!({"name": "Bob", "age": 30}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-3", json!({"name": "Charlie", "age": 20}))
+            .await
+            .unwrap();
+
+        let query = crate::QueryBuilder::new()
+            .sort("age", crate::SortOrder::Ascending)
+            .build();
+
+        let result = collection.query(query).await.unwrap();
+        assert_eq!(result.documents.len(), 3);
+        assert_eq!(result.documents[0].data()["name"], "Charlie");
+        assert_eq!(result.documents[1].data()["name"], "Alice");
+        assert_eq!(result.documents[2].data()["name"], "Bob");
+    }
+
+    #[tokio::test]
+    async fn test_query_with_limit_and_offset() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 1 ..= 5 {
+            collection
+                .insert(&format!("user-{}", i), json!({"id": i}))
+                .await
+                .unwrap();
+        }
+
+        let query = crate::QueryBuilder::new().limit(2).offset(1).build();
+
+        let result = collection.query(query).await.unwrap();
+        assert_eq!(result.documents.len(), 2);
+        assert_eq!(result.total_count, 5);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_projection() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("user-1", json!({"name": "Alice", "age": 25, "city": "NYC"}))
+            .await
+            .unwrap();
+
+        let query = crate::QueryBuilder::new()
+            .projection(vec!["name", "age"])
+            .build();
+
+        let result = collection.query(query).await.unwrap();
+        assert_eq!(result.documents.len(), 1);
+        let doc = &result.documents[0];
+        if let Value::Object(map) = doc.data() {
+            assert!(map.contains_key("name"));
+            assert!(map.contains_key("age"));
+            assert!(!map.contains_key("city"));
+        }
+        else {
+            panic!("Document data should be an object");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_query_string_filters() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert(
+                "user-1",
+                json!({"name": "Alice", "email": "alice@example.com"}),
+            )
+            .await
+            .unwrap();
+        collection
+            .insert("user-2", json!({"name": "Bob", "email": "bob@test.com"}))
+            .await
+            .unwrap();
+
+        let query = crate::QueryBuilder::new()
+            .filter("email", crate::Operator::Contains, json!("example"))
+            .build();
+
+        let result = collection.query(query).await.unwrap();
+        assert_eq!(result.documents.len(), 1);
+        assert_eq!(result.documents[0].data()["name"], "Alice");
+    }
+
+    #[tokio::test]
+    async fn test_query_logical_filters() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert(
+                "user-1",
+                json!({"name": "Alice", "age": 25, "active": true}),
+            )
+            .await
+            .unwrap();
+        collection
+            .insert("user-2", json!({"name": "Bob", "age": 30, "active": false}))
+            .await
+            .unwrap();
+        collection
+            .insert(
+                "user-3",
+                json!({"name": "Charlie", "age": 35, "active": true}),
+            )
+            .await
+            .unwrap();
+
+        // Test AND logic (implicit in multiple filters)
+        let query = crate::QueryBuilder::new()
+            .filter("age", crate::Operator::GreaterThan, json!(26))
+            .filter("active", crate::Operator::Equals, json!(true))
+            .build();
+
+        let result = collection.query(query).await.unwrap();
+        assert_eq!(result.documents.len(), 1);
+        assert_eq!(result.documents[0].data()["name"], "Charlie");
     }
 }
