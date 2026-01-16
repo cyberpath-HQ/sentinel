@@ -372,7 +372,7 @@ impl Collection {
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if entry.file_type().await?.is_file() &&
+            if !entry.file_type().await?.is_dir() &&
                 let Some(extension) = path.extension() &&
                 extension == "json" &&
                 let Some(file_stem) = path.file_stem() &&
