@@ -1,0 +1,393 @@
+use clap::Args;
+use serde_json::Value;
+use tracing::{error, info};
+
+/// Arguments for the query command.
+#[derive(Args, Clone, Default)]
+pub struct QueryArgs {
+    /// Store path
+    #[arg(short, long)]
+    pub store_path: String,
+    /// Collection name
+    #[arg(short, long)]
+    pub collection: String,
+    /// Passphrase for decrypting the signing key
+    #[arg(long)]
+    pub passphrase: Option<String>,
+    /// Filter by field equality (field=value)
+    #[arg(long, value_name = "field=value")]
+    pub filter:     Vec<String>,
+    /// Sort by field (field:asc or field:desc)
+    #[arg(long, value_name = "field:order")]
+    pub sort:       Option<String>,
+    /// Limit number of results
+    #[arg(long)]
+    pub limit:      Option<usize>,
+    /// Skip number of results
+    #[arg(long)]
+    pub offset:     Option<usize>,
+    /// Project fields (comma-separated)
+    #[arg(long, value_name = "field1,field2")]
+    pub project:    Option<String>,
+    /// Output format: json or table
+    #[arg(long, default_value = "json")]
+    pub format:     String,
+}
+
+/// Query documents in a Sentinel collection.
+///
+/// This function allows complex querying of documents with filters, sorting,
+/// pagination, and field projection.
+///
+/// # Arguments
+/// * `args` - The parsed command-line arguments for query.
+///
+/// # Returns
+/// Returns `Ok(())` on success, or a `SentinelError` on failure.
+///
+/// # Examples
+/// ```rust,no_run
+/// use sentinel_cli::commands::query::{run, QueryArgs};
+///
+/// let args = QueryArgs {
+///     store_path: "/tmp/my_store".to_string(),
+///     collection: "users".to_string(),
+///     passphrase: None,
+///     filter:     vec!["age>25".to_string()],
+///     sort:       Some("name:asc".to_string()),
+///     limit:      Some(10),
+///     offset:     None,
+///     project:    Some("name,email".to_string()),
+///     format:     "json".to_string(),
+/// };
+/// run(args).await?;
+/// ```
+pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
+    let store_path = args.store_path;
+    let collection = args.collection;
+    info!(
+        "Querying documents in collection '{}' in store {}",
+        collection, store_path
+    );
+
+    let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
+    let coll = store.collection(&collection).await?;
+
+    // Build query
+    let mut query_builder = sentinel_dbms::QueryBuilder::new();
+
+    // Parse filters
+    for filter_str in &args.filter {
+        let filter = parse_filter(filter_str)?;
+        query_builder = match filter {
+            ParsedFilter::Equals(field, value) => query_builder.filter(&field, sentinel_dbms::Operator::Equals, value),
+            ParsedFilter::GreaterThan(field, value) => {
+                query_builder.filter(&field, sentinel_dbms::Operator::GreaterThan, value)
+            },
+            ParsedFilter::LessThan(field, value) => {
+                query_builder.filter(&field, sentinel_dbms::Operator::LessThan, value)
+            },
+            ParsedFilter::Contains(field, substring) => {
+                query_builder.filter(
+                    &field,
+                    sentinel_dbms::Operator::Contains,
+                    Value::String(substring),
+                )
+            },
+        };
+    }
+
+    // Parse sort
+    if let Some(sort_str) = &args.sort {
+        let (field, order) = parse_sort(sort_str)?;
+        let sort_order = match order.as_str() {
+            "asc" => sentinel_dbms::SortOrder::Ascending,
+            "desc" => sentinel_dbms::SortOrder::Descending,
+            _ => {
+                return Err(sentinel_dbms::SentinelError::ConfigError {
+                    message: format!("Invalid sort order: {}", order),
+                })
+            },
+        };
+        query_builder = query_builder.sort(&field, sort_order);
+    }
+
+    // Set limit and offset
+    if let Some(limit) = args.limit {
+        query_builder = query_builder.limit(limit);
+    }
+    if let Some(offset) = args.offset {
+        query_builder = query_builder.offset(offset);
+    }
+
+    // Parse projection
+    if let Some(project_str) = &args.project {
+        let fields: Vec<&str> = project_str.split(',').map(|s| s.trim()).collect();
+        query_builder = query_builder.projection(fields);
+    }
+
+    let query = query_builder.build();
+
+    match coll.query(query).await {
+        Ok(result) => {
+            info!(
+                "Query returned {} documents (total: {})",
+                result.documents.len(),
+                result.total_count
+            );
+
+            match args.format.as_str() {
+                "json" => {
+                    for doc in &result.documents {
+                        #[allow(clippy::print_stdout, reason = "CLI output")]
+                        {
+                            println!("{}", serde_json::to_string_pretty(doc.data()).unwrap());
+                        }
+                    }
+                },
+                "table" => {
+                    if result.documents.is_empty() {
+                        #[allow(clippy::print_stdout, reason = "CLI output")]
+                        {
+                            println!("No documents found");
+                        }
+                    }
+                    else {
+                        // Simple table output - just IDs for now
+                        #[allow(clippy::print_stdout, reason = "CLI output")]
+                        {
+                            println!("ID");
+                            println!("--");
+                            for doc in &result.documents {
+                                println!("{}", doc.id());
+                            }
+                        }
+                    }
+                },
+                _ => {
+                    return Err(sentinel_dbms::SentinelError::ConfigError {
+                        message: format!("Invalid format: {}", args.format),
+                    });
+                },
+            }
+
+            Ok(())
+        },
+        Err(e) => {
+            error!(
+                "Failed to query documents in collection '{}' in store {}: {}",
+                collection, store_path, e
+            );
+            Err(e)
+        },
+    }
+}
+
+/// Parsed filter from command line string.
+enum ParsedFilter {
+    Equals(String, Value),
+    GreaterThan(String, Value),
+    LessThan(String, Value),
+    Contains(String, String),
+}
+
+/// Parse a filter string like "field=value" or "field>value".
+fn parse_filter(filter_str: &str) -> sentinel_dbms::Result<ParsedFilter> {
+    if let Some(eq_pos) = filter_str.find('=') {
+        let field = filter_str[.. eq_pos].to_string();
+        let value_str = &filter_str[eq_pos + 1 ..];
+        let value = parse_value(value_str)?;
+        Ok(ParsedFilter::Equals(field, value))
+    }
+    else if let Some(gt_pos) = filter_str.find('>') {
+        let field = filter_str[.. gt_pos].to_string();
+        let value_str = &filter_str[gt_pos + 1 ..];
+        let value = parse_value(value_str)?;
+        Ok(ParsedFilter::GreaterThan(field, value))
+    }
+    else if let Some(lt_pos) = filter_str.find('<') {
+        let field = filter_str[.. lt_pos].to_string();
+        let value_str = &filter_str[lt_pos + 1 ..];
+        let value = parse_value(value_str)?;
+        Ok(ParsedFilter::LessThan(field, value))
+    }
+    else if let Some(contains_pos) = filter_str.find('~') {
+        let field = filter_str[.. contains_pos].to_string();
+        let substring = filter_str[contains_pos + 1 ..].to_string();
+        Ok(ParsedFilter::Contains(field, substring))
+    }
+    else {
+        Err(sentinel_dbms::SentinelError::ConfigError {
+            message: format!("Invalid filter format: {}", filter_str),
+        })
+    }
+}
+
+/// Parse a value string into a JSON Value.
+fn parse_value(value_str: &str) -> sentinel_dbms::Result<Value> {
+    // Try to parse as number first
+    if let Ok(num) = value_str.parse::<i64>() {
+        return Ok(Value::Number(num.into()));
+    }
+    if let Ok(num) = value_str.parse::<f64>() {
+        return Ok(Value::Number(serde_json::Number::from_f64(num).unwrap()));
+    }
+    // Try to parse as boolean
+    if value_str == "true" {
+        return Ok(Value::Bool(true));
+    }
+    if value_str == "false" {
+        return Ok(Value::Bool(false));
+    }
+    // Default to string
+    Ok(Value::String(value_str.to_string()))
+}
+
+/// Parse a sort string like "field:asc".
+fn parse_sort(sort_str: &str) -> sentinel_dbms::Result<(String, String)> {
+    let parts: Vec<&str> = sort_str.split(':').collect();
+    if parts.len() != 2 {
+        return Err(sentinel_dbms::SentinelError::ConfigError {
+            message: format!("Invalid sort format: {}", sort_str),
+        });
+    }
+    Ok((parts[0].to_string(), parts[1].to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    /// Test successful query.
+    #[tokio::test]
+    async fn test_query_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "age": 25, "city": "NYC"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "age": 30, "city": "LA"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc3", json!({"name": "Charlie", "age": 35, "city": "NYC"}))
+            .await
+            .unwrap();
+
+        // Test query command
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec!["city=NYC".to_string()],
+            sort:       Some("age:asc".to_string()),
+            limit:      Some(10),
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test query with no results.
+    #[tokio::test]
+    async fn test_query_no_results() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let _collection = store.collection("test_collection").await.unwrap();
+
+        // Test query command on empty collection
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec![],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test filter parsing.
+    #[test]
+    fn test_parse_filter() {
+        // Test equals
+        let filter = parse_filter("name=Alice").unwrap();
+        match filter {
+            ParsedFilter::Equals(field, value) => {
+                assert_eq!(field, "name");
+                assert_eq!(value, Value::String("Alice".to_string()));
+            },
+            _ => panic!("Expected Equals"),
+        }
+
+        // Test greater than
+        let filter = parse_filter("age>25").unwrap();
+        match filter {
+            ParsedFilter::GreaterThan(field, value) => {
+                assert_eq!(field, "age");
+                assert_eq!(value, Value::Number(25.into()));
+            },
+            _ => panic!("Expected GreaterThan"),
+        }
+
+        // Test contains
+        let filter = parse_filter("name~Ali").unwrap();
+        match filter {
+            ParsedFilter::Contains(field, substring) => {
+                assert_eq!(field, "name");
+                assert_eq!(substring, "Ali");
+            },
+            _ => panic!("Expected Contains"),
+        }
+    }
+
+    /// Test value parsing.
+    #[test]
+    fn test_parse_value() {
+        assert_eq!(parse_value("42").unwrap(), Value::Number(42.into()));
+        assert_eq!(
+            parse_value("3.14").unwrap(),
+            Value::Number(serde_json::Number::from_f64(3.14).unwrap())
+        );
+        assert_eq!(parse_value("true").unwrap(), Value::Bool(true));
+        assert_eq!(parse_value("false").unwrap(), Value::Bool(false));
+        assert_eq!(
+            parse_value("hello").unwrap(),
+            Value::String("hello".to_string())
+        );
+    }
+
+    /// Test sort parsing.
+    #[test]
+    fn test_parse_sort() {
+        let (field, order) = parse_sort("name:asc").unwrap();
+        assert_eq!(field, "name");
+        assert_eq!(order, "asc");
+
+        let (field, order) = parse_sort("age:desc").unwrap();
+        assert_eq!(field, "age");
+        assert_eq!(order, "desc");
+    }
+}

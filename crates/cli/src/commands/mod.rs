@@ -18,6 +18,8 @@ mod init;
 mod insert;
 /// List command module.
 mod list;
+/// Query command module.
+mod query;
 /// Update command module.
 mod update;
 
@@ -146,6 +148,10 @@ pub enum Commands {
     ///
     /// Prints the IDs of all documents in the specified collection.
     List(list::ListArgs),
+    /// Query documents in a collection with filters and sorting.
+    ///
+    /// Allows complex querying with filters, sorting, pagination, and projection.
+    Query(query::QueryArgs),
 }
 
 /// Execute the specified CLI command.
@@ -226,6 +232,7 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         Commands::Update(args) => update::run(args).await,
         Commands::Delete(args) => delete::run(args).await,
         Commands::List(args) => list::run(args).await,
+        Commands::Query(args) => query::run(args).await,
     }
 }
 
