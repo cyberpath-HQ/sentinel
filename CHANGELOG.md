@@ -1,3 +1,41 @@
+# [1.2.0](https://github.com/cyberpath-HQ/sentinel/compare/v1.1.0...v1.2.0) (2026-01-16)
+
+
+### Bug Fixes
+
+* Add margin-bottom to code display container for improved spacing ([111edfb](https://github.com/cyberpath-HQ/sentinel/commit/111edfb9863f5a34e1630f9d633f8326a69e76dc))
+* Add padding to sidebar content and remove GitHub icon from navigation ([598a512](https://github.com/cyberpath-HQ/sentinel/commit/598a51284334294b82ceb8789e4f26f07d8cf5ce))
+* Add search button to SiteHeader for improved documentation navigation ([61b7c5a](https://github.com/cyberpath-HQ/sentinel/commit/61b7c5a76c111bd7b63e4b63e4281ccd66ec7371))
+* Adjust layout and styling for code display sections in index.astro ([8503c49](https://github.com/cyberpath-HQ/sentinel/commit/8503c49b0266bfbddcd1fafb69031036dafbf8a3))
+* Adjust search button layout in SiteHeader for improved visibility and alignment ([990fc89](https://github.com/cyberpath-HQ/sentinel/commit/990fc896ee4691964e0e7fb4ced7c6076d28b74b))
+* Enhance code display section with improved styling and overflow handling ([0cf8410](https://github.com/cyberpath-HQ/sentinel/commit/0cf841021a092d7c4be3855cacf5e5ec133bf90c))
+* Remove border from code block styling for improved aesthetics ([e45a6a5](https://github.com/cyberpath-HQ/sentinel/commit/e45a6a552e19f8f6091191ccd732482fb61d9c9a))
+* Remove Header and Footer components from the project ([ff26d02](https://github.com/cyberpath-HQ/sentinel/commit/ff26d02fa1d14b5ac1bdb3c2a4da43aa992924cd))
+* Replace mobile navigation button with PanelRightClose icon and remove mobile search button ([441509a](https://github.com/cyberpath-HQ/sentinel/commit/441509ac11d7f9553cfc8b37aa1901ed3f1fe596))
+* Update code block syntax from 'text' to 'plaintext' for consistency in documentation ([e1f91a7](https://github.com/cyberpath-HQ/sentinel/commit/e1f91a7071d9045d08cecdfb754077a1ff8f29e1))
+* Update code display section to improve layout and enable horizontal scrolling ([2690a3c](https://github.com/cyberpath-HQ/sentinel/commit/2690a3c9e4f47cab469c12c637dea3214751499e))
+* Update lint command and correct metadata field names for consistency ([6df10f1](https://github.com/cyberpath-HQ/sentinel/commit/6df10f190e18816cfdcfd2e953d61ed7036fb141))
+
+
+### Features
+
+* Add benchmarking for collection list operation ([6f81110](https://github.com/cyberpath-HQ/sentinel/commit/6f8111023816116f20148ae5bdfcbf06533fef3e))
+* Add benchmarking for encrypt, decrypt, and derive key operations ([a32d6a1](https://github.com/cyberpath-HQ/sentinel/commit/a32d6a1d9b4eeeaa9ebe54372c863218cc2d282d))
+* Add List and BulkInsert commands to the Sentinel CLI ([69ace81](https://github.com/cyberpath-HQ/sentinel/commit/69ace8194f4d3c6ede05ae2950c3254f6e617159))
+* Add list command to retrieve and display documents in a Sentinel collection ([d4f7f90](https://github.com/cyberpath-HQ/sentinel/commit/d4f7f9037bcbaa0c5152e303066aac568aabaa82))
+* Add tracing dependency to sentinel and sentinel-crypto ([a6f1963](https://github.com/cyberpath-HQ/sentinel/commit/a6f19633b5b0881a036e98c940d915bf5ae57612))
+* Add tracing support across the crypto and collection modules for improved logging ([fb81149](https://github.com/cyberpath-HQ/sentinel/commit/fb811495c5ebf3ee13d27cf0ca510fa212a62f78))
+* Bump version of sentinel-cli, sentinel-crypto, and sentinel-dbms to 1.1.0 ([2ff08e8](https://github.com/cyberpath-HQ/sentinel/commit/2ff08e89bc9b55afc962b376ab831a980ebf2b61))
+* Enhance error handling and add tests for insert command and signature verification ([ddee06e](https://github.com/cyberpath-HQ/sentinel/commit/ddee06e7d072202b793762aa85a7ea629e6bf6bc))
+* Enhance insert command to support bulk insert from JSON file ([c748f49](https://github.com/cyberpath-HQ/sentinel/commit/c748f49d859ee9c5acd4fdb177db9f63269b30af))
+* Fix collection entry validation to ensure only files are processed ([b3a780a](https://github.com/cyberpath-HQ/sentinel/commit/b3a780aae717386883e7d5676d97ded2b774b01f))
+* Implement bulk insert command for documents in a Sentinel collection ([61436a5](https://github.com/cyberpath-HQ/sentinel/commit/61436a5a169e81591442f3d828853c427c5eccdc))
+* Implement soft delete for documents and add list functionality in Collection ([aa5b8f2](https://github.com/cyberpath-HQ/sentinel/commit/aa5b8f2d53fd71abc129909f8a83b506a29165fa))
+* Refactor code for improved readability and consistency in insert, mod, crypto, and collection operations ([dd4256e](https://github.com/cyberpath-HQ/sentinel/commit/dd4256e854ebcbee04585f94a654394be2a85a79))
+* Remove bulk insert command implementation from CLI ([a616c34](https://github.com/cyberpath-HQ/sentinel/commit/a616c34da86c47fa60c677e91afbab8b7a4bc3df))
+* Update implementation plan to reflect completion of directory operations ([ca9b5fc](https://github.com/cyberpath-HQ/sentinel/commit/ca9b5fc5bb2ffa2bed5ce60abbbe548724d3274f))
+* Update insert command to use Option for id and data fields in tests ([51e2008](https://github.com/cyberpath-HQ/sentinel/commit/51e2008e973d48e5a6cc01ca41cc85effeca7200))
+
 # [1.1.0](https://github.com/cyberpath-HQ/sentinel/compare/v1.0.6...v1.1.0) (2026-01-15)
 
 
