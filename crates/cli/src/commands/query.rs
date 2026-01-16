@@ -164,15 +164,16 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
 
     match coll.query(query).await {
         Ok(result) => {
+            let documents: Vec<_> = futures::TryStreamExt::try_collect(result.documents).await?;
             info!(
-                "Query returned {} documents (total: {})",
-                result.documents.len(),
+                "Query returned {} documents (total: {:?})",
+                documents.len(),
                 result.total_count
             );
 
             match args.format.as_str() {
                 "json" => {
-                    for doc in &result.documents {
+                    for doc in &documents {
                         #[allow(clippy::print_stdout, reason = "CLI output")]
                         {
                             println!("{}", serde_json::to_string_pretty(doc.data()).unwrap());
@@ -180,7 +181,7 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
                     }
                 },
                 "table" => {
-                    if result.documents.is_empty() {
+                    if documents.is_empty() {
                         #[allow(clippy::print_stdout, reason = "CLI output")]
                         {
                             println!("No documents found");
@@ -192,7 +193,7 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
                         {
                             println!("ID");
                             println!("--");
-                            for doc in &result.documents {
+                            for doc in &documents {
                                 println!("{}", doc.id());
                             }
                         }
