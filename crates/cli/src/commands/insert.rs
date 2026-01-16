@@ -68,84 +68,13 @@ pub struct InsertArgs {
 /// run(args).await?;
 /// ```
 pub async fn run(args: InsertArgs) -> sentinel_dbms::Result<()> {
-    let store_path = args.store_path;
-    let collection = args.collection;
-
-    let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
-    let coll = store.collection(&collection).await?;
+    let store = sentinel_dbms::Store::new(&args.store_path, args.passphrase.as_deref()).await?;
+    let coll = store.collection(&args.collection).await?;
 
     if let Some(bulk_file) = args.bulk {
-        // Bulk insert mode
-        info!(
-            "Bulk inserting documents into collection '{}' in store {} from file '{}'",
-            collection, store_path, bulk_file
-        );
-
-        // Read JSON data from file
-        let json_str = match std::fs::read_to_string(&bulk_file) {
-            Ok(content) => content,
-            Err(e) => {
-                error!("Failed to read file '{}': {}", bulk_file, e);
-                return Err(sentinel_dbms::SentinelError::Io {
-                    source: e,
-                });
-            },
-        };
-
-        // Parse JSON
-        let documents: Value = match serde_json::from_str(&json_str) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Invalid JSON data in file '{}': {}", bulk_file, e);
-                return Err(sentinel_dbms::SentinelError::Json {
-                    source: e,
-                });
-            },
-        };
-
-        // Validate that it's an object
-        let obj = match documents.as_object() {
-            Some(o) => o,
-            None => {
-                error!(
-                    "JSON data in file '{}' must be an object with document IDs as keys",
-                    bulk_file
-                );
-                return Err(sentinel_dbms::SentinelError::Internal {
-                    message: "Expected JSON object".to_string(),
-                });
-            },
-        };
-
-        // Prepare documents for bulk insert
-        let mut docs_to_insert = Vec::new();
-        for (id, data) in obj {
-            docs_to_insert.push((id.as_str(), data.clone()));
-        }
-
-        info!("Inserting {} documents", docs_to_insert.len());
-
-        // Perform bulk insert
-        match coll.bulk_insert(docs_to_insert).await {
-            Ok(_) => {
-                info!(
-                    "Successfully inserted {} documents into collection '{}'",
-                    obj.len(),
-                    collection
-                );
-                Ok(())
-            },
-            Err(e) => {
-                error!(
-                    "Failed to bulk insert documents into collection '{}' in store {}: {}",
-                    collection, store_path, e
-                );
-                Err(e)
-            },
-        }
+        insert_bulk_documents(coll, &args.store_path, &args.collection, bulk_file).await
     }
     else {
-        // Single document insert mode
         let id = args.id.ok_or_else(|| {
             sentinel_dbms::SentinelError::Internal {
                 message: "Document ID is required for single insert mode".to_string(),
@@ -156,36 +85,168 @@ pub async fn run(args: InsertArgs) -> sentinel_dbms::Result<()> {
                 message: "Document data is required for single insert mode".to_string(),
             }
         })?;
-
-        info!(
-            "Inserting document '{}' into collection '{}' in store {}",
-            id, collection, store_path
-        );
-
-        let value: Value = match serde_json::from_str(&data) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("Invalid JSON data: {}", e);
-                return Err(sentinel_dbms::SentinelError::Json {
-                    source: e,
-                });
-            },
-        };
-
-        match coll.insert(&id, value).await {
-            Ok(_) => {
-                info!("Document '{}' inserted successfully", id);
-                Ok(())
-            },
-            Err(e) => {
-                error!(
-                    "Failed to insert document '{}' into collection '{}' in store {}: {}",
-                    id, collection, store_path, e
-                );
-                Err(e)
-            },
-        }
+        insert_single_document(coll, &args.store_path, &args.collection, &id, &data).await
     }
+}
+
+/// Insert a single document into the collection.
+///
+/// # Arguments
+/// * `coll` - The collection to insert into
+/// * `store_path` - Path to the store for logging
+/// * `collection` - Collection name for logging
+/// * `id` - Document ID
+/// * `data` - JSON data as string
+///
+/// # Returns
+/// Returns `Ok(())` on success, or a `SentinelError` on failure.
+async fn insert_single_document(
+    coll: sentinel_dbms::Collection,
+    store_path: &str,
+    collection: &str,
+    id: &str,
+    data: &str,
+) -> sentinel_dbms::Result<()> {
+    info!(
+        "Inserting document '{}' into collection '{}' in store {}",
+        id, collection, store_path
+    );
+
+    let value = parse_json_string(data)?;
+
+    match coll.insert(id, value).await {
+        Ok(_) => {
+            info!("Document '{}' inserted successfully", id);
+            Ok(())
+        },
+        Err(e) => {
+            error!(
+                "Failed to insert document '{}' into collection '{}' in store {}: {}",
+                id, collection, store_path, e
+            );
+            Err(e)
+        },
+    }
+}
+
+/// Insert multiple documents from a JSON file into the collection.
+///
+/// The JSON file should contain an object where keys are document IDs
+/// and values are the document data.
+///
+/// # Arguments
+/// * `coll` - The collection to insert into
+/// * `store_path` - Path to the store for logging
+/// * `collection` - Collection name for logging
+/// * `bulk_file` - Path to the JSON file containing documents
+///
+/// # Returns
+/// Returns `Ok(())` on success, or a `SentinelError` on failure.
+async fn insert_bulk_documents(
+    coll: sentinel_dbms::Collection,
+    store_path: &str,
+    collection: &str,
+    bulk_file: String,
+) -> sentinel_dbms::Result<()> {
+    info!(
+        "Bulk inserting documents into collection '{}' in store {} from file '{}'",
+        collection, store_path, bulk_file
+    );
+
+    let json_str = read_bulk_file(&bulk_file)?;
+    let documents = parse_json_string(&json_str)?;
+
+    let obj = validate_bulk_json_object(&documents, &bulk_file)?;
+
+    let docs_to_insert = prepare_bulk_documents(obj);
+
+    info!("Inserting {} documents", docs_to_insert.len());
+
+    match coll.bulk_insert(docs_to_insert).await {
+        Ok(_) => {
+            info!(
+                "Successfully inserted {} documents into collection '{}'",
+                obj.len(),
+                collection
+            );
+            Ok(())
+        },
+        Err(e) => {
+            error!(
+                "Failed to bulk insert documents into collection '{}' in store {}: {}",
+                collection, store_path, e
+            );
+            Err(e)
+        },
+    }
+}
+
+/// Read and return the contents of a bulk insert JSON file.
+///
+/// # Arguments
+/// * `file_path` - Path to the JSON file
+///
+/// # Returns
+/// Returns the file contents as a string, or a `SentinelError` on failure.
+fn read_bulk_file(file_path: &str) -> Result<String, sentinel_dbms::SentinelError> {
+    std::fs::read_to_string(file_path).map_err(|e| {
+        error!("Failed to read file '{}': {}", file_path, e);
+        sentinel_dbms::SentinelError::Io {
+            source: e,
+        }
+    })
+}
+
+/// Parse a JSON string into a serde_json::Value.
+///
+/// # Arguments
+/// * `json_str` - The JSON string to parse
+///
+/// # Returns
+/// Returns the parsed JSON value, or a `SentinelError` on failure.
+fn parse_json_string(json_str: &str) -> Result<Value, sentinel_dbms::SentinelError> {
+    serde_json::from_str(json_str).map_err(|e| {
+        error!("Invalid JSON data: {}", e);
+        sentinel_dbms::SentinelError::Json {
+            source: e,
+        }
+    })
+}
+
+/// Validate that the parsed JSON is an object suitable for bulk insert.
+///
+/// # Arguments
+/// * `documents` - The parsed JSON value
+/// * `bulk_file` - File path for error messages
+///
+/// # Returns
+/// Returns the JSON object, or a `SentinelError` on failure.
+fn validate_bulk_json_object<'a>(
+    documents: &'a Value,
+    bulk_file: &str,
+) -> Result<&'a serde_json::Map<String, Value>, sentinel_dbms::SentinelError> {
+    documents.as_object().ok_or_else(|| {
+        error!(
+            "JSON data in file '{}' must be an object with document IDs as keys",
+            bulk_file
+        );
+        sentinel_dbms::SentinelError::Internal {
+            message: "Expected JSON object".to_string(),
+        }
+    })
+}
+
+/// Prepare documents for bulk insert from a JSON object.
+///
+/// # Arguments
+/// * `obj` - The JSON object containing document ID -> data mappings
+///
+/// # Returns
+/// Returns a vector of (id, data) tuples ready for bulk insert.
+fn prepare_bulk_documents(obj: &serde_json::Map<String, Value>) -> Vec<(&str, Value)> {
+    obj.iter()
+        .map(|(id, data)| (id.as_str(), data.clone()))
+        .collect()
 }
 
 #[cfg(test)]
