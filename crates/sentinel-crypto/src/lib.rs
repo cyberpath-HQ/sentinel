@@ -170,7 +170,9 @@ pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Re
             Pbkdf2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, salt)
         },
     };
-    debug!("Key derivation with salt completed successfully");
+    if result.is_ok() {
+        debug!("Key derivation with salt completed successfully");
+    }
     result
 }
 
