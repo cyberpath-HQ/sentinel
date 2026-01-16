@@ -152,7 +152,9 @@ pub fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]
         KeyDerivationAlgorithmChoice::Argon2id => Argon2KeyDerivation::derive_key_from_passphrase(passphrase),
         KeyDerivationAlgorithmChoice::Pbkdf2 => Pbkdf2KeyDerivation::derive_key_from_passphrase(passphrase),
     };
-    debug!("Key derivation completed successfully");
+    if result.is_ok() {
+        debug!("Key derivation completed successfully");
+    }
     result
 }
 
