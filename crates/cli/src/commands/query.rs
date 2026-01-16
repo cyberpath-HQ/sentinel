@@ -14,8 +14,10 @@ pub struct QueryArgs {
     /// Passphrase for decrypting the signing key
     #[arg(long)]
     pub passphrase: Option<String>,
-    /// Filter by field equality (field=value)
-    #[arg(long, value_name = "field=value")]
+    /// Filter documents (can be used multiple times)
+    /// Syntax: field=value, field>value, field<value, field>=value, field<=value,
+    /// field~substring, field^prefix, field$suffix, field in:value1,value2, field exists:true/false
+    #[arg(long, value_name = "filter")]
     pub filter:     Vec<String>,
     /// Sort by field (field:asc or field:desc)
     #[arg(long, value_name = "field:order")]
@@ -53,7 +55,13 @@ pub struct QueryArgs {
 ///     store_path: "/tmp/my_store".to_string(),
 ///     collection: "users".to_string(),
 ///     passphrase: None,
-///     filter:     vec!["age>25".to_string()],
+///     filter:     vec![
+///         "age>25".to_string(),
+///         "city=NYC".to_string(),
+///         "name~Alice".to_string(),
+///         "status in:active,inactive".to_string(),
+///         "email exists:true".to_string(),
+///     ],
 ///     sort:       Some("name:asc".to_string()),
 ///     limit:      Some(10),
 ///     offset:     None,
@@ -87,12 +95,38 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
             ParsedFilter::LessThan(field, value) => {
                 query_builder.filter(&field, sentinel_dbms::Operator::LessThan, value)
             },
+            ParsedFilter::GreaterOrEqual(field, value) => {
+                query_builder.filter(&field, sentinel_dbms::Operator::GreaterOrEqual, value)
+            },
+            ParsedFilter::LessOrEqual(field, value) => {
+                query_builder.filter(&field, sentinel_dbms::Operator::LessOrEqual, value)
+            },
             ParsedFilter::Contains(field, substring) => {
                 query_builder.filter(
                     &field,
                     sentinel_dbms::Operator::Contains,
                     Value::String(substring),
                 )
+            },
+            ParsedFilter::StartsWith(field, prefix) => {
+                query_builder.filter(
+                    &field,
+                    sentinel_dbms::Operator::StartsWith,
+                    Value::String(prefix),
+                )
+            },
+            ParsedFilter::EndsWith(field, suffix) => {
+                query_builder.filter(
+                    &field,
+                    sentinel_dbms::Operator::EndsWith,
+                    Value::String(suffix),
+                )
+            },
+            ParsedFilter::In(field, values) => {
+                query_builder.filter(&field, sentinel_dbms::Operator::In, Value::Array(values))
+            },
+            ParsedFilter::Exists(field, exists) => {
+                query_builder.filter(&field, sentinel_dbms::Operator::Exists, Value::Bool(exists))
             },
         };
     }
@@ -188,12 +222,60 @@ enum ParsedFilter {
     Equals(String, Value),
     GreaterThan(String, Value),
     LessThan(String, Value),
+    GreaterOrEqual(String, Value),
+    LessOrEqual(String, Value),
     Contains(String, String),
+    StartsWith(String, String),
+    EndsWith(String, String),
+    In(String, Vec<Value>),
+    Exists(String, bool),
 }
 
 /// Parse a filter string like "field=value" or "field>value".
 fn parse_filter(filter_str: &str) -> sentinel_dbms::Result<ParsedFilter> {
-    if let Some(eq_pos) = filter_str.find('=') {
+    // Check for special syntaxes first
+    if let Some(exists_pos) = filter_str.find(" exists:") {
+        let field = filter_str[.. exists_pos].to_string();
+        let value_str = &filter_str[exists_pos + 8 ..]; // " exists:" is 8 chars
+        let exists = match value_str {
+            "true" => true,
+            "false" => false,
+            _ => {
+                return Err(sentinel_dbms::SentinelError::ConfigError {
+                    message: format!(
+                        "Invalid exists value: {}, expected 'true' or 'false'",
+                        value_str
+                    ),
+                })
+            },
+        };
+        return Ok(ParsedFilter::Exists(field, exists));
+    }
+
+    if let Some(in_pos) = filter_str.find(" in:") {
+        let field = filter_str[.. in_pos].to_string();
+        let values_str = &filter_str[in_pos + 4 ..]; // " in:" is 4 chars
+        let values: Vec<Value> = values_str
+            .split(',')
+            .map(|s| parse_value(s.trim()))
+            .collect::<Result<Vec<_>, _>>()?;
+        return Ok(ParsedFilter::In(field, values));
+    }
+
+    // Check for comparison operators (longest first)
+    if let Some(ge_pos) = filter_str.find(">=") {
+        let field = filter_str[.. ge_pos].to_string();
+        let value_str = &filter_str[ge_pos + 2 ..];
+        let value = parse_value(value_str)?;
+        Ok(ParsedFilter::GreaterOrEqual(field, value))
+    }
+    else if let Some(le_pos) = filter_str.find("<=") {
+        let field = filter_str[.. le_pos].to_string();
+        let value_str = &filter_str[le_pos + 2 ..];
+        let value = parse_value(value_str)?;
+        Ok(ParsedFilter::LessOrEqual(field, value))
+    }
+    else if let Some(eq_pos) = filter_str.find('=') {
         let field = filter_str[.. eq_pos].to_string();
         let value_str = &filter_str[eq_pos + 1 ..];
         let value = parse_value(value_str)?;
@@ -215,6 +297,16 @@ fn parse_filter(filter_str: &str) -> sentinel_dbms::Result<ParsedFilter> {
         let field = filter_str[.. contains_pos].to_string();
         let substring = filter_str[contains_pos + 1 ..].to_string();
         Ok(ParsedFilter::Contains(field, substring))
+    }
+    else if let Some(starts_pos) = filter_str.find('^') {
+        let field = filter_str[.. starts_pos].to_string();
+        let prefix = filter_str[starts_pos + 1 ..].to_string();
+        Ok(ParsedFilter::StartsWith(field, prefix))
+    }
+    else if let Some(ends_pos) = filter_str.find('$') {
+        let field = filter_str[.. ends_pos].to_string();
+        let suffix = filter_str[ends_pos + 1 ..].to_string();
+        Ok(ParsedFilter::EndsWith(field, suffix))
     }
     else {
         Err(sentinel_dbms::SentinelError::ConfigError {
@@ -352,6 +444,36 @@ mod tests {
             _ => panic!("Expected GreaterThan"),
         }
 
+        // Test less than
+        let filter = parse_filter("age<30").unwrap();
+        match filter {
+            ParsedFilter::LessThan(field, value) => {
+                assert_eq!(field, "age");
+                assert_eq!(value, Value::Number(30.into()));
+            },
+            _ => panic!("Expected LessThan"),
+        }
+
+        // Test greater or equal
+        let filter = parse_filter("age>=25").unwrap();
+        match filter {
+            ParsedFilter::GreaterOrEqual(field, value) => {
+                assert_eq!(field, "age");
+                assert_eq!(value, Value::Number(25.into()));
+            },
+            _ => panic!("Expected GreaterOrEqual"),
+        }
+
+        // Test less or equal
+        let filter = parse_filter("age<=30").unwrap();
+        match filter {
+            ParsedFilter::LessOrEqual(field, value) => {
+                assert_eq!(field, "age");
+                assert_eq!(value, Value::Number(30.into()));
+            },
+            _ => panic!("Expected LessOrEqual"),
+        }
+
         // Test contains
         let filter = parse_filter("name~Ali").unwrap();
         match filter {
@@ -360,6 +482,58 @@ mod tests {
                 assert_eq!(substring, "Ali");
             },
             _ => panic!("Expected Contains"),
+        }
+
+        // Test starts with
+        let filter = parse_filter("name^Al").unwrap();
+        match filter {
+            ParsedFilter::StartsWith(field, prefix) => {
+                assert_eq!(field, "name");
+                assert_eq!(prefix, "Al");
+            },
+            _ => panic!("Expected StartsWith"),
+        }
+
+        // Test ends with
+        let filter = parse_filter("name$ce").unwrap();
+        match filter {
+            ParsedFilter::EndsWith(field, suffix) => {
+                assert_eq!(field, "name");
+                assert_eq!(suffix, "ce");
+            },
+            _ => panic!("Expected EndsWith"),
+        }
+
+        // Test in
+        let filter = parse_filter("city in:NYC,LA").unwrap();
+        match filter {
+            ParsedFilter::In(field, values) => {
+                assert_eq!(field, "city");
+                assert_eq!(values.len(), 2);
+                assert_eq!(values[0], Value::String("NYC".to_string()));
+                assert_eq!(values[1], Value::String("LA".to_string()));
+            },
+            _ => panic!("Expected In"),
+        }
+
+        // Test exists true
+        let filter = parse_filter("email exists:true").unwrap();
+        match filter {
+            ParsedFilter::Exists(field, exists) => {
+                assert_eq!(field, "email");
+                assert_eq!(exists, true);
+            },
+            _ => panic!("Expected Exists"),
+        }
+
+        // Test exists false
+        let filter = parse_filter("email exists:false").unwrap();
+        match filter {
+            ParsedFilter::Exists(field, exists) => {
+                assert_eq!(field, "email");
+                assert_eq!(exists, false);
+            },
+            _ => panic!("Expected Exists"),
         }
     }
 
