@@ -1307,7 +1307,6 @@ name = "sentinel-cli"
 version = "1.2.0"
 dependencies = [
  "clap",
- "futures",
  "hex",
  "sentinel-crypto",
  "sentinel-dbms",
