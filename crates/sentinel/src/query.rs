@@ -1,4 +1,5 @@
 use serde_json::Value;
+use tokio_stream::Stream;
 
 /// Represents a query for filtering documents in a collection.
 ///
@@ -19,12 +20,11 @@ pub struct Query {
 }
 
 /// The result of executing a query.
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryResult {
-    /// The matching documents
-    pub documents:      Vec<crate::Document>,
-    /// Total number of documents that matched (before limit/offset)
-    pub total_count:    usize,
+    /// The matching documents as a stream
+    pub documents:      std::pin::Pin<Box<dyn Stream<Item = crate::Result<crate::Document>> + Send>>,
+    /// Total number of documents that matched (before limit/offset), None if not known
+    pub total_count:    Option<usize>,
     /// Time taken to execute the query
     pub execution_time: std::time::Duration,
 }

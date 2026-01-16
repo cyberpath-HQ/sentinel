@@ -1,7 +1,9 @@
 use std::{path::PathBuf, sync::Arc};
 
+use async_stream::stream;
 use serde_json::Value;
 use tokio::fs as tokio_fs;
+use tokio_stream::Stream;
 use tracing::{debug, error, trace, warn};
 
 use crate::{
@@ -463,22 +465,14 @@ impl Collection {
     ///
     /// # Returns
     ///
-    /// Returns a vector of documents that match the predicate.
-    ///
-    /// # Arguments
-    ///
-    /// * `predicate` - A function that takes a `&Document` and returns `true` if the document
-    ///   should be included in the results.
-    ///
-    /// # Returns
-    ///
-    /// Returns a vector of documents that match the predicate.
+    /// Returns a stream of documents that match the predicate.
     ///
     /// # Example
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use futures::stream::StreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
@@ -489,39 +483,75 @@ impl Collection {
     /// collection.insert("user-2", json!({"name": "Bob", "age": 30})).await?;
     ///
     /// // Filter for users older than 26
-    /// let adults = collection.filter(|doc| {
+    /// let mut adults = collection.filter(|doc| {
     ///     doc.data().get("age")
     ///         .and_then(|v| v.as_i64())
     ///         .map_or(false, |age| age > 26)
-    /// }).await?;
+    /// });
     ///
-    /// assert_eq!(adults.len(), 1);
-    /// assert_eq!(adults[0].id(), "user-2");
+    /// let mut count = 0;
+    /// while let Some(doc) = adults.next().await {
+    ///     let doc = doc?;
+    ///     assert_eq!(doc.id(), "user-2");
+    ///     count += 1;
+    /// }
+    /// assert_eq!(count, 1);
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn filter<F>(&self, predicate: F) -> Result<Vec<Document>>
+    pub fn filter<F>(&self, predicate: F) -> std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>
     where
-        F: Fn(&Document) -> bool,
+        F: Fn(&Document) -> bool + Send + Sync + 'static,
     {
-        trace!("Filtering documents in collection: {}", self.name());
-        let ids = self.list().await?;
-        let mut results = Vec::new();
+        let collection_path = self.path.clone();
 
-        for id in ids {
-            // Load document only when needed
-            if let Some(doc) = self.get(&id).await? {
-                if predicate(&doc) {
-                    results.push(doc);
+        Box::pin(stream! {
+            trace!("Streaming filter on collection");
+            let mut entries = match tokio_fs::read_dir(&collection_path).await {
+                Ok(entries) => entries,
+                Err(e) => {
+                    yield Err(e.into());
+                    return;
+                }
+            };
+
+            loop {
+                let entry = match entries.next_entry().await {
+                    Ok(Some(entry)) => entry,
+                    Ok(None) => break,
+                    Err(e) => {
+                        yield Err(e.into());
+                        continue;
+                    }
+                };
+
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                        if file_name.ends_with(".json") && !file_name.starts_with('.') {
+                            let id = &file_name[..file_name.len() - 5]; // remove .json
+                            // Load document
+                            let file_path = collection_path.join(format!("{}.json", id));
+                            match tokio_fs::read_to_string(&file_path).await {
+                                Ok(content) => {
+                                    match serde_json::from_str::<Document>(&content) {
+                                        Ok(mut doc) => {
+                                            doc.id = id.to_owned();
+                                            if predicate(&doc) {
+                                                yield Ok(doc);
+                                            }
+                                        }
+                                        Err(e) => yield Err(e.into()),
+                                    }
+                                }
+                                Err(e) => yield Err(e.into()),
+                            }
+                        }
+                    }
                 }
             }
-        }
-
-        debug!(
-            "Filter completed, found {} matching documents",
-            results.len()
-        );
-        Ok(results)
+            debug!("Streaming filter completed");
+        })
     }
 
     /// Executes a structured query against the collection.
@@ -531,14 +561,6 @@ impl Collection {
     /// - Queries without sorting use streaming processing with early limit application
     /// - Queries with sorting collect filtered documents in memory for sorting
     /// - Projection is applied only to final results to minimize memory usage
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - The query to execute
-    ///
-    /// # Returns
-    ///
-    /// Returns a `QueryResult` containing the matching documents and metadata.
     ///
     /// # Arguments
     ///
@@ -572,7 +594,8 @@ impl Collection {
     ///     .build();
     ///
     /// let result = collection.query(query).await?;
-    /// assert_eq!(result.documents.len(), 2);
+    /// let documents: Vec<_> = futures::TryStreamExt::try_collect(result.documents).await?;
+    /// assert_eq!(documents.len(), 2);
     /// # Ok(())
     /// # }
     /// ```
@@ -582,30 +605,27 @@ impl Collection {
 
         trace!("Executing query on collection: {}", self.name());
 
-        // Get all document IDs
-        let all_ids = self.list().await?;
-        let total_collection_size = all_ids.len();
-
-        // If we need sorting, we must collect all matching documents first
-        // to determine sort order. Otherwise, we can stream and apply limit early.
-        let final_docs = if query.sort.is_some() {
-            self.execute_sorted_query(&all_ids, &query).await?
+        // Get all document IDs - but for full streaming, we should avoid this
+        // However, for sorted queries, we need to know all IDs to collect
+        // For non-sorted, we can stream without knowing all IDs
+        let documents_stream = if query.sort.is_some() {
+            // For sorted queries, we need to collect all matching documents
+            let all_ids = self.list().await?;
+            let docs = self.execute_sorted_query(&all_ids, &query).await?;
+            let stream = tokio_stream::iter(docs.into_iter().map(Ok));
+            Box::pin(stream) as std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>
         }
         else {
-            self.execute_streaming_query(&all_ids, &query).await?
+            // For non-sorted queries, use streaming
+            self.execute_streaming_query(&query).await?
         };
 
         let execution_time = start_time.elapsed();
-        debug!(
-            "Query completed in {:?}, returned {} documents out of {} total",
-            execution_time,
-            final_docs.len(),
-            total_collection_size
-        );
+        debug!("Query completed in {:?}", execution_time);
 
         Ok(crate::QueryResult {
-            documents: final_docs,
-            total_count: total_collection_size, // Note: this is approximate for streaming queries
+            documents: documents_stream,
+            total_count: None, // For streaming, we don't know the total count upfront
             execution_time,
         })
     }
@@ -666,41 +686,184 @@ impl Collection {
     }
 
     /// Executes a query without sorting, allowing streaming with early limit application.
-    async fn execute_streaming_query(&self, all_ids: &[String], query: &crate::Query) -> Result<Vec<Document>> {
-        let mut results = Vec::new();
-        let limit = query.limit.unwrap_or(usize::MAX);
-        let offset = query.offset.unwrap_or(0);
-        let mut collected = 0;
-
-        for id in all_ids {
-            if let Some(doc) = self.get(id).await? {
-                if self.matches_filters(&doc, &query.filters) {
-                    collected += 1;
-
-                    // Skip documents before offset
-                    if collected <= offset {
-                        continue;
-                    }
-
-                    // Apply projection
-                    let projected_doc = if let Some(ref fields) = query.projection {
-                        self.project_document(&doc, fields)
-                    }
-                    else {
-                        doc
-                    };
-
-                    results.push(projected_doc);
-
-                    // Early termination if we've reached the limit
-                    if results.len() >= limit {
-                        break;
-                    }
-                }
+    async fn execute_streaming_query(
+        &self,
+        query: &crate::Query,
+    ) -> Result<std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>> {
+        // Standalone compare function
+        fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+            match (a, b) {
+                (&Value::Null, &Value::Null) => std::cmp::Ordering::Equal,
+                (&Value::Null, _) => std::cmp::Ordering::Less,
+                (_, &Value::Null) => std::cmp::Ordering::Greater,
+                (&Value::Bool(ba), &Value::Bool(bb)) => ba.cmp(&bb),
+                (&Value::Bool(_), _) => std::cmp::Ordering::Less,
+                (_, &Value::Bool(_)) => std::cmp::Ordering::Greater,
+                (&Value::Number(ref na), &Value::Number(ref nb)) => {
+                    let fa = na.as_f64().unwrap_or(0.0);
+                    let fb = nb.as_f64().unwrap_or(0.0);
+                    fa.partial_cmp(&fb).unwrap_or(std::cmp::Ordering::Equal)
+                },
+                (&Value::Number(_), _) => std::cmp::Ordering::Less,
+                (_, &Value::Number(_)) => std::cmp::Ordering::Greater,
+                (&Value::String(ref sa), &Value::String(ref sb)) => sa.cmp(sb),
+                (&Value::String(_), _) => std::cmp::Ordering::Less,
+                (_, &Value::String(_)) => std::cmp::Ordering::Greater,
+                (&Value::Array(ref aa), &Value::Array(ref ab)) => aa.len().cmp(&ab.len()),
+                (&Value::Array(_), _) => std::cmp::Ordering::Less,
+                (_, &Value::Array(_)) => std::cmp::Ordering::Greater,
+                (&Value::Object(ref oa), &Value::Object(ref ob)) => oa.len().cmp(&ob.len()),
             }
         }
 
-        Ok(results)
+        let collection_path = self.path.clone();
+        let filters = query.filters.clone();
+        let projection_fields = query.projection.clone();
+        let limit = query.limit.unwrap_or(usize::MAX);
+        let offset = query.offset.unwrap_or(0);
+
+        // Inline the filter matching logic to avoid capturing self
+        fn matches_filters_fn(doc: &Document, filters: &[crate::Filter]) -> bool {
+            for filter in filters {
+                let matches = match filter {
+                    &crate::Filter::Equals(ref field, ref value) => doc.data().get(field) == Some(value),
+                    &crate::Filter::GreaterThan(ref field, ref value) => {
+                        doc.data()
+                            .get(field)
+                            .map(|field_val| compare_json_values(field_val, value) == std::cmp::Ordering::Greater)
+                            .unwrap_or(false)
+                    },
+                    &crate::Filter::LessThan(ref field, ref value) => {
+                        doc.data()
+                            .get(field)
+                            .map(|field_val| compare_json_values(field_val, value) == std::cmp::Ordering::Less)
+                            .unwrap_or(false)
+                    },
+                    &crate::Filter::GreaterOrEqual(ref field, ref value) => {
+                        doc.data()
+                            .get(field)
+                            .map(|field_val| compare_json_values(field_val, value) != std::cmp::Ordering::Less)
+                            .unwrap_or(false)
+                    },
+                    &crate::Filter::LessOrEqual(ref field, ref value) => {
+                        doc.data()
+                            .get(field)
+                            .map(|field_val| compare_json_values(field_val, value) != std::cmp::Ordering::Greater)
+                            .unwrap_or(false)
+                    },
+                    &crate::Filter::Contains(ref field, ref substring) => {
+                        doc.data()
+                            .get(field)
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|s| s.contains(substring))
+                    },
+                    &crate::Filter::StartsWith(ref field, ref prefix) => {
+                        doc.data()
+                            .get(field)
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|s| s.starts_with(prefix))
+                    },
+                    &crate::Filter::EndsWith(ref field, ref suffix) => {
+                        doc.data()
+                            .get(field)
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|s| s.ends_with(suffix))
+                    },
+                    &crate::Filter::In(ref field, ref values) => {
+                        doc.data().get(field).is_some_and(|v| values.contains(v))
+                    },
+                    &crate::Filter::Exists(ref field, exists) => {
+                        let field_exists = doc.data().get(field).is_some();
+                        field_exists == exists
+                    },
+                    // For simplicity, treat And/Or as not matching for now
+                    &crate::Filter::And(..) => false,
+                    &crate::Filter::Or(..) => false,
+                };
+                if !matches {
+                    return false;
+                }
+            }
+            true
+        }
+
+        // Inline the projection logic
+        let project_document_fn = |doc: &Document, fields: &[String]| -> Document {
+            if fields.is_empty() {
+                return doc.clone();
+            }
+            let mut projected_data = serde_json::Map::new();
+            for field in fields {
+                if let Some(value) = doc.data().get(field) {
+                    projected_data.insert(field.clone(), value.clone());
+                }
+            }
+            // Create a new document with projected data
+            Document::new_without_signature(doc.id().to_owned(), Value::Object(projected_data))
+                .unwrap_or_else(|_| doc.clone())
+        };
+
+        Ok(Box::pin(stream! {
+            let mut entries = match tokio_fs::read_dir(&collection_path).await {
+                Ok(entries) => entries,
+                Err(e) => {
+                    yield Err(e.into());
+                    return;
+                }
+            };
+
+            let mut yielded = 0;
+            let mut skipped = 0;
+
+            loop {
+                let entry = match entries.next_entry().await {
+                    Ok(Some(entry)) => entry,
+                    Ok(None) => break,
+                    Err(e) => {
+                        yield Err(e.into());
+                        continue;
+                    }
+                };
+
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                        if file_name.ends_with(".json") && !file_name.starts_with('.') {
+                            let id = &file_name[..file_name.len() - 5]; // remove .json
+                            // Load document
+                            let file_path = collection_path.join(format!("{}.json", id));
+                            match tokio_fs::read_to_string(&file_path).await {
+                                Ok(content) => {
+                                    match serde_json::from_str::<Document>(&content) {
+                                        Ok(mut doc) => {
+                                            doc.id = id.to_owned();
+                                            if matches_filters_fn(&doc, &filters) {
+                                                if skipped < offset {
+                                                    skipped += 1;
+                                                    continue;
+                                                }
+                                                if yielded >= limit {
+                                                    break;
+                                                }
+                                                let final_doc = if let Some(ref fields) = projection_fields {
+                                                    project_document_fn(&doc, fields)
+                                                } else {
+                                                    doc
+                                                };
+                                                yield Ok(final_doc);
+                                                yielded += 1;
+                                            }
+                                        }
+                                        Err(e) => yield Err(e.into()),
+                                    }
+                                }
+                                Err(e) => yield Err(e.into()),
+                            }
+                        }
+                    }
+                }
+            }
+        }))
     }
 
     /// Checks if a document matches all the given filters.
@@ -1392,8 +1555,9 @@ mod tests {
     async fn test_filter_empty_collection() {
         let (collection, _temp_dir) = setup_collection().await;
 
-        let results = collection.filter(|_| true).await.unwrap();
-        assert!(results.is_empty());
+        let stream = collection.filter(|_| true);
+        let results: Result<Vec<_>> = futures::TryStreamExt::try_collect(stream).await;
+        assert!(results.unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -1409,8 +1573,9 @@ mod tests {
             .await
             .unwrap();
 
-        let results = collection.filter(|_| true).await.unwrap();
-        assert_eq!(results.len(), 2);
+        let stream = collection.filter(|_| true);
+        let results: Result<Vec<_>> = futures::TryStreamExt::try_collect(stream).await;
+        assert_eq!(results.unwrap().len(), 2);
     }
 
     #[tokio::test]
@@ -1430,15 +1595,14 @@ mod tests {
             .await
             .unwrap();
 
-        let results = collection
-            .filter(|doc| {
-                doc.data()
-                    .get("age")
-                    .and_then(|v| v.as_i64())
-                    .map_or(false, |age| age > 26)
-            })
-            .await
-            .unwrap();
+        let stream = collection.filter(|doc| {
+            doc.data()
+                .get("age")
+                .and_then(|v| v.as_i64())
+                .map_or(false, |age| age > 26)
+        });
+        let results: Result<Vec<_>> = futures::TryStreamExt::try_collect(stream).await;
+        let results = results.unwrap();
 
         assert_eq!(results.len(), 2);
         let names: Vec<&str> = results
@@ -1455,8 +1619,9 @@ mod tests {
 
         let query = crate::QueryBuilder::new().build();
         let result = collection.query(query).await.unwrap();
-        assert!(result.documents.is_empty());
-        assert_eq!(result.total_count, 0);
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        assert!(documents.unwrap().is_empty());
+        assert_eq!(result.total_count, None);
     }
 
     #[tokio::test]
@@ -1484,8 +1649,10 @@ mod tests {
             .build();
 
         let result = collection.query(query).await.unwrap();
-        assert_eq!(result.documents.len(), 2);
-        assert_eq!(result.total_count, 3);
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 2);
+        assert_eq!(result.total_count, None);
     }
 
     #[tokio::test]
@@ -1510,10 +1677,12 @@ mod tests {
             .build();
 
         let result = collection.query(query).await.unwrap();
-        assert_eq!(result.documents.len(), 3);
-        assert_eq!(result.documents[0].data()["name"], "Charlie");
-        assert_eq!(result.documents[1].data()["name"], "Alice");
-        assert_eq!(result.documents[2].data()["name"], "Bob");
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 3);
+        assert_eq!(documents[0].data()["name"], "Charlie");
+        assert_eq!(documents[1].data()["name"], "Alice");
+        assert_eq!(documents[2].data()["name"], "Bob");
     }
 
     #[tokio::test]
@@ -1530,8 +1699,10 @@ mod tests {
         let query = crate::QueryBuilder::new().limit(2).offset(1).build();
 
         let result = collection.query(query).await.unwrap();
-        assert_eq!(result.documents.len(), 2);
-        assert_eq!(result.total_count, 5);
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 2);
+        assert_eq!(result.total_count, None);
     }
 
     #[tokio::test]
@@ -1548,8 +1719,10 @@ mod tests {
             .build();
 
         let result = collection.query(query).await.unwrap();
-        assert_eq!(result.documents.len(), 1);
-        let doc = &result.documents[0];
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 1);
+        let doc = &documents[0];
         if let Value::Object(map) = doc.data() {
             assert!(map.contains_key("name"));
             assert!(map.contains_key("age"));
@@ -1581,8 +1754,10 @@ mod tests {
             .build();
 
         let result = collection.query(query).await.unwrap();
-        assert_eq!(result.documents.len(), 1);
-        assert_eq!(result.documents[0].data()["name"], "Alice");
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].data()["name"], "Alice");
     }
 
     #[tokio::test]
@@ -1615,7 +1790,9 @@ mod tests {
             .build();
 
         let result = collection.query(query).await.unwrap();
-        assert_eq!(result.documents.len(), 1);
-        assert_eq!(result.documents[0].data()["name"], "Charlie");
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].data()["name"], "Charlie");
     }
 }
