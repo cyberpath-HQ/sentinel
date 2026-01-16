@@ -323,7 +323,7 @@ impl Collection {
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if path.is_file() {
+            if entry.file_type().await?.is_file() {
                 if let Some(extension) = path.extension() {
                     if extension == "json" {
                         if let Some(file_stem) = path.file_stem() {
