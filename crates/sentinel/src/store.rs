@@ -330,7 +330,7 @@ fn validate_collection_name(name: &str) -> Result<()> {
 
     // Check for valid characters
     if !is_valid_name_chars(name) {
-        warn!("Collection name contains invalid characters: {}", name);
+        debug!("Collection name contains invalid characters: {}", name);
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
