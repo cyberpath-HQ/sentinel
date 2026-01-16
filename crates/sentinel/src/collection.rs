@@ -1,6 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use async_stream::stream;
+use futures::StreamExt;
 use serde_json::Value;
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
@@ -13,39 +14,209 @@ use crate::{
     SentinelError,
 };
 
+// Utility functions for document processing
+
+/// Compares two JSON values for sorting purposes.
+fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
+    match (a, b) {
+        (&Value::Null, &Value::Null) => std::cmp::Ordering::Equal,
+        (&Value::Null, _) => std::cmp::Ordering::Less,
+        (_, &Value::Null) => std::cmp::Ordering::Greater,
+        (&Value::Bool(ba), &Value::Bool(bb)) => ba.cmp(&bb),
+        (&Value::Bool(_), _) => std::cmp::Ordering::Less,
+        (_, &Value::Bool(_)) => std::cmp::Ordering::Greater,
+        (&Value::Number(ref na), &Value::Number(ref nb)) => {
+            let fa = na.as_f64().unwrap_or(0.0);
+            let fb = nb.as_f64().unwrap_or(0.0);
+            fa.partial_cmp(&fb).unwrap_or(std::cmp::Ordering::Equal)
+        },
+        (&Value::Number(_), _) => std::cmp::Ordering::Less,
+        (_, &Value::Number(_)) => std::cmp::Ordering::Greater,
+        (&Value::String(ref sa), &Value::String(ref sb)) => sa.cmp(sb),
+        (&Value::String(_), _) => std::cmp::Ordering::Less,
+        (_, &Value::String(_)) => std::cmp::Ordering::Greater,
+        (&Value::Array(ref aa), &Value::Array(ref ab)) => aa.len().cmp(&ab.len()),
+        (&Value::Array(_), _) => std::cmp::Ordering::Less,
+        (_, &Value::Array(_)) => std::cmp::Ordering::Greater,
+        (&Value::Object(ref oa), &Value::Object(ref ob)) => oa.len().cmp(&ob.len()),
+    }
+}
+
+/// Compares two optional values for sorting purposes.
+fn compare_values(a: Option<&Value>, b: Option<&Value>) -> std::cmp::Ordering {
+    match (a, b) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (Some(va), Some(vb)) => compare_json_values(va, vb),
+    }
+}
+
+/// Checks if a document matches all the given filters.
+fn matches_filters(doc: &Document, filters: &[crate::Filter]) -> bool {
+    for filter in filters {
+        let matches = match filter {
+            &crate::Filter::Equals(ref field, ref value) => doc.data().get(field) == Some(value),
+            &crate::Filter::GreaterThan(ref field, ref value) => {
+                doc.data()
+                    .get(field)
+                    .map(|field_val| compare_json_values(field_val, value) == std::cmp::Ordering::Greater)
+                    .unwrap_or(false)
+            },
+            &crate::Filter::LessThan(ref field, ref value) => {
+                doc.data()
+                    .get(field)
+                    .map(|field_val| compare_json_values(field_val, value) == std::cmp::Ordering::Less)
+                    .unwrap_or(false)
+            },
+            &crate::Filter::GreaterOrEqual(ref field, ref value) => {
+                doc.data()
+                    .get(field)
+                    .map(|field_val| compare_json_values(field_val, value) != std::cmp::Ordering::Less)
+                    .unwrap_or(false)
+            },
+            &crate::Filter::LessOrEqual(ref field, ref value) => {
+                doc.data()
+                    .get(field)
+                    .map(|field_val| compare_json_values(field_val, value) != std::cmp::Ordering::Greater)
+                    .unwrap_or(false)
+            },
+            &crate::Filter::Contains(ref field, ref substring) => {
+                doc.data()
+                    .get(field)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s.contains(substring))
+            },
+            &crate::Filter::StartsWith(ref field, ref prefix) => {
+                doc.data()
+                    .get(field)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s.starts_with(prefix))
+            },
+            &crate::Filter::EndsWith(ref field, ref suffix) => {
+                doc.data()
+                    .get(field)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s.ends_with(suffix))
+            },
+            &crate::Filter::In(ref field, ref values) => doc.data().get(field).is_some_and(|v| values.contains(v)),
+            &crate::Filter::Exists(ref field, exists) => {
+                let field_exists = doc.data().get(field).is_some();
+                field_exists == exists
+            },
+            // For simplicity, treat And/Or as not matching for now
+            &crate::Filter::And(..) => false,
+            &crate::Filter::Or(..) => false,
+        };
+        if !matches {
+            return false;
+        }
+    }
+    true
+}
+
+/// Projects a document to include only specified fields.
+fn project_document(doc: &Document, fields: &[String]) -> Document {
+    if fields.is_empty() {
+        return doc.clone();
+    }
+    let mut projected_data = serde_json::Map::new();
+    for field in fields {
+        if let Some(value) = doc.data().get(field) {
+            projected_data.insert(field.clone(), value.clone());
+        }
+    }
+    // Create a new document with projected data
+    Document::new_without_signature(doc.id().to_owned(), Value::Object(projected_data)).unwrap_or_else(|_| doc.clone())
+}
+
+/// Streams document IDs from a collection directory.
+fn stream_document_ids(collection_path: PathBuf) -> std::pin::Pin<Box<dyn Stream<Item = Result<String>> + Send>> {
+    Box::pin(stream! {
+        let mut entries = match tokio_fs::read_dir(&collection_path).await {
+            Ok(entries) => entries,
+            Err(e) => {
+                yield Err(e.into());
+                return;
+            }
+        };
+
+        loop {
+            let entry = match entries.next_entry().await {
+                Ok(Some(entry)) => entry,
+                Ok(None) => break,
+                Err(e) => {
+                    yield Err(e.into());
+                    continue;
+                }
+            };
+
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if file_name.ends_with(".json") && !file_name.starts_with('.') {
+                        let id = file_name[..file_name.len() - 5].to_owned(); // remove .json
+                        yield Ok(id);
+                    }
+                }
+            }
+        }
+    })
+}
+
 /// A collection represents a namespace for documents in the Sentinel database.
 ///
 /// Collections are backed by filesystem directories, where each document is stored
-/// as a JSON file. The collection provides CRUD operations (Create, Read, Update, Delete)
-/// for managing documents asynchronously using tokio.
+/// as a JSON file with metadata including version, timestamps, hash, and optional signature.
+/// The collection provides CRUD operations (Create, Read, Update, Delete) and advanced
+/// querying capabilities with streaming support for memory-efficient handling of large datasets.
 ///
 /// # Structure
 ///
 /// Each collection is stored in a directory with the following structure:
 /// - `{collection_name}/` - Root directory for the collection
-/// - `{collection_name}/{id}.json` - Individual document files
+/// - `{collection_name}/{id}.json` - Individual document files with embedded metadata
+/// - `{collection_name}/.deleted/` - Soft-deleted documents (for recovery)
+/// - `{collection_name}/.metadata.json` - Collection metadata and indices (future)
+///
+/// # Streaming Operations
+///
+/// For memory efficiency with large datasets, operations like `filter()` and `query()`
+/// return async streams that process documents one-by-one rather than loading
+/// all documents into memory simultaneously.
 ///
 /// # Example
 ///
 /// ```rust
-/// use sentinel_dbms::{Store, Collection};
-/// use serde_json::json;
+/// use sentinel_dbms::{Store, Collection, json};
+/// use futures::TryStreamExt;
 ///
 /// # async fn example() -> sentinel_dbms::Result<()> {
 /// // Create a store and get a collection
-/// let store = Store::new("/path/to/data", None).await?;
+/// let store = Store::new("/tmp/sentinel", None).await?;
 /// let collection = store.collection("users").await?;
 ///
 /// // Insert a document
 /// let user_data = json!({
 ///     "name": "Alice",
-///     "email": "alice@example.com"
+///     "email": "alice@example.com",
+///     "age": 30
 /// });
 /// collection.insert("user-123", user_data).await?;
 ///
 /// // Retrieve the document
 /// let doc = collection.get("user-123").await?;
 /// assert!(doc.is_some());
+/// assert_eq!(doc.unwrap().id(), "user-123");
+///
+/// // Stream all documents matching a predicate
+/// let adults = collection.filter(|doc| {
+///     doc.data().get("age")
+///         .and_then(|v| v.as_i64())
+///         .map_or(false, |age| age >= 18)
+/// });
+/// let adult_docs: Vec<_> = adults.try_collect().await?;
+/// assert_eq!(adult_docs.len(), 1);
 /// # Ok(())
 /// # }
 /// ```
@@ -366,23 +537,17 @@ impl Collection {
     /// ```
     pub async fn list(&self) -> Result<Vec<String>> {
         trace!("Listing documents in collection: {}", self.name());
-        let mut entries = tokio_fs::read_dir(&self.path).await.map_err(|e| {
-            error!("Failed to read collection directory {:?}: {}", self.path, e);
-            e
-        })?;
+        let mut id_stream = stream_document_ids(self.path.clone());
         let mut ids = Vec::new();
 
-        while let Some(entry) = entries.next_entry().await? {
-            let path = entry.path();
-            if !entry.file_type().await?.is_dir() &&
-                let Some(extension) = path.extension() &&
-                extension == "json" &&
-                let Some(file_stem) = path.file_stem() &&
-                let Some(id) = file_stem.to_str()
-            {
-                ids.push(id.to_owned());
+        while let Some(id_result) = id_stream.next().await {
+            match id_result {
+                Ok(id) => ids.push(id),
+                Err(e) => {
+                    error!("Error reading document ID from directory: {}", e);
+                    return Err(e);
+                },
             }
-            // Skip directories (optimization)
         }
 
         // Sort for consistent ordering
@@ -638,7 +803,7 @@ impl Collection {
 
         for id in all_ids {
             if let Some(doc) = self.get(id).await? {
-                if self.matches_filters(&doc, &query.filters) {
+                if matches_filters(&doc, &query.filters) {
                     matching_docs.push(doc);
                 }
             }
@@ -690,304 +855,73 @@ impl Collection {
         &self,
         query: &crate::Query,
     ) -> Result<std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>> {
-        // Standalone compare function
-        fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
-            match (a, b) {
-                (&Value::Null, &Value::Null) => std::cmp::Ordering::Equal,
-                (&Value::Null, _) => std::cmp::Ordering::Less,
-                (_, &Value::Null) => std::cmp::Ordering::Greater,
-                (&Value::Bool(ba), &Value::Bool(bb)) => ba.cmp(&bb),
-                (&Value::Bool(_), _) => std::cmp::Ordering::Less,
-                (_, &Value::Bool(_)) => std::cmp::Ordering::Greater,
-                (&Value::Number(ref na), &Value::Number(ref nb)) => {
-                    let fa = na.as_f64().unwrap_or(0.0);
-                    let fb = nb.as_f64().unwrap_or(0.0);
-                    fa.partial_cmp(&fb).unwrap_or(std::cmp::Ordering::Equal)
-                },
-                (&Value::Number(_), _) => std::cmp::Ordering::Less,
-                (_, &Value::Number(_)) => std::cmp::Ordering::Greater,
-                (&Value::String(ref sa), &Value::String(ref sb)) => sa.cmp(sb),
-                (&Value::String(_), _) => std::cmp::Ordering::Less,
-                (_, &Value::String(_)) => std::cmp::Ordering::Greater,
-                (&Value::Array(ref aa), &Value::Array(ref ab)) => aa.len().cmp(&ab.len()),
-                (&Value::Array(_), _) => std::cmp::Ordering::Less,
-                (_, &Value::Array(_)) => std::cmp::Ordering::Greater,
-                (&Value::Object(ref oa), &Value::Object(ref ob)) => oa.len().cmp(&ob.len()),
-            }
-        }
-
         let collection_path = self.path.clone();
         let filters = query.filters.clone();
         let projection_fields = query.projection.clone();
         let limit = query.limit.unwrap_or(usize::MAX);
         let offset = query.offset.unwrap_or(0);
 
-        // Inline the filter matching logic to avoid capturing self
-        fn matches_filters_fn(doc: &Document, filters: &[crate::Filter]) -> bool {
-            for filter in filters {
-                let matches = match filter {
-                    &crate::Filter::Equals(ref field, ref value) => doc.data().get(field) == Some(value),
-                    &crate::Filter::GreaterThan(ref field, ref value) => {
-                        doc.data()
-                            .get(field)
-                            .map(|field_val| compare_json_values(field_val, value) == std::cmp::Ordering::Greater)
-                            .unwrap_or(false)
-                    },
-                    &crate::Filter::LessThan(ref field, ref value) => {
-                        doc.data()
-                            .get(field)
-                            .map(|field_val| compare_json_values(field_val, value) == std::cmp::Ordering::Less)
-                            .unwrap_or(false)
-                    },
-                    &crate::Filter::GreaterOrEqual(ref field, ref value) => {
-                        doc.data()
-                            .get(field)
-                            .map(|field_val| compare_json_values(field_val, value) != std::cmp::Ordering::Less)
-                            .unwrap_or(false)
-                    },
-                    &crate::Filter::LessOrEqual(ref field, ref value) => {
-                        doc.data()
-                            .get(field)
-                            .map(|field_val| compare_json_values(field_val, value) != std::cmp::Ordering::Greater)
-                            .unwrap_or(false)
-                    },
-                    &crate::Filter::Contains(ref field, ref substring) => {
-                        doc.data()
-                            .get(field)
-                            .and_then(|v| v.as_str())
-                            .is_some_and(|s| s.contains(substring))
-                    },
-                    &crate::Filter::StartsWith(ref field, ref prefix) => {
-                        doc.data()
-                            .get(field)
-                            .and_then(|v| v.as_str())
-                            .is_some_and(|s| s.starts_with(prefix))
-                    },
-                    &crate::Filter::EndsWith(ref field, ref suffix) => {
-                        doc.data()
-                            .get(field)
-                            .and_then(|v| v.as_str())
-                            .is_some_and(|s| s.ends_with(suffix))
-                    },
-                    &crate::Filter::In(ref field, ref values) => {
-                        doc.data().get(field).is_some_and(|v| values.contains(v))
-                    },
-                    &crate::Filter::Exists(ref field, exists) => {
-                        let field_exists = doc.data().get(field).is_some();
-                        field_exists == exists
-                    },
-                    // For simplicity, treat And/Or as not matching for now
-                    &crate::Filter::And(..) => false,
-                    &crate::Filter::Or(..) => false,
-                };
-                if !matches {
-                    return false;
-                }
-            }
-            true
-        }
-
-        // Inline the projection logic
-        let project_document_fn = |doc: &Document, fields: &[String]| -> Document {
-            if fields.is_empty() {
-                return doc.clone();
-            }
-            let mut projected_data = serde_json::Map::new();
-            for field in fields {
-                if let Some(value) = doc.data().get(field) {
-                    projected_data.insert(field.clone(), value.clone());
-                }
-            }
-            // Create a new document with projected data
-            Document::new_without_signature(doc.id().to_owned(), Value::Object(projected_data))
-                .unwrap_or_else(|_| doc.clone())
-        };
-
         Ok(Box::pin(stream! {
-            let mut entries = match tokio_fs::read_dir(&collection_path).await {
-                Ok(entries) => entries,
-                Err(e) => {
-                    yield Err(e.into());
-                    return;
-                }
-            };
-
+            let mut id_stream = stream_document_ids(collection_path.clone());
             let mut yielded = 0;
             let mut skipped = 0;
 
-            loop {
-                let entry = match entries.next_entry().await {
-                    Ok(Some(entry)) => entry,
-                    Ok(None) => break,
+            while let Some(id_result) = id_stream.next().await {
+                let id = match id_result {
+                    Ok(id) => id,
+                    Err(e) => {
+                        yield Err(e);
+                        continue;
+                    }
+                };
+
+                // Load document
+                let file_path = collection_path.join(format!("{}.json", id));
+                let content = match tokio_fs::read_to_string(&file_path).await {
+                    Ok(content) => content,
                     Err(e) => {
                         yield Err(e.into());
                         continue;
                     }
                 };
 
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                        if file_name.ends_with(".json") && !file_name.starts_with('.') {
-                            let id = &file_name[..file_name.len() - 5]; // remove .json
-                            // Load document
-                            let file_path = collection_path.join(format!("{}.json", id));
-                            match tokio_fs::read_to_string(&file_path).await {
-                                Ok(content) => {
-                                    match serde_json::from_str::<Document>(&content) {
-                                        Ok(mut doc) => {
-                                            doc.id = id.to_owned();
-                                            if matches_filters_fn(&doc, &filters) {
-                                                if skipped < offset {
-                                                    skipped += 1;
-                                                    continue;
-                                                }
-                                                if yielded >= limit {
-                                                    break;
-                                                }
-                                                let final_doc = if let Some(ref fields) = projection_fields {
-                                                    project_document_fn(&doc, fields)
-                                                } else {
-                                                    doc
-                                                };
-                                                yield Ok(final_doc);
-                                                yielded += 1;
-                                            }
-                                        }
-                                        Err(e) => yield Err(e.into()),
-                                    }
-                                }
-                                Err(e) => yield Err(e.into()),
-                            }
-                        }
+                let doc = match serde_json::from_str::<Document>(&content) {
+                    Ok(doc) => {
+                        // Create a new document with the correct ID
+                        Document::new_without_signature(id, doc.data().clone())
+                            .unwrap_or_else(|_| doc)
                     }
+                    Err(e) => {
+                        yield Err(e.into());
+                        continue;
+                    }
+                };
+
+                if matches_filters(&doc, &filters) {
+                    if skipped < offset {
+                        skipped += 1;
+                        continue;
+                    }
+                    if yielded >= limit {
+                        break;
+                    }
+                    let final_doc = if let Some(ref fields) = projection_fields {
+                        project_document(&doc, fields)
+                    } else {
+                        doc
+                    };
+                    yield Ok(final_doc);
+                    yielded += 1;
                 }
             }
         }))
     }
 
-    /// Checks if a document matches all the given filters.
-    fn matches_filters(&self, doc: &Document, filters: &[crate::Filter]) -> bool {
-        for filter in filters {
-            if !self.matches_filter(doc, filter) {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// Checks if a document matches a single filter.
-    fn matches_filter(&self, doc: &Document, filter: &crate::Filter) -> bool {
-        match filter {
-            &crate::Filter::Equals(ref field, ref value) => self.get_field_value(doc, field) == Some(value),
-            &crate::Filter::GreaterThan(ref field, ref value) => {
-                self.compare_field_value(doc, field, value, |ord| ord == std::cmp::Ordering::Greater)
-            },
-            &crate::Filter::LessThan(ref field, ref value) => {
-                self.compare_field_value(doc, field, value, |ord| ord == std::cmp::Ordering::Less)
-            },
-            &crate::Filter::GreaterOrEqual(ref field, ref value) => {
-                self.compare_field_value(doc, field, value, |ord| ord != std::cmp::Ordering::Less)
-            },
-            &crate::Filter::LessOrEqual(ref field, ref value) => {
-                self.compare_field_value(doc, field, value, |ord| ord != std::cmp::Ordering::Greater)
-            },
-            &crate::Filter::Contains(ref field, ref substring) => {
-                self.get_field_value(doc, field)
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| s.contains(substring))
-            },
-            &crate::Filter::StartsWith(ref field, ref prefix) => {
-                self.get_field_value(doc, field)
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| s.starts_with(prefix))
-            },
-            &crate::Filter::EndsWith(ref field, ref suffix) => {
-                self.get_field_value(doc, field)
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| s.ends_with(suffix))
-            },
-            &crate::Filter::In(ref field, ref values) => {
-                self.get_field_value(doc, field)
-                    .is_some_and(|v| values.contains(v))
-            },
-            &crate::Filter::Exists(ref field, exists) => {
-                let field_exists = doc.data().get(field).is_some();
-                field_exists == exists
-            },
-            &crate::Filter::And(ref left, ref right) => {
-                self.matches_filter(doc, left) && self.matches_filter(doc, right)
-            },
-            &crate::Filter::Or(ref left, ref right) => {
-                self.matches_filter(doc, left) || self.matches_filter(doc, right)
-            },
-        }
-    }
-
-    /// Gets the value of a field from a document.
-    fn get_field_value<'a>(&self, doc: &'a Document, field: &str) -> Option<&'a Value> { doc.data().get(field) }
-
-    /// Compares a field value with a given value using a comparison function.
-    fn compare_field_value<F>(&self, doc: &Document, field: &str, value: &Value, cmp: F) -> bool
-    where
-        F: Fn(std::cmp::Ordering) -> bool,
-    {
-        self.get_field_value(doc, field)
-            .map(|field_val| cmp(self.compare_json_values(field_val, value)))
-            .unwrap_or(false)
-    }
-
     /// Compares two values for sorting purposes.
-    fn compare_values(&self, a: Option<&Value>, b: Option<&Value>) -> std::cmp::Ordering {
-        match (a, b) {
-            (None, None) => std::cmp::Ordering::Equal,
-            (None, Some(_)) => std::cmp::Ordering::Less,
-            (Some(_), None) => std::cmp::Ordering::Greater,
-            (Some(va), Some(vb)) => self.compare_json_values(va, vb),
-        }
-    }
-
-    /// Compares two JSON values for sorting.
-    fn compare_json_values(&self, a: &Value, b: &Value) -> std::cmp::Ordering {
-        match (a, b) {
-            (&Value::Null, &Value::Null) => std::cmp::Ordering::Equal,
-            (&Value::Null, _) => std::cmp::Ordering::Less,
-            (_, &Value::Null) => std::cmp::Ordering::Greater,
-            (&Value::Bool(ba), &Value::Bool(bb)) => ba.cmp(&bb),
-            (&Value::Bool(_), _) => std::cmp::Ordering::Less,
-            (_, &Value::Bool(_)) => std::cmp::Ordering::Greater,
-            (&Value::Number(ref na), &Value::Number(ref nb)) => {
-                // Compare as f64 for simplicity, may lose precision
-                let fa = na.as_f64().unwrap_or(0.0);
-                let fb = nb.as_f64().unwrap_or(0.0);
-                fa.partial_cmp(&fb).unwrap_or(std::cmp::Ordering::Equal)
-            },
-            (&Value::Number(_), _) => std::cmp::Ordering::Less,
-            (_, &Value::Number(_)) => std::cmp::Ordering::Greater,
-            (&Value::String(ref sa), &Value::String(ref sb)) => sa.cmp(sb),
-            (&Value::String(_), _) => std::cmp::Ordering::Less,
-            (_, &Value::String(_)) => std::cmp::Ordering::Greater,
-            (&Value::Array(ref aa), &Value::Array(ref ab)) => aa.len().cmp(&ab.len()), // Simple length comparison
-            (&Value::Array(_), _) => std::cmp::Ordering::Less,
-            (_, &Value::Array(_)) => std::cmp::Ordering::Greater,
-            (&Value::Object(ref oa), &Value::Object(ref ob)) => oa.len().cmp(&ob.len()), // Simple length comparison
-        }
-    }
+    fn compare_values(&self, a: Option<&Value>, b: Option<&Value>) -> std::cmp::Ordering { compare_values(a, b) }
 
     /// Projects a document to include only specified fields.
-    fn project_document(&self, doc: &Document, fields: &[String]) -> Document {
-        let mut projected_data = serde_json::Map::new();
-        for field in fields {
-            if let Some(value) = doc.data().get(field) {
-                projected_data.insert(field.clone(), value.clone());
-            }
-        }
-        // Create a new document with projected data
-        // Note: This creates a new document without proper metadata/signing
-        // For full implementation, we'd need to handle metadata properly
-        Document::new_without_signature(doc.id().to_owned(), Value::Object(projected_data))
-            .unwrap_or_else(|_| doc.clone())
-    }
+    fn project_document(&self, doc: &Document, fields: &[String]) -> Document { project_document(doc, fields) }
 }
 
 /// Validates that a document ID is filesystem-safe across all platforms.
