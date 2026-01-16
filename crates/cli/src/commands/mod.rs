@@ -4,6 +4,8 @@ use clap::{Parser, Subcommand};
 ///
 /// This module contains submodules for each CLI command, each implementing
 /// the logic for a specific operation on the Sentinel DBMS.
+/// Bulk insert command module.
+mod bulk_insert;
 /// Create collection command module.
 mod create_collection;
 /// Delete command module.
@@ -16,6 +18,8 @@ mod get;
 mod init;
 /// Insert command module.
 mod insert;
+/// List command module.
+mod list;
 /// Update command module.
 mod update;
 
@@ -140,6 +144,14 @@ pub enum Commands {
     Update(update::UpdateArgs),
     /// Delete a document from a collection.
     Delete(delete::DeleteArgs),
+    /// List all documents in a collection.
+    ///
+    /// Prints the IDs of all documents in the specified collection.
+    List(list::ListArgs),
+    /// Bulk insert multiple documents into a collection.
+    ///
+    /// Inserts multiple documents from a JSON file or stdin.
+    BulkInsert(bulk_insert::BulkInsertArgs),
 }
 
 /// Execute the specified CLI command.
@@ -219,6 +231,8 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         Commands::Get(args) => get::run(args).await,
         Commands::Update(args) => update::run(args).await,
         Commands::Delete(args) => delete::run(args).await,
+        Commands::List(args) => list::run(args).await,
+        Commands::BulkInsert(args) => bulk_insert::run(args).await,
     }
 }
 
