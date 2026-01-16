@@ -306,7 +306,7 @@ fn validate_collection_name(name: &str) -> Result<()> {
     trace!("Validating collection name: {}", name);
     // Check if name is empty
     if name.is_empty() {
-        warn!("Collection name is empty");
+        debug!("Collection name is empty");
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
