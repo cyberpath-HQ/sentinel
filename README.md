@@ -1,14 +1,18 @@
-<p align="center">
+<div align="center">
   <picture>
     <source srcset="https://raw.githubusercontent.com/cyberpath-HQ/sentinel/refs/heads/main/.assets/logo-white.svg" media="(prefers-color-scheme: dark)" />
     <source srcset="https://raw.githubusercontent.com/cyberpath-HQ/sentinel/refs/heads/main/.assets/logo.svg" media="(prefers-color-scheme: light)" />
     <img src="https://raw.githubusercontent.com/cyberpath-HQ/sentinel/refs/heads/main/.assets/logo.svg" alt="Sentinel Logo" height="64"/>
   </picture>
-</p>
 
-[![Cyberpath](https://img.shields.io/badge/Cyberpath-project-blue)](https://cyberpath-hq.com)
+[![Cyberpath](https://img.shields.io/badge/Cyberpath-project-blue)](https://sentinel.cyberpath-hq.com)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE.md)
-[![codecov](https://codecov.io/github/cyberpath-HQ/sentinel/graph/badge.svg?token=27DAIYXTTB)](https://codecov.io/github/cyberpath-HQ/sentinel)
+![Codecov](https://img.shields.io/codecov/c/github/cyberpath-HQ/sentinel)
+[![Crates.io Version](https://img.shields.io/crates/v/sentinel-dbms)](https://crates.io/crates/sentinel-dbms)
+[![docs.rs](https://img.shields.io/docsrs/sentinel-dbms)](https://docs.rs/sentinel-dbms/latest/sentinel_dbms/)
+
+</div>
+
 
 A document-based DBMS written in Rust that stores all data as files on disk, where tables are represented by folders and
 each document's primary key is the filename. Every piece of data is inspectable, auditable, and compliant by design.
