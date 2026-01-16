@@ -1,4 +1,5 @@
 use serde_json::Value;
+use tracing::trace;
 
 use crate::{error::CryptoError, hash_trait::HashFunction};
 
@@ -13,9 +14,12 @@ pub struct Blake3Hasher;
 
 impl HashFunction for Blake3Hasher {
     fn hash_data(data: &Value) -> Result<String, CryptoError> {
+        trace!("Hashing data with Blake3");
         let json_str = serde_json::to_string(data).map_err(CryptoError::from)?;
         let hash = blake3::hash(json_str.as_bytes());
-        Ok(hash.to_hex().to_string())
+        let hash_str = hash.to_hex().to_string();
+        trace!("Blake3 hash computed: {}", hash_str);
+        Ok(hash_str)
     }
 }
 

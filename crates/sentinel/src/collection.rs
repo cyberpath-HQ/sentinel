@@ -2,6 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use serde_json::Value;
 use tokio::fs as tokio_fs;
+use tracing::{debug, error, trace, warn};
 
 use crate::{
     validation::{is_reserved_name, is_valid_document_id_chars},
@@ -100,18 +101,28 @@ impl Collection {
     /// # }
     /// ```
     pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
+        trace!("Inserting document with id: {}", id);
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
 
         #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
         let doc = if let Some(key) = &self.signing_key {
+            debug!("Creating signed document for id: {}", id);
             Document::new(id.to_owned(), data, key)?
         }
         else {
+            debug!("Creating unsigned document for id: {}", id);
             Document::new_without_signature(id.to_owned(), data)?
         };
-        let json = serde_json::to_string_pretty(&doc)?;
-        tokio_fs::write(&file_path, json).await?;
+        let json = serde_json::to_string_pretty(&doc).map_err(|e| {
+            error!("Failed to serialize document {} to JSON: {}", id, e);
+            e
+        })?;
+        tokio_fs::write(&file_path, json).await.map_err(|e| {
+            error!("Failed to write document {} to file {:?}: {}", id, file_path, e);
+            e
+        })?;
+        debug!("Document {} inserted successfully", id);
         Ok(())
     }
 
@@ -156,17 +167,27 @@ impl Collection {
     /// # }
     /// ```
     pub async fn get(&self, id: &str) -> Result<Option<Document>> {
+        trace!("Retrieving document with id: {}", id);
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
         match tokio_fs::read_to_string(&file_path).await {
             Ok(content) => {
-                let mut doc: Document = serde_json::from_str(&content)?;
+                debug!("Document {} found, parsing JSON", id);
+                let mut doc: Document = serde_json::from_str(&content).map_err(|e| {
+                    error!("Failed to parse JSON for document {}: {}", id, e);
+                    e
+                })?;
                 // Ensure the id matches the filename
                 doc.id = id.to_owned();
+                trace!("Document {} retrieved successfully", id);
                 Ok(Some(doc))
             },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                debug!("Document {} not found", id);
+                Ok(None)
+            },
             Err(e) => {
+                error!("IO error reading document {}: {}", id, e);
                 Err(SentinelError::Io {
                     source: e,
                 })
@@ -260,6 +281,7 @@ impl Collection {
     /// # }
     /// ```
     pub async fn delete(&self, id: &str) -> Result<()> {
+        trace!("Deleting document with id: {}", id);
         validate_document_id(id)?;
         let source_path = self.path.join(format!("{}.json", id));
         let deleted_dir = self.path.join(".deleted");
@@ -268,14 +290,26 @@ impl Collection {
         // Check if source exists
         match tokio_fs::metadata(&source_path).await {
             Ok(_) => {
+                debug!("Document {} exists, moving to .deleted", id);
                 // Create .deleted directory if it doesn't exist
-                tokio_fs::create_dir_all(&deleted_dir).await?;
+                tokio_fs::create_dir_all(&deleted_dir).await.map_err(|e| {
+                    error!("Failed to create .deleted directory {:?}: {}", deleted_dir, e);
+                    e
+                })?;
                 // Move file to .deleted/
-                tokio_fs::rename(&source_path, &dest_path).await?;
+                tokio_fs::rename(&source_path, &dest_path).await.map_err(|e| {
+                    error!("Failed to move document {} to .deleted: {}", id, e);
+                    e
+                })?;
+                debug!("Document {} soft deleted successfully", id);
                 Ok(())
             },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()), // Already deleted
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                debug!("Document {} not found, already deleted or never existed", id);
+                Ok(())
+            },
             Err(e) => {
+                error!("IO error checking document {} existence: {}", id, e);
                 Err(SentinelError::Io {
                     source: e,
                 })
@@ -318,7 +352,11 @@ impl Collection {
     /// # }
     /// ```
     pub async fn list(&self) -> Result<Vec<String>> {
-        let mut entries = tokio_fs::read_dir(&self.path).await?;
+        trace!("Listing documents in collection: {}", self.name());
+        let mut entries = tokio_fs::read_dir(&self.path).await.map_err(|e| {
+            error!("Failed to read collection directory {:?}: {}", self.path, e);
+            e
+        })?;
         let mut ids = Vec::new();
 
         while let Some(entry) = entries.next_entry().await? {
@@ -339,6 +377,8 @@ impl Collection {
 
         // Sort for consistent ordering
         ids.sort();
+        debug!("Found {} documents in collection {}", ids.len(), self.name());
+        trace!("Documents listed successfully");
         Ok(ids)
     }
 
@@ -385,9 +425,12 @@ impl Collection {
     /// # }
     /// ```
     pub async fn bulk_insert(&self, documents: Vec<(&str, Value)>) -> Result<()> {
+        let count = documents.len();
+        trace!("Bulk inserting {} documents into collection {}", count, self.name());
         for (id, data) in documents {
             self.insert(id, data).await?;
         }
+        debug!("Bulk insert of {} documents completed successfully", count);
         Ok(())
     }
 }
@@ -409,8 +452,10 @@ impl Collection {
 /// - `Ok(())` if the ID is valid
 /// - `Err(SentinelError::InvalidDocumentId)` if the ID is invalid
 pub(crate) fn validate_document_id(id: &str) -> Result<()> {
+    trace!("Validating document id: {}", id);
     // Check if id is empty
     if id.is_empty() {
+        warn!("Document id is empty");
         return Err(SentinelError::InvalidDocumentId {
             id: id.to_owned(),
         });
@@ -418,6 +463,7 @@ pub(crate) fn validate_document_id(id: &str) -> Result<()> {
 
     // Check for valid characters
     if !is_valid_document_id_chars(id) {
+        warn!("Document id contains invalid characters: {}", id);
         return Err(SentinelError::InvalidDocumentId {
             id: id.to_owned(),
         });
@@ -425,11 +471,13 @@ pub(crate) fn validate_document_id(id: &str) -> Result<()> {
 
     // Check for Windows reserved names
     if is_reserved_name(id) {
+        warn!("Document id is a reserved name: {}", id);
         return Err(SentinelError::InvalidDocumentId {
             id: id.to_owned(),
         });
     }
 
+    trace!("Document id '{}' is valid", id);
     Ok(())
 }
 

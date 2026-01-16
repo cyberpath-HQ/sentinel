@@ -68,66 +68,108 @@ pub use key_derivation_trait::KeyDerivationFunction;
 use serde_json::Value;
 pub use sign::{Ed25519Signer, SigningKeyManager};
 pub use sign_trait::SignatureAlgorithm;
+use tracing::{debug, trace};
 
 /// Computes the hash of the given JSON data using the globally configured algorithm.
 pub fn hash_data(data: &Value) -> Result<String, CryptoError> {
-    match get_global_crypto_config().hash_algorithm {
+    trace!("Hashing data using global config");
+    let result = match get_global_crypto_config().hash_algorithm {
         HashAlgorithmChoice::Blake3 => crate::hash::Blake3Hasher::hash_data(data),
+    };
+    if let Ok(ref hash) = result {
+        debug!("Data hashed successfully: {}", hash);
     }
+    result
 }
 
 /// Signs the given hash using the globally configured algorithm.
 pub fn sign_hash(hash: &str, private_key: &SigningKey) -> Result<String, CryptoError> {
-    match get_global_crypto_config().signature_algorithm {
+    trace!("Signing hash using global config");
+    let result = match get_global_crypto_config().signature_algorithm {
         SignatureAlgorithmChoice::Ed25519 => Ed25519Signer::sign_hash(hash, private_key),
+    };
+    if let Ok(ref sig) = result {
+        debug!("Hash signed successfully: {}", sig);
     }
+    result
 }
 
 /// Verifies the signature of the given hash using the globally configured algorithm.
 pub fn verify_signature(hash: &str, signature: &str, public_key: &VerifyingKey) -> Result<bool, CryptoError> {
-    match get_global_crypto_config().signature_algorithm {
+    trace!("Verifying signature using global config");
+    let result = match get_global_crypto_config().signature_algorithm {
         SignatureAlgorithmChoice::Ed25519 => Ed25519Signer::verify_signature(hash, signature, public_key),
-    }
+    };
+    debug!("Signature verification result: {:?}", result);
+    result
 }
 
 /// Encrypts data using the globally configured algorithm.
 pub fn encrypt_data(data: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
-    match get_global_crypto_config().encryption_algorithm {
+    trace!(
+        "Encrypting data using global config, data length: {}",
+        data.len()
+    );
+    let result = match get_global_crypto_config().encryption_algorithm {
         EncryptionAlgorithmChoice::XChaCha20Poly1305 => XChaCha20Poly1305Encryptor::encrypt_data(data, key),
         EncryptionAlgorithmChoice::Aes256GcmSiv => Aes256GcmSivEncryptor::encrypt_data(data, key),
         EncryptionAlgorithmChoice::Ascon128 => Ascon128Encryptor::encrypt_data(data, key),
+    };
+    if let Ok(ref encrypted) = result {
+        debug!(
+            "Data encrypted successfully, encrypted length: {}",
+            encrypted.len()
+        );
     }
+    result
 }
 
 /// Decrypts data using the globally configured algorithm.
 pub fn decrypt_data(encrypted_data: &str, key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
-    match get_global_crypto_config().encryption_algorithm {
+    trace!(
+        "Decrypting data using global config, encrypted length: {}",
+        encrypted_data.len()
+    );
+    let result = match get_global_crypto_config().encryption_algorithm {
         EncryptionAlgorithmChoice::XChaCha20Poly1305 => XChaCha20Poly1305Encryptor::decrypt_data(encrypted_data, key),
         EncryptionAlgorithmChoice::Aes256GcmSiv => Aes256GcmSivEncryptor::decrypt_data(encrypted_data, key),
         EncryptionAlgorithmChoice::Ascon128 => Ascon128Encryptor::decrypt_data(encrypted_data, key),
+    };
+    if let Ok(ref decrypted) = result {
+        debug!(
+            "Data decrypted successfully, plaintext length: {}",
+            decrypted.len()
+        );
     }
+    result
 }
 
 /// Derives a 32-byte key from a passphrase using the globally configured algorithm.
 /// Returns the randomly generated salt and the derived key.
 pub fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> {
-    match get_global_crypto_config().key_derivation_algorithm {
+    trace!("Deriving key from passphrase using global config");
+    let result = match get_global_crypto_config().key_derivation_algorithm {
         KeyDerivationAlgorithmChoice::Argon2id => Argon2KeyDerivation::derive_key_from_passphrase(passphrase),
         KeyDerivationAlgorithmChoice::Pbkdf2 => Pbkdf2KeyDerivation::derive_key_from_passphrase(passphrase),
-    }
+    };
+    debug!("Key derivation completed successfully");
+    result
 }
 
 /// Derives a 32-byte key from a passphrase using the provided salt and the globally configured
 /// algorithm.
 pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
-    match get_global_crypto_config().key_derivation_algorithm {
+    trace!("Deriving key from passphrase with salt using global config");
+    let result = match get_global_crypto_config().key_derivation_algorithm {
         KeyDerivationAlgorithmChoice::Argon2id => {
             Argon2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, salt)
         },
         KeyDerivationAlgorithmChoice::Pbkdf2 => {
             Pbkdf2KeyDerivation::derive_key_from_passphrase_with_salt(passphrase, salt)
         },
-    }
+    };
+    debug!("Key derivation with salt completed successfully");
+    result
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ use chacha20poly1305::{
     XNonce,
 };
 use rand::RngCore;
+use tracing::{debug, trace};
 
 use crate::{encrypt_trait::EncryptionAlgorithm, error::CryptoError};
 
@@ -20,6 +21,10 @@ pub struct XChaCha20Poly1305Encryptor;
 
 impl EncryptionAlgorithm for XChaCha20Poly1305Encryptor {
     fn encrypt_data(data: &[u8], key: &[u8; 32]) -> Result<String, CryptoError> {
+        trace!(
+            "Encrypting data with XChaCha20Poly1305, data length: {}",
+            data.len()
+        );
         let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
         let mut nonce_bytes = [0u8; 24]; // XChaCha20 uses 24-byte nonce
         rand::rng().fill_bytes(&mut nonce_bytes);
@@ -30,21 +35,36 @@ impl EncryptionAlgorithm for XChaCha20Poly1305Encryptor {
             .map_err(|_| CryptoError::Encryption)?;
         let mut result = nonce_bytes.to_vec();
         result.extend_from_slice(&ciphertext);
-        Ok(hex::encode(result))
+        let encrypted_hex = hex::encode(result);
+        debug!(
+            "XChaCha20Poly1305 encryption completed, encrypted length: {}",
+            encrypted_hex.len()
+        );
+        Ok(encrypted_hex)
     }
 
     fn decrypt_data(encrypted_data: &str, key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
+        trace!(
+            "Decrypting data with XChaCha20Poly1305, encrypted length: {}",
+            encrypted_data.len()
+        );
         let data = hex::decode(encrypted_data).map_err(|_| CryptoError::Decryption)?;
         if data.len() < 40 {
             // 24-byte nonce + 16-byte Poly1305 tag
+            debug!("Encrypted data too short: {} bytes", data.len());
             return Err(CryptoError::Decryption);
         }
         let (nonce_bytes, ciphertext) = data.split_at(24);
         let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
         let nonce = XNonce::from_slice(nonce_bytes);
-        cipher
+        let plaintext = cipher
             .decrypt(nonce, ciphertext)
-            .map_err(|_| CryptoError::Decryption)
+            .map_err(|_| CryptoError::Decryption)?;
+        debug!(
+            "XChaCha20Poly1305 decryption completed, plaintext length: {}",
+            plaintext.len()
+        );
+        Ok(plaintext)
     }
 }
 

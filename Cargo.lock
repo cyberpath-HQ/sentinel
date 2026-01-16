@@ -1220,6 +1220,7 @@ dependencies = [
  "sha2",
  "signature",
  "thiserror",
+ "tracing",
  "zeroize",
 ]
 
@@ -1238,6 +1239,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
