@@ -338,7 +338,7 @@ fn validate_collection_name(name: &str) -> Result<()> {
 
     // Check for Windows reserved names
     if is_reserved_name(name) {
-        warn!("Collection name is a reserved name: {}", name);
+        debug!("Collection name is a reserved name: {}", name);
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
