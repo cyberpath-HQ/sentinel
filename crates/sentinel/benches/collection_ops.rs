@@ -1,6 +1,7 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion};
+use futures::TryStreamExt;
 use sentinel_dbms::{Collection, Store};
 use serde_json::json;
 use tempfile::tempdir;
@@ -116,7 +117,7 @@ fn bench_list(c: &mut Criterion) {
             },
             |(collection, _temp_dir)| {
                 rt.block_on(async move {
-                    black_box(collection.list().await.unwrap());
+                    black_box(collection.list().try_collect::<Vec<_>>().await.unwrap());
                 })
             },
             criterion::BatchSize::SmallInput,
