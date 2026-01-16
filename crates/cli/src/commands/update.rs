@@ -110,8 +110,8 @@ mod tests {
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice", "age": 30}"#.to_string(),
+            id: Some("doc1".to_string()),
+            data: Some(r#"{"name": "Alice", "age": 30}"#.to_string()),
             ..Default::default()
         };
         crate::commands::insert::run(insert_args).await.unwrap();
@@ -158,8 +158,8 @@ mod tests {
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice"}"#.to_string(),
+            id: Some("doc1".to_string()),
+            data: Some(r#"{"name": "Alice"}"#.to_string()),
             ..Default::default()
         };
         crate::commands::insert::run(insert_args).await.unwrap();

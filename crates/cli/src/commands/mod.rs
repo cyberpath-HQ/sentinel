@@ -4,8 +4,6 @@ use clap::{Parser, Subcommand};
 ///
 /// This module contains submodules for each CLI command, each implementing
 /// the logic for a specific operation on the Sentinel DBMS.
-/// Bulk insert command module.
-mod bulk_insert;
 /// Create collection command module.
 mod create_collection;
 /// Delete command module.
@@ -148,10 +146,6 @@ pub enum Commands {
     ///
     /// Prints the IDs of all documents in the specified collection.
     List(list::ListArgs),
-    /// Bulk insert multiple documents into a collection.
-    ///
-    /// Inserts multiple documents from a JSON file or stdin.
-    BulkInsert(bulk_insert::BulkInsertArgs),
 }
 
 /// Execute the specified CLI command.
@@ -232,7 +226,6 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         Commands::Update(args) => update::run(args).await,
         Commands::Delete(args) => delete::run(args).await,
         Commands::List(args) => list::run(args).await,
-        Commands::BulkInsert(args) => bulk_insert::run(args).await,
     }
 }
 
@@ -289,8 +282,9 @@ mod tests {
             Commands::Insert(args) => {
                 assert_eq!(args.store_path, "/tmp/store");
                 assert_eq!(args.collection, "users");
-                assert_eq!(args.id, "user1");
-                assert_eq!(args.data, "{}");
+                assert_eq!(args.id, Some("user1".to_string()));
+                assert_eq!(args.data, Some("{}".to_string()));
+                assert_eq!(args.bulk, None);
             },
             _ => panic!("Expected Insert command"),
         }
@@ -458,9 +452,10 @@ mod tests {
         let args = super::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice"}"#.to_string(),
-            ..Default::default()
+            id:         Some("doc1".to_string()),
+            data:       Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk:       None,
+            passphrase: None,
         };
         let cli = Cli {
             command:                  Commands::Insert(args),
