@@ -20,6 +20,7 @@ thiserror = "2.0.17"
 chrono = { version = "0.4.42", features = ["serde"] }
 sentinel-crypto = { version = "1.1.0", path = "../sentinel-crypto" }
 hex = "0.4.3"
+tracing = "0.1.44"
 
 [dev-dependencies]
 tempfile = "3.24.0"
