@@ -1,5 +1,5 @@
 use clap::Args;
-use futures::TryStreamExt;
+use sentinel_dbms::futures::{pin_mut, StreamExt};
 use tracing::{error, info};
 
 /// Arguments for the list command.
@@ -47,29 +47,32 @@ pub async fn run(args: ListArgs) -> sentinel_dbms::Result<()> {
     );
     let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
     let coll = store.collection(&collection).await?;
-    match coll.list().try_collect::<Vec<_>>().await {
-        Ok(ids) => {
-            info!(
-                "Found {} documents in collection '{}'",
-                ids.len(),
-                collection
-            );
-            for id in ids {
+    let stream = coll.list();
+    pin_mut!(stream);
+
+    let mut count = 0;
+    // Process the stream item by item to avoid loading all IDs into memory
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(id) => {
                 #[allow(clippy::print_stdout, reason = "CLI output")]
                 {
                     println!("{}", id);
                 }
-            }
-            Ok(())
-        },
-        Err(e) => {
-            error!(
-                "Failed to list documents in collection '{}' in store {}: {}",
-                collection, store_path, e
-            );
-            Err(e)
-        },
+                count += 1;
+            },
+            Err(e) => {
+                error!(
+                    "Failed to list documents in collection '{}' in store {}: {}",
+                    collection, store_path, e
+                );
+                return Err(e);
+            },
+        }
     }
+
+    info!("Found {} documents in collection '{}'", count, collection);
+    Ok(())
 }
 
 #[cfg(test)]

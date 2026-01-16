@@ -1,6 +1,6 @@
 use clap::Args;
 #[cfg(test)]
-use futures::TryStreamExt;
+use sentinel_dbms::futures::TryStreamExt;
 use serde_json::Value;
 use tracing::{error, info};
 

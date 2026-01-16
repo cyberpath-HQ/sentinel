@@ -1,4 +1,5 @@
 use clap::Args;
+use sentinel_dbms::futures::{pin_mut, StreamExt};
 use serde_json::Value;
 use tracing::{error, info};
 
@@ -164,46 +165,64 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
 
     match coll.query(query).await {
         Ok(result) => {
-            let documents: Vec<_> = futures::TryStreamExt::try_collect(result.documents).await?;
+            let documents_stream = result.documents;
+            pin_mut!(documents_stream);
+
+            let mut count = 0;
+            let mut has_printed_header = false;
+
+            // Process documents one by one to avoid loading all into memory
+            while let Some(doc_result) = documents_stream.next().await {
+                match doc_result {
+                    Ok(doc) => {
+                        count += 1;
+
+                        match args.format.as_str() {
+                            "json" => {
+                                #[allow(clippy::print_stdout, reason = "CLI output")]
+                                {
+                                    println!("{}", serde_json::to_string_pretty(doc.data()).unwrap());
+                                }
+                            },
+                            "table" => {
+                                if !has_printed_header {
+                                    #[allow(clippy::print_stdout, reason = "CLI output")]
+                                    {
+                                        println!("ID");
+                                        println!("--");
+                                    }
+                                    has_printed_header = true;
+                                }
+                                #[allow(clippy::print_stdout, reason = "CLI output")]
+                                {
+                                    println!("{}", doc.id());
+                                }
+                            },
+                            _ => {
+                                return Err(sentinel_dbms::SentinelError::ConfigError {
+                                    message: format!("Invalid format: {}", args.format),
+                                });
+                            },
+                        }
+                    },
+                    Err(e) => {
+                        error!("Error processing document in query results: {}", e);
+                        return Err(e);
+                    },
+                }
+            }
+
             info!(
                 "Query returned {} documents (total: {:?})",
-                documents.len(),
-                result.total_count
+                count, result.total_count
             );
 
-            match args.format.as_str() {
-                "json" => {
-                    for doc in &documents {
-                        #[allow(clippy::print_stdout, reason = "CLI output")]
-                        {
-                            println!("{}", serde_json::to_string_pretty(doc.data()).unwrap());
-                        }
-                    }
-                },
-                "table" => {
-                    if documents.is_empty() {
-                        #[allow(clippy::print_stdout, reason = "CLI output")]
-                        {
-                            println!("No documents found");
-                        }
-                    }
-                    else {
-                        // Simple table output - just IDs for now
-                        #[allow(clippy::print_stdout, reason = "CLI output")]
-                        {
-                            println!("ID");
-                            println!("--");
-                            for doc in &documents {
-                                println!("{}", doc.id());
-                            }
-                        }
-                    }
-                },
-                _ => {
-                    return Err(sentinel_dbms::SentinelError::ConfigError {
-                        message: format!("Invalid format: {}", args.format),
-                    });
-                },
+            // Handle empty results for table format
+            if count == 0 && args.format == "table" {
+                #[allow(clippy::print_stdout, reason = "CLI output")]
+                {
+                    println!("No documents found");
+                }
             }
 
             Ok(())
