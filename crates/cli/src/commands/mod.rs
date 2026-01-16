@@ -432,7 +432,10 @@ mod tests {
         };
 
         let result = run_command(cli).await;
-        assert!(result.is_err(), "run_command should fail with invalid hash algorithm");
+        assert!(
+            result.is_err(),
+            "run_command should fail with invalid hash algorithm"
+        );
     }
 
     /// Test run_command with Insert command.

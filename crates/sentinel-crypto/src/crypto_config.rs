@@ -1,4 +1,5 @@
 use std::sync::OnceLock;
+
 use tracing::{debug, trace};
 
 use crate::error::CryptoError;
@@ -74,12 +75,10 @@ static GLOBAL_CONFIG: OnceLock<CryptoConfig> = OnceLock::new();
 /// Returns an error if the config has already been set.
 pub fn set_global_crypto_config(config: CryptoConfig) -> Result<(), CryptoError> {
     trace!("Setting global crypto config: {:?}", config);
-    GLOBAL_CONFIG
-        .set(config)
-        .map_err(|_| {
-            debug!("Global crypto config already set, cannot change");
-            CryptoError::ConfigAlreadySet
-        })?;
+    GLOBAL_CONFIG.set(config).map_err(|_| {
+        debug!("Global crypto config already set, cannot change");
+        CryptoError::ConfigAlreadySet
+    })?;
     debug!("Global crypto config set successfully");
     Ok(())
 }

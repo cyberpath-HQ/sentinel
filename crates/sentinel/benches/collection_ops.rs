@@ -104,9 +104,12 @@ fn bench_list(c: &mut Criterion) {
             || {
                 rt.block_on(async {
                     let (collection, temp_dir) = setup_collection().await;
-                    for i in 0..10 {
+                    for i in 0 .. 10 {
                         let doc = json!({"name": format!("test{}", i), "value": black_box(i)});
-                        collection.insert(&format!("test-id-{}", i), doc).await.unwrap();
+                        collection
+                            .insert(&format!("test-id-{}", i), doc)
+                            .await
+                            .unwrap();
                     }
                     (collection, temp_dir)
                 })
@@ -121,5 +124,12 @@ fn bench_list(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_insert, bench_get, bench_update, bench_delete, bench_list);
+criterion_group!(
+    benches,
+    bench_insert,
+    bench_get,
+    bench_update,
+    bench_delete,
+    bench_list
+);
 criterion_main!(benches);

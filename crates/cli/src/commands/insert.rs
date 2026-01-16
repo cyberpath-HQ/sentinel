@@ -1,5 +1,5 @@
 use clap::Args;
-use serde_json::{Value};
+use serde_json::Value;
 use tracing::{error, info};
 
 /// Arguments for the insert command.

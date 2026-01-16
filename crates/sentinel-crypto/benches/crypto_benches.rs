@@ -1,7 +1,15 @@
 use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use sentinel_crypto::{decrypt_data, derive_key_from_passphrase, encrypt_data, hash_data, sign_hash, verify_signature, SigningKeyManager};
+use sentinel_crypto::{
+    decrypt_data,
+    derive_key_from_passphrase,
+    encrypt_data,
+    hash_data,
+    sign_hash,
+    verify_signature,
+    SigningKeyManager,
+};
 use serde_json::json;
 
 fn bench_hash_data(c: &mut Criterion) {

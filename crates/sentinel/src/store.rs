@@ -106,10 +106,16 @@ impl Store {
         trace!("Creating new Store at path: {:?}", root_path.as_ref());
         let root_path = root_path.as_ref().to_path_buf();
         tokio_fs::create_dir_all(&root_path).await.map_err(|e| {
-            error!("Failed to create store root directory {:?}: {}", root_path, e);
+            error!(
+                "Failed to create store root directory {:?}: {}",
+                root_path, e
+            );
             e
         })?;
-        debug!("Store root directory created or already exists: {:?}", root_path);
+        debug!(
+            "Store root directory created or already exists: {:?}",
+            root_path
+        );
         let mut store = Self {
             root_path,
             signing_key: None,
@@ -142,7 +148,10 @@ impl Store {
                 let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt)?;
                 let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
                 let key_array: [u8; 32] = key_bytes.try_into().map_err(|kb: Vec<u8>| {
-                    error!("Stored signing key has invalid length: {}, expected 32", kb.len());
+                    error!(
+                        "Stored signing key has invalid length: {}, expected 32",
+                        kb.len()
+                    );
                     SentinelError::StoreCorruption {
                         reason: format!(
                             "stored signing key has an invalid length ({}, expected 32)",
