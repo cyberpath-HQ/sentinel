@@ -1,5 +1,7 @@
 use std::sync::OnceLock;
 
+use tracing::{debug, trace};
+
 use crate::error::CryptoError;
 
 // Algorithm configuration enums
@@ -72,11 +74,20 @@ static GLOBAL_CONFIG: OnceLock<CryptoConfig> = OnceLock::new();
 /// Must be called before any cryptographic operations for the configuration to take effect.
 /// Returns an error if the config has already been set.
 pub fn set_global_crypto_config(config: CryptoConfig) -> Result<(), CryptoError> {
-    GLOBAL_CONFIG
-        .set(config)
-        .map_err(|_| CryptoError::ConfigAlreadySet)
+    trace!("Setting global crypto config: {:?}", config);
+    GLOBAL_CONFIG.set(config).map_err(|_| {
+        debug!("Global crypto config already set, cannot change");
+        CryptoError::ConfigAlreadySet
+    })?;
+    debug!("Global crypto config set successfully");
+    Ok(())
 }
 
 /// Gets the current global cryptographic configuration.
 /// Returns the default configuration if none has been set.
-pub fn get_global_crypto_config() -> &'static CryptoConfig { GLOBAL_CONFIG.get_or_init(CryptoConfig::default) }
+pub fn get_global_crypto_config() -> &'static CryptoConfig {
+    trace!("Retrieving global crypto config");
+    let config = GLOBAL_CONFIG.get_or_init(CryptoConfig::default);
+    debug!("Global crypto config retrieved: {:?}", config);
+    config
+}

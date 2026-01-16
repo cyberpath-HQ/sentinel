@@ -32,13 +32,12 @@ transparency over raw performance, making it ideal for audit logs, certificate m
 - Build: `cargo build` (workspace setup with crates/sentinel/)
 - Test: `cargo test` (run from root)
 - Format: `cargo fmt --all`
-- Lint: `cargo clippy --all-targets --all-features`
-- Debug: Use `println!` for logging; no custom logger yet
+- Lint: `cargo clippy --all-features`
 
 ## Conventions
 
 - Document IDs: String-based, filename-safe (e.g., `user-123.json`)
-- Metadata: `_id`, `_version`, `_created_at`, `_updated_at`, `_hash`, `_signature`
+- Metadata: `id`, `version`, `created_at`, `updated_at`, `hash`, `signature`
 - Soft Deletes: Move files to `.deleted/` subdirectory
 - Indices: Hash-based for exact matches, stored as serialized DashMap in `.index/`
 - Transactions: Log to WAL before committing file changes

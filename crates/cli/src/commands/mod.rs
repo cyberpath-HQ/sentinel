@@ -16,6 +16,8 @@ mod get;
 mod init;
 /// Insert command module.
 mod insert;
+/// List command module.
+mod list;
 /// Update command module.
 mod update;
 
@@ -140,6 +142,10 @@ pub enum Commands {
     Update(update::UpdateArgs),
     /// Delete a document from a collection.
     Delete(delete::DeleteArgs),
+    /// List all documents in a collection.
+    ///
+    /// Prints the IDs of all documents in the specified collection.
+    List(list::ListArgs),
 }
 
 /// Execute the specified CLI command.
@@ -219,6 +225,7 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         Commands::Get(args) => get::run(args).await,
         Commands::Update(args) => update::run(args).await,
         Commands::Delete(args) => delete::run(args).await,
+        Commands::List(args) => list::run(args).await,
     }
 }
 
@@ -275,8 +282,9 @@ mod tests {
             Commands::Insert(args) => {
                 assert_eq!(args.store_path, "/tmp/store");
                 assert_eq!(args.collection, "users");
-                assert_eq!(args.id, "user1");
-                assert_eq!(args.data, "{}");
+                assert_eq!(args.id, Some("user1".to_string()));
+                assert_eq!(args.data, Some("{}".to_string()));
+                assert_eq!(args.bulk, None);
             },
             _ => panic!("Expected Insert command"),
         }
@@ -401,6 +409,35 @@ mod tests {
         );
     }
 
+    /// Test run_command with invalid algorithm.
+    ///
+    /// This test verifies that run_command fails with invalid algorithm names.
+    #[tokio::test]
+    async fn test_run_command_invalid_algorithm() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        let args = super::init::InitArgs {
+            path: store_path.to_string_lossy().to_string(),
+            ..Default::default()
+        };
+        let cli = Cli {
+            command:                  Commands::Init(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           "invalid".to_string(),
+            signature_algorithm:      "ed25519".to_string(),
+            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            key_derivation_algorithm: "argon2id".to_string(),
+        };
+
+        let result = run_command(cli).await;
+        assert!(
+            result.is_err(),
+            "run_command should fail with invalid hash algorithm"
+        );
+    }
+
     /// Test run_command with Insert command.
     ///
     /// This test verifies that run_command correctly dispatches to insert::run.
@@ -444,9 +481,10 @@ mod tests {
         let args = super::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice"}"#.to_string(),
-            ..Default::default()
+            id:         Some("doc1".to_string()),
+            data:       Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk:       None,
+            passphrase: None,
         };
         let cli = Cli {
             command:                  Commands::Insert(args),
@@ -675,7 +713,7 @@ mod tests {
     ///
     /// This test verifies that run_command fails with invalid algorithm strings.
     #[tokio::test]
-    async fn test_run_command_invalid_algorithm() {
+    async fn test_run_command_invalid_algorithm_generate() {
         let args = super::generate::GenArgs {
             subcommand: super::generate::GenCommands::Key(super::generate::KeyArgs {
                 key_type: super::generate::KeyType::Signing,

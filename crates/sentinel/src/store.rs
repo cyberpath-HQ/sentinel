@@ -4,6 +4,7 @@ use std::{
 };
 
 use tokio::fs as tokio_fs;
+use tracing::{debug, error, trace, warn};
 
 use crate::{
     validation::{is_reserved_name, is_valid_name_chars},
@@ -102,28 +103,44 @@ impl Store {
     where
         P: AsRef<Path>,
     {
+        trace!("Creating new Store at path: {:?}", root_path.as_ref());
         let root_path = root_path.as_ref().to_path_buf();
-        tokio_fs::create_dir_all(&root_path).await?;
+        tokio_fs::create_dir_all(&root_path).await.map_err(|e| {
+            error!(
+                "Failed to create store root directory {:?}: {}",
+                root_path, e
+            );
+            e
+        })?;
+        debug!(
+            "Store root directory created or already exists: {:?}",
+            root_path
+        );
         let mut store = Self {
             root_path,
             signing_key: None,
         };
         if let Some(passphrase) = passphrase {
+            debug!("Passphrase provided, handling signing key");
             let keys_collection = store.collection(".keys").await?;
             if let Some(doc) = keys_collection.get("signing_key").await? {
                 // Load existing signing key
+                debug!("Loading existing signing key from store");
                 let data = doc.data();
                 let encrypted = data["encrypted"].as_str().ok_or_else(|| {
+                    error!("Stored signing key document missing 'encrypted' field");
                     SentinelError::StoreCorruption {
                         reason: "stored signing key document missing 'encrypted' field or not a string".to_owned(),
                     }
                 })?;
                 let salt_hex = data["salt"].as_str().ok_or_else(|| {
+                    error!("Stored signing key document missing 'salt' field");
                     SentinelError::StoreCorruption {
                         reason: "stored signing key document missing 'salt' field or not a string".to_owned(),
                     }
                 })?;
                 let salt = hex::decode(salt_hex).map_err(|err| {
+                    error!("Stored signing key salt is not valid hex: {}", err);
                     SentinelError::StoreCorruption {
                         reason: format!("stored signing key salt is not valid hex ({})", err),
                     }
@@ -131,6 +148,10 @@ impl Store {
                 let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt)?;
                 let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
                 let key_array: [u8; 32] = key_bytes.try_into().map_err(|kb: Vec<u8>| {
+                    error!(
+                        "Stored signing key has invalid length: {}, expected 32",
+                        kb.len()
+                    );
                     SentinelError::StoreCorruption {
                         reason: format!(
                             "stored signing key has an invalid length ({}, expected 32)",
@@ -140,9 +161,11 @@ impl Store {
                 })?;
                 let signing_key = sentinel_crypto::SigningKey::from_bytes(&key_array);
                 store.signing_key = Some(Arc::new(signing_key));
+                debug!("Existing signing key loaded successfully");
             }
             else {
                 // Generate new signing key and salt
+                debug!("Generating new signing key");
                 let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(passphrase)?;
                 let signing_key = sentinel_crypto::SigningKeyManager::generate_key();
                 let key_bytes = signing_key.to_bytes();
@@ -155,8 +178,10 @@ impl Store {
                     )
                     .await?;
                 store.signing_key = Some(Arc::new(signing_key));
+                debug!("New signing key generated and stored");
             }
         }
+        trace!("Store created successfully");
         Ok(store)
     }
 
@@ -220,9 +245,15 @@ impl Store {
     /// - Collections are not cached; each call creates a new `Collection` instance
     /// - No validation is performed on the collection name beyond filesystem constraints
     pub async fn collection(&self, name: &str) -> Result<Collection> {
+        trace!("Accessing collection: {}", name);
         validate_collection_name(name)?;
         let path = self.root_path.join("data").join(name);
-        tokio_fs::create_dir_all(&path).await?;
+        tokio_fs::create_dir_all(&path).await.map_err(|e| {
+            error!("Failed to create collection directory {:?}: {}", path, e);
+            e
+        })?;
+        debug!("Collection directory ensured: {:?}", path);
+        trace!("Collection '{}' accessed successfully", name);
         Ok(Collection {
             path,
             signing_key: self.signing_key.clone(),
@@ -272,8 +303,10 @@ impl Store {
 /// # }
 /// ```
 fn validate_collection_name(name: &str) -> Result<()> {
+    trace!("Validating collection name: {}", name);
     // Check if name is empty
     if name.is_empty() {
+        debug!("Collection name is empty");
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
@@ -281,6 +314,7 @@ fn validate_collection_name(name: &str) -> Result<()> {
 
     // Check if name starts with a dot (hidden directory)
     if name.starts_with('.') && name != ".keys" {
+        debug!("Collection name starts with dot and is not .keys: {}", name);
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
@@ -288,6 +322,7 @@ fn validate_collection_name(name: &str) -> Result<()> {
 
     // Check if name ends with a dot or space (Windows limitation)
     if name.ends_with('.') || name.ends_with(' ') {
+        warn!("Collection name ends with dot or space: {}", name);
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
@@ -295,6 +330,7 @@ fn validate_collection_name(name: &str) -> Result<()> {
 
     // Check for valid characters
     if !is_valid_name_chars(name) {
+        debug!("Collection name contains invalid characters: {}", name);
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
@@ -302,11 +338,13 @@ fn validate_collection_name(name: &str) -> Result<()> {
 
     // Check for Windows reserved names
     if is_reserved_name(name) {
+        debug!("Collection name is a reserved name: {}", name);
         return Err(SentinelError::InvalidCollectionName {
             name: name.to_owned(),
         });
     }
 
+    trace!("Collection name '{}' is valid", name);
     Ok(())
 }
 

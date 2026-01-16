@@ -2,6 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use serde_json::Value;
 use tokio::fs as tokio_fs;
+use tracing::{debug, error, trace, warn};
 
 use crate::{
     validation::{is_reserved_name, is_valid_document_id_chars},
@@ -100,18 +101,31 @@ impl Collection {
     /// # }
     /// ```
     pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
+        trace!("Inserting document with id: {}", id);
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
 
         #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
         let doc = if let Some(key) = &self.signing_key {
+            debug!("Creating signed document for id: {}", id);
             Document::new(id.to_owned(), data, key)?
         }
         else {
+            debug!("Creating unsigned document for id: {}", id);
             Document::new_without_signature(id.to_owned(), data)?
         };
-        let json = serde_json::to_string_pretty(&doc)?;
-        tokio_fs::write(&file_path, json).await?;
+        let json = serde_json::to_string_pretty(&doc).map_err(|e| {
+            error!("Failed to serialize document {} to JSON: {}", id, e);
+            e
+        })?;
+        tokio_fs::write(&file_path, json).await.map_err(|e| {
+            error!(
+                "Failed to write document {} to file {:?}: {}",
+                id, file_path, e
+            );
+            e
+        })?;
+        debug!("Document {} inserted successfully", id);
         Ok(())
     }
 
@@ -156,17 +170,27 @@ impl Collection {
     /// # }
     /// ```
     pub async fn get(&self, id: &str) -> Result<Option<Document>> {
+        trace!("Retrieving document with id: {}", id);
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
         match tokio_fs::read_to_string(&file_path).await {
             Ok(content) => {
-                let mut doc: Document = serde_json::from_str(&content)?;
+                debug!("Document {} found, parsing JSON", id);
+                let mut doc: Document = serde_json::from_str(&content).map_err(|e| {
+                    error!("Failed to parse JSON for document {}: {}", id, e);
+                    e
+                })?;
                 // Ensure the id matches the filename
                 doc.id = id.to_owned();
+                trace!("Document {} retrieved successfully", id);
                 Ok(Some(doc))
             },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                debug!("Document {} not found", id);
+                Ok(None)
+            },
             Err(e) => {
+                error!("IO error reading document {}: {}", id, e);
                 Err(SentinelError::Io {
                     source: e,
                 })
@@ -216,12 +240,14 @@ impl Collection {
         self.insert(id, data).await
     }
 
-    /// Deletes a document from the collection.
+    /// Deletes a document from the collection (soft delete).
     ///
-    /// Removes the JSON file corresponding to the given ID from the filesystem.
+    /// Moves the JSON file corresponding to the given ID to a `.deleted/` subdirectory
+    /// within the collection. This implements soft deletes, allowing for recovery
+    /// of accidentally deleted documents. The `.deleted/` directory is created
+    /// automatically if it doesn't exist.
+    ///
     /// If the document doesn't exist, the operation succeeds silently (idempotent).
-    /// Future versions may implement soft deletes by moving files to a `.deleted/`
-    /// subdirectory.
     ///
     /// # Arguments
     ///
@@ -245,30 +271,183 @@ impl Collection {
     /// // Insert a document
     /// collection.insert("user-123", json!({"name": "Alice"})).await?;
     ///
-    /// // Delete the document
+    /// // Soft delete the document
     /// collection.delete("user-123").await?;
     ///
-    /// // Verify deletion
+    /// // Document is no longer accessible via get()
     /// let doc = collection.get("user-123").await?;
     /// assert!(doc.is_none());
     ///
-    /// // Deleting again is safe (idempotent)
-    /// collection.delete("user-123").await?;
+    /// // But the file still exists in .deleted/
+    /// // (can be recovered manually if needed)
     /// # Ok(())
     /// # }
     /// ```
     pub async fn delete(&self, id: &str) -> Result<()> {
+        trace!("Deleting document with id: {}", id);
         validate_document_id(id)?;
-        let file_path = self.path.join(format!("{}.json", id));
-        match tokio_fs::remove_file(&file_path).await {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()), // Already deleted
+        let source_path = self.path.join(format!("{}.json", id));
+        let deleted_dir = self.path.join(".deleted");
+        let dest_path = deleted_dir.join(format!("{}.json", id));
+
+        // Check if source exists
+        match tokio_fs::metadata(&source_path).await {
+            Ok(_) => {
+                debug!("Document {} exists, moving to .deleted", id);
+                // Create .deleted directory if it doesn't exist
+                tokio_fs::create_dir_all(&deleted_dir).await.map_err(|e| {
+                    error!(
+                        "Failed to create .deleted directory {:?}: {}",
+                        deleted_dir, e
+                    );
+                    e
+                })?;
+                // Move file to .deleted/
+                tokio_fs::rename(&source_path, &dest_path)
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to move document {} to .deleted: {}", id, e);
+                        e
+                    })?;
+                debug!("Document {} soft deleted successfully", id);
+                Ok(())
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                debug!(
+                    "Document {} not found, already deleted or never existed",
+                    id
+                );
+                Ok(())
+            },
             Err(e) => {
+                error!("IO error checking document {} existence: {}", id, e);
                 Err(SentinelError::Io {
                     source: e,
                 })
             },
         }
+    }
+
+    /// Lists all document IDs in the collection.
+    ///
+    /// Scans the collection directory for JSON files and returns their IDs
+    /// (filenames without the .json extension). This operation reads the directory
+    /// contents and filters for valid document files, skipping hidden directories
+    /// and metadata directories for optimization.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Vec<String>)` containing all document IDs in the collection,
+    /// or a `SentinelError` if the operation fails due to filesystem errors.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert some documents
+    /// collection.insert("user-123", json!({"name": "Alice"})).await?;
+    /// collection.insert("user-456", json!({"name": "Bob"})).await?;
+    ///
+    /// // List all documents
+    /// let ids = collection.list().await?;
+    /// assert_eq!(ids.len(), 2);
+    /// assert!(ids.contains(&"user-123".to_string()));
+    /// assert!(ids.contains(&"user-456".to_string()));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list(&self) -> Result<Vec<String>> {
+        trace!("Listing documents in collection: {}", self.name());
+        let mut entries = tokio_fs::read_dir(&self.path).await.map_err(|e| {
+            error!("Failed to read collection directory {:?}: {}", self.path, e);
+            e
+        })?;
+        let mut ids = Vec::new();
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if !entry.file_type().await?.is_dir() &&
+                let Some(extension) = path.extension() &&
+                extension == "json" &&
+                let Some(file_stem) = path.file_stem() &&
+                let Some(id) = file_stem.to_str()
+            {
+                ids.push(id.to_owned());
+            }
+            // Skip directories (optimization)
+        }
+
+        // Sort for consistent ordering
+        ids.sort();
+        debug!(
+            "Found {} documents in collection {}",
+            ids.len(),
+            self.name()
+        );
+        trace!("Documents listed successfully");
+        Ok(ids)
+    }
+
+    /// Performs bulk insert operations on multiple documents.
+    ///
+    /// Inserts multiple documents into the collection in a single operation.
+    /// If any document fails to insert, the operation stops and returns an error.
+    /// Documents are inserted in the order provided.
+    ///
+    /// # Arguments
+    ///
+    /// * `documents` - A vector of (id, data) tuples to insert.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `SentinelError` if any operation fails.
+    /// In case of failure, some documents may have been inserted before the error.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Prepare bulk documents
+    /// let documents = vec![
+    ///     ("user-123", json!({"name": "Alice", "role": "admin"})),
+    ///     ("user-456", json!({"name": "Bob", "role": "user"})),
+    ///     ("user-789", json!({"name": "Charlie", "role": "user"})),
+    /// ];
+    ///
+    /// // Bulk insert
+    /// collection.bulk_insert(documents).await?;
+    ///
+    /// // Verify all documents were inserted
+    /// assert!(collection.get("user-123").await?.is_some());
+    /// assert!(collection.get("user-456").await?.is_some());
+    /// assert!(collection.get("user-789").await?.is_some());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn bulk_insert(&self, documents: Vec<(&str, Value)>) -> Result<()> {
+        let count = documents.len();
+        trace!(
+            "Bulk inserting {} documents into collection {}",
+            count,
+            self.name()
+        );
+        for (id, data) in documents {
+            self.insert(id, data).await?;
+        }
+        debug!("Bulk insert of {} documents completed successfully", count);
+        Ok(())
     }
 }
 
@@ -289,8 +468,10 @@ impl Collection {
 /// - `Ok(())` if the ID is valid
 /// - `Err(SentinelError::InvalidDocumentId)` if the ID is invalid
 pub(crate) fn validate_document_id(id: &str) -> Result<()> {
+    trace!("Validating document id: {}", id);
     // Check if id is empty
     if id.is_empty() {
+        warn!("Document id is empty");
         return Err(SentinelError::InvalidDocumentId {
             id: id.to_owned(),
         });
@@ -298,6 +479,7 @@ pub(crate) fn validate_document_id(id: &str) -> Result<()> {
 
     // Check for valid characters
     if !is_valid_document_id_chars(id) {
+        warn!("Document id contains invalid characters: {}", id);
         return Err(SentinelError::InvalidDocumentId {
             id: id.to_owned(),
         });
@@ -305,11 +487,13 @@ pub(crate) fn validate_document_id(id: &str) -> Result<()> {
 
     // Check for Windows reserved names
     if is_reserved_name(id) {
+        warn!("Document id is a reserved name: {}", id);
         return Err(SentinelError::InvalidDocumentId {
             id: id.to_owned(),
         });
     }
 
+    trace!("Document id '{}' is valid", id);
     Ok(())
 }
 
@@ -558,6 +742,10 @@ mod tests {
 
         let retrieved = collection.get("user-123").await.unwrap();
         assert!(retrieved.is_none());
+
+        // Check that file was moved to .deleted/
+        let deleted_path = collection.path.join(".deleted").join("user-123.json");
+        assert!(tokio_fs::try_exists(&deleted_path).await.unwrap());
     }
 
     #[tokio::test]
@@ -566,6 +754,107 @@ mod tests {
 
         // Should not error
         collection.delete("nonexistent").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_list_empty_collection() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let ids = collection.list().await.unwrap();
+        assert!(ids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_list_with_documents() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("user-123", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-456", json!({"name": "Bob"}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-789", json!({"name": "Charlie"}))
+            .await
+            .unwrap();
+
+        let ids = collection.list().await.unwrap();
+        assert_eq!(ids.len(), 3);
+        assert_eq!(ids, vec!["user-123", "user-456", "user-789"]);
+    }
+
+    #[tokio::test]
+    async fn test_list_skips_deleted_documents() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("user-123", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("user-456", json!({"name": "Bob"}))
+            .await
+            .unwrap();
+        collection.delete("user-456").await.unwrap();
+
+        let ids = collection.list().await.unwrap();
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids, vec!["user-123"]);
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let documents = vec![
+            ("user-123", json!({"name": "Alice", "role": "admin"})),
+            ("user-456", json!({"name": "Bob", "role": "user"})),
+            ("user-789", json!({"name": "Charlie", "role": "user"})),
+        ];
+
+        collection.bulk_insert(documents).await.unwrap();
+
+        let ids = collection.list().await.unwrap();
+        assert_eq!(ids.len(), 3);
+        assert!(ids.contains(&"user-123".to_string()));
+        assert!(ids.contains(&"user-456".to_string()));
+        assert!(ids.contains(&"user-789".to_string()));
+
+        // Verify data
+        let alice = collection.get("user-123").await.unwrap().unwrap();
+        assert_eq!(alice.data()["name"], "Alice");
+        assert_eq!(alice.data()["role"], "admin");
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_empty() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection.bulk_insert(vec![]).await.unwrap();
+
+        let ids = collection.list().await.unwrap();
+        assert!(ids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_with_invalid_id() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let documents = vec![
+            ("user-123", json!({"name": "Alice"})),
+            ("user!invalid", json!({"name": "Bob"})),
+        ];
+
+        let result = collection.bulk_insert(documents).await;
+        assert!(result.is_err());
+
+        // First document should have been inserted before error
+        let ids = collection.list().await.unwrap();
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0], "user-123");
     }
 
     #[tokio::test]
@@ -649,6 +938,7 @@ mod tests {
         assert!(validate_document_id("file!name").is_err()); // !
         assert!(validate_document_id("file🚀name").is_err()); // emoji
         assert!(validate_document_id("fileéname").is_err()); // accented
+        assert!(validate_document_id("file.name").is_err()); // dot
     }
 
     #[test]
@@ -685,14 +975,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_invalid_document_id() {
+    async fn test_get_corrupted_json() {
         let (collection, _temp_dir) = setup_collection().await;
 
-        // Test empty ID
-        assert!(collection.get("").await.is_err());
+        // Manually create a file with invalid JSON
+        let file_path = collection.path.join("corrupted.json");
+        tokio_fs::write(&file_path, "{ invalid json }")
+            .await
+            .unwrap();
 
-        // Test Windows reserved name
-        assert!(collection.get("CON").await.is_err());
+        let result = collection.get("corrupted").await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

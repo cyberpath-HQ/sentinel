@@ -1,5 +1,6 @@
 use argon2::{Argon2, Params};
 use rand::RngCore;
+use tracing::{debug, trace};
 
 use crate::{
     error::{CryptoError, KeyDerivationError},
@@ -22,6 +23,7 @@ pub struct Argon2KeyDerivation;
 
 impl KeyDerivationFunction for Argon2KeyDerivation {
     fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> {
+        trace!("Deriving key from passphrase with Argon2 (generating salt)");
         let mut salt = [0u8; 32];
         rand::rng().fill_bytes(&mut salt);
         let salt_vec = salt.to_vec();
@@ -38,10 +40,12 @@ impl KeyDerivationFunction for Argon2KeyDerivation {
             .hash_password_into(passphrase.as_bytes(), &salt, &mut output_key_material)
             .map_err(|_| CryptoError::KeyDerivation(KeyDerivationError::DerivationFailed))?;
 
+        debug!("Argon2 key derivation completed successfully");
         Ok((salt_vec, output_key_material))
     }
 
     fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
+        trace!("Deriving key from passphrase with Argon2 (using provided salt)");
         let mut output_key_material = [0u8; 32];
 
         // Use recommended parameters for key derivation
@@ -54,6 +58,7 @@ impl KeyDerivationFunction for Argon2KeyDerivation {
             .hash_password_into(passphrase.as_bytes(), salt, &mut output_key_material)
             .map_err(|_| CryptoError::KeyDerivation(KeyDerivationError::DerivationFailed))?;
 
+        debug!("Argon2 key derivation with salt completed successfully");
         Ok(output_key_material)
     }
 }

@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use sentinel_crypto::{hash_data, sign_hash, SigningKey};
 use serde_json::Value;
+use tracing::{debug, trace};
 
 use crate::Result;
 
@@ -31,9 +32,11 @@ impl Document {
     /// Creates a new document with the given id, version, and data.
     /// Computes the hash and signature using the provided private key.
     pub fn new(id: String, data: Value, private_key: &SigningKey) -> Result<Self> {
+        trace!("Creating new signed document with id: {}", id);
         let now = Utc::now();
         let hash = hash_data(&data)?;
         let signature = sign_hash(&hash, private_key)?;
+        debug!("Document {} created with hash: {}", id, hash);
         Ok(Self {
             id,
             version: crate::META_SENTINEL_VERSION,
@@ -48,8 +51,10 @@ impl Document {
     /// Creates a new document with the given id and data.
     /// Computes the hash but not the signature.
     pub fn new_without_signature(id: String, data: Value) -> Result<Self> {
+        trace!("Creating new unsigned document with id: {}", id);
         let now = Utc::now();
         let hash = hash_data(&data)?;
+        debug!("Document {} created without signature, hash: {}", id, hash);
         Ok(Self {
             id,
             version: crate::META_SENTINEL_VERSION,
@@ -85,10 +90,12 @@ impl Document {
     /// Sets the document data, updates the hash and signature, and refreshes the updated_at
     /// timestamp.
     pub fn set_data(&mut self, data: Value, private_key: &SigningKey) -> Result<()> {
+        trace!("Updating data for document: {}", self.id);
         self.data = data;
         self.updated_at = Utc::now();
         self.hash = hash_data(&self.data)?;
         self.signature = sign_hash(&self.hash, private_key)?;
+        debug!("Document {} data updated, new hash: {}", self.id, self.hash);
         Ok(())
     }
 }
