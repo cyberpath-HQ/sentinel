@@ -214,7 +214,8 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
 
             info!(
                 "Query returned {} documents (total: {})",
-                count, result.total_count.unwrap_or(0)
+                count,
+                result.total_count.unwrap_or(0)
             );
 
             // Handle empty results for table format
