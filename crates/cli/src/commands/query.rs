@@ -133,8 +133,8 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
     }
 
     // Parse sort
-    if let Some(sort_str) = &args.sort {
-        let (field, order) = parse_sort(sort_str)?;
+    if let Some(sort_str) = args.sort {
+        let (field, order) = parse_sort(&sort_str)?;
         let sort_order = match order.as_str() {
             "asc" => sentinel_dbms::SortOrder::Ascending,
             "desc" => sentinel_dbms::SortOrder::Descending,
@@ -156,7 +156,7 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
     }
 
     // Parse projection
-    if let Some(project_str) = &args.project {
+    if let Some(project_str) = args.project {
         let fields: Vec<&str> = project_str.split(',').map(|s| s.trim()).collect();
         query_builder = query_builder.projection(fields);
     }
@@ -168,14 +168,14 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
             let documents_stream = result.documents;
             pin_mut!(documents_stream);
 
-            let mut count = 0;
+            let mut count: usize = 0;
             let mut has_printed_header = false;
 
             // Process documents one by one to avoid loading all into memory
             while let Some(doc_result) = documents_stream.next().await {
                 match doc_result {
                     Ok(doc) => {
-                        count += 1;
+                        count = count.saturating_add(1);
 
                         match args.format.as_str() {
                             "json" => {
@@ -240,19 +240,30 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
 
 /// Parsed filter from command line string.
 enum ParsedFilter {
+    /// Field equals value
     Equals(String, Value),
+    /// Field greater than value
     GreaterThan(String, Value),
+    /// Field less than value
     LessThan(String, Value),
+    /// Field greater or equal to value
     GreaterOrEqual(String, Value),
+    /// Field less or equal to value
     LessOrEqual(String, Value),
+    /// Field contains substring
     Contains(String, String),
+    /// Field starts with prefix
     StartsWith(String, String),
+    /// Field ends with suffix
     EndsWith(String, String),
+    /// Field in list of values
     In(String, Vec<Value>),
+    /// Field exists with boolean
     Exists(String, bool),
 }
 
 /// Parse a filter string like "field=value" or "field>value".
+#[allow(clippy::arithmetic_side_effects, reason = "Slicing with small constants is safe")]
 fn parse_filter(filter_str: &str) -> sentinel_dbms::Result<ParsedFilter> {
     // Check for special syntaxes first
     if let Some(exists_pos) = filter_str.find(" exists:") {
