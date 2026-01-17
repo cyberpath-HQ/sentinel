@@ -4,7 +4,7 @@ use serde_json::Value;
 
 /// Compares two JSON values for sorting purposes.
 pub fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
-    fn type_order(v: &Value) -> u8 {
+    const fn type_order(v: &Value) -> u8 {
         match v {
             Value::Null => 0,
             Value::Bool(_) => 1,
