@@ -48,8 +48,8 @@ pub async fn run(args: InitArgs) -> sentinel_dbms::Result<()> {
                 let key = sentinel_crypto::SigningKeyManager::import_key(hex)?;
                 store.set_signing_key(key.clone());
                 if let Some(pass) = passphrase {
-                    let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(pass)?;
-                    let encrypted = sentinel_crypto::encrypt_data(&key.to_bytes(), &encryption_key)?;
+                    let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(pass).await?;
+                    let encrypted = sentinel_crypto::encrypt_data(&key.to_bytes(), &encryption_key).await?;
                     let salt_hex = hex::encode(&salt);
                     let keys_collection = store.collection(".keys").await?;
                     keys_collection

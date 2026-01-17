@@ -204,24 +204,15 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         key_derivation_algorithm: kd_alg,
     };
 
-    sentinel_crypto::set_global_crypto_config(config.clone())
-        .map_err(|err| {
-            sentinel_dbms::SentinelError::ConfigError {
-                message: err.to_string(),
-            }
-        })
-        .or_else(|_| {
-            // If already set, check if it's the same config
-            let current = sentinel_crypto::get_global_crypto_config();
-            if *current == config {
-                Ok(())
-            }
-            else {
-                Err(sentinel_dbms::SentinelError::ConfigError {
-                    message: "Crypto config already set with different values".to_owned(),
-                })
-            }
-        })?;
+    if let Err(err) = sentinel_crypto::set_global_crypto_config(config.clone()).await {
+        // If already set, check if it's the same config
+        let current = sentinel_crypto::get_global_crypto_config().await?;
+        if current != config {
+            return Err(sentinel_dbms::SentinelError::ConfigError {
+                message: format!("Crypto config already set with different values: {}", err),
+            });
+        }
+    }
 
     match cli.command {
         Commands::Init(args) => init::run(args).await,
