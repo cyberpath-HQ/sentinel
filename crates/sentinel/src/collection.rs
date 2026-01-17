@@ -635,7 +635,7 @@ impl Collection {
 
         for id in all_ids {
             if let Some(doc) = self.get(id).await? &&
-                matches_filters(&doc, &query.filters)
+                matches_filters(&doc, &query.filters.iter().collect::<Vec<_>>())
             {
                 matching_docs.push(doc);
             }
@@ -731,7 +731,7 @@ impl Collection {
                     }
                 };
 
-                if matches_filters(&doc, &filters) {
+                if matches_filters(&doc, &filters.iter().collect::<Vec<_>>()) {
                     if skipped < offset {
                         skipped += 1;
                         continue;

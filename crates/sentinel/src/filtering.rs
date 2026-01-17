@@ -5,8 +5,8 @@ use serde_json::Value;
 use crate::{Document, Filter};
 
 /// Checks if a document matches all the given filters.
-pub fn matches_filters(doc: &Document, filters: &[Filter]) -> bool {
-    for filter in filters {
+pub fn matches_filters(doc: &Document, filters: &[&Filter]) -> bool {
+    for &filter in filters {
         let matches = match filter {
             Filter::Equals(field, value) => doc.data().get(field) == Some(value),
             Filter::GreaterThan(field, value) => {
@@ -71,10 +71,10 @@ pub fn matches_filters(doc: &Document, filters: &[Filter]) -> bool {
                 field_exists == *exists
             },
             Filter::And(left, right) => {
-                matches_filters(doc, &[*left.clone()]) && matches_filters(doc, &[*right.clone()])
+                matches_filters(doc, &[left.as_ref()]) && matches_filters(doc, &[right.as_ref()])
             },
             Filter::Or(left, right) => {
-                matches_filters(doc, &[*left.clone()]) || matches_filters(doc, &[*right.clone()])
+                matches_filters(doc, &[left.as_ref()]) || matches_filters(doc, &[right.as_ref()])
             },
         };
         if !matches {
@@ -101,38 +101,38 @@ mod tests {
     async fn test_matches_filters_equals() {
         let doc = create_doc(json!({"name": "Alice", "age": 25})).await;
         let filter = Filter::Equals("name".to_string(), json!("Alice"));
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::Equals("name".to_string(), json!("Bob"));
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
     async fn test_matches_filters_greater_than() {
         let doc = create_doc(json!({"age": 25})).await;
         let filter = Filter::GreaterThan("age".to_string(), json!(20));
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::GreaterThan("age".to_string(), json!(30));
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
 
         // Test with non-number field
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::GreaterThan("name".to_string(), json!(20));
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
     async fn test_matches_filters_greater_or_equal() {
         let doc = create_doc(json!({"age": 25})).await;
         let filter = Filter::GreaterOrEqual("age".to_string(), json!(25));
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::GreaterOrEqual("age".to_string(), json!(20));
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::GreaterOrEqual("age".to_string(), json!(30));
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
@@ -140,35 +140,35 @@ mod tests {
         // Test with non-number field
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::GreaterOrEqual("name".to_string(), json!(20));
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
     async fn test_matches_filters_less_than() {
         let doc = create_doc(json!({"age": 25})).await;
         let filter = Filter::LessThan("age".to_string(), json!(20));
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
 
         let filter = Filter::LessThan("age".to_string(), json!(30));
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         // Test with non-number field
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::LessThan("name".to_string(), json!(20));
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
     async fn test_matches_filters_less_or_equal() {
         let doc = create_doc(json!({"age": 25})).await;
         let filter = Filter::LessOrEqual("age".to_string(), json!(25));
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::LessOrEqual("age".to_string(), json!(30));
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::LessOrEqual("age".to_string(), json!(20));
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
@@ -176,7 +176,7 @@ mod tests {
         // Test with non-number field
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::LessOrEqual("name".to_string(), json!(20));
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
@@ -186,30 +186,30 @@ mod tests {
             "status".to_string(),
             vec![json!("active"), json!("inactive")],
         );
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::In("status".to_string(), vec![json!("inactive")]);
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
     async fn test_matches_filters_contains_string() {
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::Contains("name".to_string(), "Ali".to_string());
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::Contains("name".to_string(), "Bob".to_string());
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
     async fn test_matches_filters_contains_array() {
         let doc = create_doc(json!({"tags": ["rust", "programming"]})).await;
         let filter = Filter::Contains("tags".to_string(), "rust".to_string());
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::Contains("tags".to_string(), "python".to_string());
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
@@ -217,53 +217,53 @@ mod tests {
         // Test array with mixed types - should only match strings
         let doc = create_doc(json!({"tags": ["rust", 42, true]})).await;
         let filter = Filter::Contains("tags".to_string(), "rust".to_string());
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::Contains("tags".to_string(), "42".to_string());
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
     async fn test_matches_filters_starts_with() {
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::StartsWith("name".to_string(), "Ali".to_string());
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::StartsWith("name".to_string(), "Bob".to_string());
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
 
         // Test with non-string field (should return false)
         let doc = create_doc(json!({"age": 25})).await;
         let filter = Filter::StartsWith("age".to_string(), "2".to_string());
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
     async fn test_matches_filters_ends_with() {
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::EndsWith("name".to_string(), "ice".to_string());
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::EndsWith("name".to_string(), "Bob".to_string());
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
 
         // Test with non-string field (should return false)
         let doc = create_doc(json!({"age": 25})).await;
         let filter = Filter::EndsWith("age".to_string(), "5".to_string());
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
     async fn test_matches_filters_exists() {
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::Exists("name".to_string(), true);
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::Exists("age".to_string(), true);
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
 
         let filter = Filter::Exists("age".to_string(), false);
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
@@ -273,13 +273,13 @@ mod tests {
             Box::new(Filter::Equals("name".to_string(), json!("Alice"))),
             Box::new(Filter::GreaterThan("age".to_string(), json!(20))),
         );
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::And(
             Box::new(Filter::Equals("name".to_string(), json!("Alice"))),
             Box::new(Filter::GreaterThan("age".to_string(), json!(30))),
         );
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
@@ -289,13 +289,13 @@ mod tests {
             Box::new(Filter::Equals("name".to_string(), json!("Bob"))),
             Box::new(Filter::GreaterThan("age".to_string(), json!(20))),
         );
-        assert!(matches_filters(&doc, &[filter]));
+        assert!(matches_filters(&doc, &[&filter]));
 
         let filter = Filter::Or(
             Box::new(Filter::Equals("name".to_string(), json!("Bob"))),
             Box::new(Filter::GreaterThan("age".to_string(), json!(30))),
         );
-        assert!(!matches_filters(&doc, &[filter]));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
@@ -305,12 +305,12 @@ mod tests {
             Filter::Equals("name".to_string(), json!("Alice")),
             Filter::GreaterThan("age".to_string(), json!(20)),
         ];
-        assert!(matches_filters(&doc, &filters));
+        assert!(matches_filters(&doc, &filters.iter().collect::<Vec<_>>()));
 
         let filters = vec![
             Filter::Equals("name".to_string(), json!("Alice")),
             Filter::GreaterThan("age".to_string(), json!(30)),
         ];
-        assert!(!matches_filters(&doc, &filters));
+        assert!(!matches_filters(&doc, &filters.iter().collect::<Vec<_>>()));
     }
 }
