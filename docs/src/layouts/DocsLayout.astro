@@ -42,7 +42,15 @@ for (const section of Object.keys(sections)) {
 }
 
 // Define section order
-const sectionOrder = ["Getting Started", "Core Concepts", "Cryptography", "API Reference", "Advanced", "General"];
+const sectionOrder = [
+  "Getting Started",
+  "Core Concepts",
+  "Cryptography",
+  "Advanced Topics",
+  "Command Line Interface",
+  "Tutorials",
+  "References",
+];
 
 // Sort sections
 const sortedSections = Object.keys(sections).sort((a, b) => {
@@ -53,7 +61,6 @@ const sortedSections = Object.keys(sections).sort((a, b) => {
   if (bIndex === -1) return -1;
   return aIndex - bIndex;
 });
-
 ---
 
 <!doctype html>
