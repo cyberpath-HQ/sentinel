@@ -1,7 +1,6 @@
 ---
 title: CLI Commands
-description:
-  Complete reference for all Sentinel CLI subcommands.
+description: Complete reference for all Sentinel CLI subcommands.
 section: Command Line Interface
 order: 2
 keywords: ["cli", "commands", "subcommands", "operations", "reference"]
@@ -27,7 +26,8 @@ sentinel init --path <PATH> [OPTIONS]
 **Optional Arguments:**
 
 - `--passphrase <PASSPHRASE>`: Passphrase for encrypting the signing key
-- `--signing-key <KEY>`: Hex-encoded signing key to use. If not provided, a new one is generated if initializing a new store
+- `--signing-key <KEY>`: Hex-encoded signing key to use. If not provided, a new one is generated if initializing a new
+  store
 
 **Examples:**
 
@@ -280,6 +280,199 @@ sentinel update \
 3. Replaces the document file on disk
 4. Updates indices
 5. Logs the operation to the WAL
+
+## List Documents
+
+Lists all document IDs in a collection.
+
+**Usage:**
+
+```bash
+sentinel list --store <STORE_PATH> --collection <COLLECTION_NAME>
+```
+
+**Required Arguments:**
+
+- `-s, --store <STORE_PATH>`: Path to the store directory
+- `-c, --collection <COLLECTION_NAME>`: Name of the collection
+
+**Examples:**
+
+```bash
+# List all users
+sentinel list --store /data/my-store --collection users
+
+# Count documents with wc
+sentinel list --store /data/my-store --collection users | wc -l
+
+# Use with xargs to process each document
+sentinel list --store /data/my-store --collection users | \
+  xargs -I {} sentinel get --store /data/my-store --collection users --id {}
+```
+
+**What It Does:**
+
+1. Reads the collection directory
+2. Lists all `.json` files (excluding hidden files and subdirectories)
+3. Prints document IDs (filenames without `.json` extension) to stdout
+
+## Query Documents
+
+Query documents in a collection with powerful filtering, sorting, pagination, and field projection.
+
+**Usage:**
+
+```bash
+sentinel query \
+  --store <STORE_PATH> \
+  --collection <COLLECTION_NAME> \
+  [--filter <FILTER>...] \
+  [--sort <FIELD:ORDER>] \
+  [--limit <N>] \
+  [--offset <N>] \
+  [--project <FIELDS>] \
+  [--format <FORMAT>]
+```
+
+**Required Arguments:**
+
+- `-s, --store <STORE_PATH>`: Path to the store directory
+- `-c, --collection <COLLECTION_NAME>`: Name of the collection
+
+**Optional Arguments:**
+
+- `--filter <FILTER>`: Filter expression (can be used multiple times for AND logic)
+- `--sort <FIELD:ORDER>`: Sort by field (e.g., `name:asc` or `age:desc`)
+- `--limit <N>`: Maximum number of results to return
+- `--offset <N>`: Number of results to skip (for pagination)
+- `--project <FIELDS>`: Comma-separated list of fields to include in results
+- `--format <FORMAT>`: Output format (`json` or `table`, default: `json`)
+- `--passphrase <PASSPHRASE>`: Passphrase for decrypting the signing key
+
+### Filter Syntax
+
+Filters use the following syntax patterns:
+
+| Operator         | Syntax                    | Example                    | Description        |
+| ---------------- | ------------------------- | -------------------------- | ------------------ |
+| Equals           | `field=value`             | `role=admin`               | Exact match        |
+| Greater Than     | `field>value`             | `age>25`                   | Numeric comparison |
+| Less Than        | `field<value`             | `score<100`                | Numeric comparison |
+| Greater or Equal | `field>=value`            | `salary>=50000`            | Numeric comparison |
+| Less or Equal    | `field<=value`            | `experience<=10`           | Numeric comparison |
+| Contains         | `field~substring`         | `name~John`                | String contains    |
+| Starts With      | `field^prefix`            | `email^admin@`             | String starts with |
+| Ends With        | `field$suffix`            | `domain$.com`              | String ends with   |
+| In               | `field in:val1,val2`      | `status in:active,pending` | Value in list      |
+| Exists           | `field exists:true/false` | `phone exists:true`        | Field exists       |
+
+**Examples:**
+
+```bash
+# Find all active admins
+sentinel query \
+  --store /data/my-store \
+  --collection users \
+  --filter "role=admin" \
+  --filter "status=active"
+
+# Find users over 25 in Engineering department
+sentinel query \
+  --store /data/my-store \
+  --collection users \
+  --filter "age>25" \
+  --filter "department=Engineering"
+
+# Search for emails containing "example"
+sentinel query \
+  --store /data/my-store \
+  --collection users \
+  --filter "email~example"
+
+# Find users with phone numbers
+sentinel query \
+  --store /data/my-store \
+  --collection users \
+  --filter "phone exists:true"
+
+# Complex query with sorting and pagination
+sentinel query \
+  --store /data/my-store \
+  --collection users \
+  --filter "age>=21" \
+  --filter "department in:Engineering,Sales" \
+  --sort "name:asc" \
+  --limit 10 \
+  --offset 0 \
+  --project "name,email,department"
+
+# Get recent audit logs
+sentinel query \
+  --store /data/my-store \
+  --collection audit_logs \
+  --sort "created_at:desc" \
+  --limit 100
+
+# Table format output for readability
+sentinel query \
+  --store /data/my-store \
+  --collection users \
+  --filter "role=admin" \
+  --format table
+
+# JSON output for scripting
+sentinel query \
+  --store /data/my-store \
+  --collection users \
+  --filter "age>30" \
+  --format json | jq '.[] | {name: .data.name, age: .data.age}'
+```
+
+**What It Does:**
+
+1. Parses all filter expressions
+2. Scans the collection directory and reads matching documents
+3. Applies filters in memory (AND logic for multiple filters)
+4. Sorts results if `--sort` is specified
+5. Applies pagination (`--offset` and `--limit`)
+6. Projects fields if `--project` is specified
+7. Outputs results in the specified format
+8. Reports query execution time and count
+
+**Output Format:**
+
+JSON format (default):
+
+```json
+[
+  {
+    "id": "user-123",
+    "version": 1,
+    "created_at": "2026-01-17T10:00:00Z",
+    "updated_at": "2026-01-17T10:00:00Z",
+    "hash": "a1b2c3...",
+    "signature": "d4e5f6...",
+    "data": {
+      "name": "Alice",
+      "email": "alice@example.com"
+    }
+  }
+]
+```
+
+Table format (for human readability):
+
+```text
+┌──────────┬───────┬──────────────────────┐
+│ ID       │ Name  │ Email                │
+├──────────┼───────┼──────────────────────┤
+│ user-123 │ Alice │ alice@example.com    │
+│ user-456 │ Bob   │ bob@example.com      │
+└──────────┴───────┴──────────────────────┘
+
+Query executed in 5.23ms
+Total results: 2
+```
 
 ## Delete a Document
 

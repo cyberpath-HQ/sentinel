@@ -1,0 +1,758 @@
+---
+title: Examples and Tutorials
+description: Practical examples and step-by-step tutorials for common Sentinel use cases.
+section: Tutorials
+order: 40
+keywords: ["examples", "tutorials", "patterns", "use cases", "recipes"]
+related: ["quick-start", "collection", "querying", "cryptography"]
+---
+
+This guide provides practical examples and tutorials for common Sentinel use cases. Each example includes complete,
+runnable code with explanations.
+
+## Basic CRUD Operations
+
+### Creating a Simple Database
+
+```rust
+use sentinel_dbms::{Store, Result};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Create a store
+    let store = Store::new("./my_database", None).await?;
+
+    // Create collections for different data types
+    let users = store.collection("users").await?;
+    let posts = store.collection("posts").await?;
+    let comments = store.collection("comments").await?;
+
+    println!("Database initialized!");
+    println!("Collections: users, posts, comments");
+
+    Ok(())
+}
+```
+
+### Inserting Multiple Documents
+
+```rust
+use sentinel_dbms::{Store, Result};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./my_database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Insert multiple users
+    let user_data = vec![
+        ("alice", json!({
+            "name": "Alice Johnson",
+            "email": "alice@example.com",
+            "role": "admin",
+            "age": 30
+        })),
+        ("bob", json!({
+            "name": "Bob Smith",
+            "email": "bob@example.com",
+            "role": "user",
+            "age": 25
+        })),
+        ("charlie", json!({
+            "name": "Charlie Brown",
+            "email": "charlie@example.com",
+            "role": "user",
+            "age": 35
+        })),
+    ];
+
+    for (id, data) in user_data {
+        users.insert(id, data).await?;
+        println!("Inserted user: {}", id);
+    }
+
+    Ok(())
+}
+```
+
+### Batch Reading Documents
+
+```rust
+use sentinel_dbms::{Store, Result};
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./my_database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Stream all documents
+    let stream = users.all();
+    let docs: Vec<_> = stream.try_collect().await?;
+
+    println!("Found {} users:", docs.len());
+    for doc in docs {
+        println!("  - {}: {}", doc.id(), doc.data()["name"]);
+    }
+
+    Ok(())
+}
+```
+
+## Advanced Querying
+
+### Building Complex Queries
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator, SortOrder, Result};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./my_database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Complex query: Find active admins over 25, sorted by name
+    let query = QueryBuilder::new()
+        .filter("role", Operator::Equals, json!("admin"))
+        .filter("status", Operator::Equals, json!("active"))
+        .filter("age", Operator::GreaterThan, json!(25))
+        .sort("name", SortOrder::Ascending)
+        .limit(10)
+        .project(vec!["name".to_string(), "email".to_string()])
+        .build();
+
+    let result = users.query(query).await?;
+    println!("Query executed in {:?}", result.execution_time);
+
+    let docs: Vec<_> = result.documents.try_collect().await?;
+    println!("Found {} matching users:", docs.len());
+
+    for doc in docs {
+        println!("  Name: {}", doc.data()["name"]);
+        println!("  Email: {}", doc.data()["email"]);
+        println!();
+    }
+
+    Ok(())
+}
+```
+
+### Pagination
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, SortOrder, Result};
+use futures::TryStreamExt;
+
+async fn get_page(
+    store: &Store,
+    page: usize,
+    per_page: usize,
+) -> Result<Vec<sentinel_dbms::Document>> {
+    let users = store.collection("users").await?;
+
+    let query = QueryBuilder::new()
+        .sort("name", SortOrder::Ascending)
+        .limit(per_page)
+        .offset(page * per_page)
+        .build();
+
+    let result = users.query(query).await?;
+    result.documents.try_collect().await
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./my_database", None).await?;
+
+    // Get first page (10 users)
+    let page1 = get_page(&store, 0, 10).await?;
+    println!("Page 1: {} users", page1.len());
+
+    // Get second page
+    let page2 = get_page(&store, 1, 10).await?;
+    println!("Page 2: {} users", page2.len());
+
+    Ok(())
+}
+```
+
+### Search and Filter Patterns
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator, Result};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./my_database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Email domain search
+    let query = QueryBuilder::new()
+        .filter("email", Operator::EndsWith, json!("@example.com"))
+        .build();
+
+    let result = users.query(query).await?;
+    let example_users: Vec<_> = result.documents.try_collect().await?;
+    println!("Users with @example.com: {}", example_users.len());
+
+    // Name substring search
+    let query = QueryBuilder::new()
+        .filter("name", Operator::Contains, json!("Smith"))
+        .build();
+
+    let result = users.query(query).await?;
+    let smiths: Vec<_> = result.documents.try_collect().await?;
+    println!("Users with 'Smith' in name: {}", smiths.len());
+
+    // Multiple status values
+    let query = QueryBuilder::new()
+        .filter("status", Operator::In, json!(["active", "pending", "verified"]))
+        .build();
+
+    let result = users.query(query).await?;
+    let matching: Vec<_> = result.documents.try_collect().await?;
+    println!("Users with selected statuses: {}", matching.len());
+
+    Ok(())
+}
+```
+
+## Working with Signatures
+
+### Creating a Signed Store
+
+```rust
+use sentinel_dbms::{Store, Result};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Create store with passphrase protection
+    let store = Store::new("./secure_database", Some("my-secure-passphrase")).await?;
+    let users = store.collection("users").await?;
+
+    // All documents will be automatically signed
+    users.insert("alice", json!({
+        "name": "Alice Johnson",
+        "email": "alice@example.com",
+        "role": "admin"
+    })).await?;
+
+    // Retrieve and verify signature
+    let doc = users.get("alice").await?.expect("Document not found");
+
+    println!("Document ID: {}", doc.id());
+    println!("Hash: {}", doc.hash());
+    println!("Signature: {}", doc.signature());
+    println!("Created: {}", doc.created_at());
+
+    Ok(())
+}
+```
+
+### Verifying Document Integrity
+
+```rust
+use sentinel_dbms::{Store, Result, hash_data};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./my_database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Get a document
+    let doc = users.get("alice").await?.expect("Document not found");
+
+    // Compute current hash
+    let current_hash = hash_data(doc.data()).await?;
+
+    // Compare with stored hash
+    if current_hash == doc.hash() {
+        println!("✓ Document integrity verified");
+    } else {
+        println!("✗ Document has been tampered with!");
+    }
+
+    Ok(())
+}
+```
+
+## Audit Log Pattern
+
+### Creating Audit Logs
+
+```rust
+use sentinel_dbms::{Store, Result};
+use serde_json::json;
+use chrono::Utc;
+
+async fn log_action(
+    store: &Store,
+    user_id: &str,
+    action: &str,
+    details: serde_json::Value,
+) -> Result<()> {
+    let audit_logs = store.collection("audit_logs").await?;
+
+    // Create timestamped log entry
+    let timestamp = Utc::now();
+    let log_id = format!("{}-{}", timestamp.format("%Y%m%d-%H%M%S"), user_id);
+
+    audit_logs.insert(&log_id, json!({
+        "user_id": user_id,
+        "action": action,
+        "details": details,
+        "timestamp": timestamp.to_rfc3339(),
+        "ip_address": "192.168.1.100"  // Example
+    })).await?;
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./audit_database", Some("audit-key")).await?;
+
+    // Log various actions
+    log_action(&store, "alice", "login", json!({
+        "success": true,
+        "method": "password"
+    })).await?;
+
+    log_action(&store, "alice", "document_update", json!({
+        "document_id": "report-123",
+        "changes": ["title", "status"]
+    })).await?;
+
+    log_action(&store, "bob", "login_failed", json!({
+        "reason": "invalid_password",
+        "attempts": 3
+    })).await?;
+
+    println!("Audit logs created successfully");
+
+    Ok(())
+}
+```
+
+### Querying Audit Logs
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator, SortOrder, Result};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./audit_database", Some("audit-key")).await?;
+    let audit_logs = store.collection("audit_logs").await?;
+
+    // Get recent failed logins
+    let query = QueryBuilder::new()
+        .filter("action", Operator::Equals, json!("login_failed"))
+        .sort("timestamp", SortOrder::Descending)
+        .limit(10)
+        .build();
+
+    let result = audit_logs.query(query).await?;
+    let failed_logins: Vec<_> = result.documents.try_collect().await?;
+
+    println!("Recent failed logins:");
+    for log in failed_logins {
+        let data = log.data();
+        println!("  User: {}", data["user_id"]);
+        println!("  Time: {}", data["timestamp"]);
+        println!("  Reason: {}", data["details"]["reason"]);
+        println!();
+    }
+
+    Ok(())
+}
+```
+
+## User Management System
+
+### Complete User CRUD
+
+```rust
+use sentinel_dbms::{Store, Result};
+use serde_json::json;
+
+struct UserManager {
+    store: Store,
+}
+
+impl UserManager {
+    async fn new(path: &str) -> Result<Self> {
+        Ok(Self {
+            store: Store::new(path, None).await?,
+        })
+    }
+
+    async fn create_user(
+        &self,
+        username: &str,
+        name: &str,
+        email: &str,
+        role: &str,
+    ) -> Result<()> {
+        let users = self.store.collection("users").await?;
+
+        users.insert(username, json!({
+            "name": name,
+            "email": email,
+            "role": role,
+            "status": "active",
+            "created_at": chrono::Utc::now().to_rfc3339()
+        })).await?;
+
+        println!("User {} created", username);
+        Ok(())
+    }
+
+    async fn get_user(&self, username: &str) -> Result<Option<sentinel_dbms::Document>> {
+        let users = self.store.collection("users").await?;
+        users.get(username).await
+    }
+
+    async fn update_email(&self, username: &str, new_email: &str) -> Result<()> {
+        let users = self.store.collection("users").await?;
+
+        if let Some(mut doc) = users.get(username).await? {
+            let mut data = doc.data().clone();
+            data["email"] = json!(new_email);
+            users.update(username, data).await?;
+            println!("Email updated for {}", username);
+        }
+
+        Ok(())
+    }
+
+    async fn deactivate_user(&self, username: &str) -> Result<()> {
+        let users = self.store.collection("users").await?;
+
+        if let Some(doc) = users.get(username).await? {
+            let mut data = doc.data().clone();
+            data["status"] = json!("inactive");
+            users.update(username, data).await?;
+            println!("User {} deactivated", username);
+        }
+
+        Ok(())
+    }
+
+    async fn delete_user(&self, username: &str) -> Result<()> {
+        let users = self.store.collection("users").await?;
+        users.delete(username).await?;
+        println!("User {} deleted (moved to .deleted/)", username);
+        Ok(())
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let manager = UserManager::new("./user_system").await?;
+
+    // Create users
+    manager.create_user("alice", "Alice Johnson", "alice@example.com", "admin").await?;
+    manager.create_user("bob", "Bob Smith", "bob@example.com", "user").await?;
+
+    // Get user
+    if let Some(user) = manager.get_user("alice").await? {
+        println!("Found user: {}", user.data()["name"]);
+    }
+
+    // Update email
+    manager.update_email("alice", "alice.j@example.com").await?;
+
+    // Deactivate user
+    manager.deactivate_user("bob").await?;
+
+    // Delete user
+    manager.delete_user("bob").await?;
+
+    Ok(())
+}
+```
+
+## Configuration Management
+
+### Storing Application Config
+
+```rust
+use sentinel_dbms::{Store, Result};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./app_config", None).await?;
+    let config = store.collection("config").await?;
+
+    // Store various configuration settings
+    config.insert("database", json!({
+        "host": "localhost",
+        "port": 5432,
+        "name": "myapp",
+        "pool_size": 10
+    })).await?;
+
+    config.insert("redis", json!({
+        "host": "localhost",
+        "port": 6379,
+        "ttl": 3600
+    })).await?;
+
+    config.insert("api", json!({
+        "base_url": "https://api.example.com",
+        "timeout": 30,
+        "retries": 3,
+        "rate_limit": 100
+    })).await?;
+
+    config.insert("features", json!({
+        "enable_cache": true,
+        "enable_metrics": true,
+        "enable_debug": false
+    })).await?;
+
+    println!("Configuration saved");
+
+    // Read configuration
+    let db_config = config.get("database").await?;
+    if let Some(cfg) = db_config {
+        println!("Database host: {}", cfg.data()["host"]);
+        println!("Database port: {}", cfg.data()["port"]);
+    }
+
+    Ok(())
+}
+```
+
+## Certificate Management
+
+### Storing Certificates
+
+```rust
+use sentinel_dbms::{Store, Result};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./pki_database", Some("cert-manager-key")).await?;
+    let certs = store.collection("certificates").await?;
+
+    // Store certificate metadata
+    certs.insert("cert-001", json!({
+        "common_name": "example.com",
+        "subject_alt_names": ["www.example.com", "api.example.com"],
+        "issuer": "Let's Encrypt",
+        "not_before": "2026-01-01T00:00:00Z",
+        "not_after": "2026-04-01T00:00:00Z",
+        "serial_number": "1234567890",
+        "fingerprint": "a1:b2:c3:d4:e5:f6",
+        "key_size": 2048,
+        "algorithm": "RSA"
+    })).await?;
+
+    println!("Certificate stored with signature verification");
+
+    // Query certificates expiring soon
+    use sentinel_dbms::{QueryBuilder, Operator};
+    use futures::TryStreamExt;
+
+    let query = QueryBuilder::new()
+        .filter("not_after", Operator::LessThan, json!("2026-02-01T00:00:00Z"))
+        .build();
+
+    let result = certs.query(query).await?;
+    let expiring: Vec<_> = result.documents.try_collect().await?;
+
+    println!("Certificates expiring soon: {}", expiring.len());
+
+    Ok(())
+}
+```
+
+## Streaming Large Datasets
+
+### Processing Large Collections
+
+```rust
+use sentinel_dbms::{Store, Result};
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./large_database", None).await?;
+    let logs = store.collection("logs").await?;
+
+    println!("Processing large log collection...");
+
+    // Stream all documents without loading into memory
+    let mut stream = logs.all();
+    let mut count = 0;
+    let mut total_size = 0;
+
+    while let Some(doc_result) = stream.next().await {
+        match doc_result {
+            Ok(doc) => {
+                count += 1;
+                total_size += serde_json::to_string(doc.data())
+                    .unwrap_or_default()
+                    .len();
+
+                // Process document
+                if count % 1000 == 0 {
+                    println!("Processed {} documents...", count);
+                }
+            }
+            Err(e) => {
+                eprintln!("Error reading document: {}", e);
+            }
+        }
+    }
+
+    println!("Total documents: {}", count);
+    println!("Total data size: {} bytes", total_size);
+
+    Ok(())
+}
+```
+
+## Error Handling Patterns
+
+### Graceful Error Handling
+
+```rust
+use sentinel_dbms::{Store, Result, SentinelError};
+
+async fn safe_get_user(store: &Store, username: &str) -> Result<Option<serde_json::Value>> {
+    let users = store.collection("users").await?;
+
+    match users.get(username).await {
+        Ok(Some(doc)) => Ok(Some(doc.data().clone())),
+        Ok(None) => {
+            println!("User {} not found", username);
+            Ok(None)
+        }
+        Err(SentinelError::IoError(e)) => {
+            eprintln!("I/O error reading user {}: {}", username, e);
+            Err(SentinelError::IoError(e))
+        }
+        Err(e) => {
+            eprintln!("Error getting user {}: {}", username, e);
+            Err(e)
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store = Store::new("./my_database", None).await?;
+
+    match safe_get_user(&store, "alice").await {
+        Ok(Some(user_data)) => {
+            println!("User found: {}", user_data["name"]);
+        }
+        Ok(None) => {
+            println!("User does not exist");
+        }
+        Err(e) => {
+            eprintln!("Failed to get user: {}", e);
+        }
+    }
+
+    Ok(())
+}
+```
+
+## Testing Patterns
+
+### Unit Testing with Sentinel
+
+```rust
+#[cfg(test)]
+mod tests {
+    use sentinel_dbms::{Store, Result};
+    use serde_json::json;
+    use tempfile::TempDir;
+
+    async fn setup_test_store() -> Result<(Store, TempDir)> {
+        let temp_dir = TempDir::new().unwrap();
+        let store = Store::new(temp_dir.path(), None).await?;
+        Ok((store, temp_dir))
+    }
+
+    #[tokio::test]
+    async fn test_insert_and_get() -> Result<()> {
+        let (store, _temp) = setup_test_store().await?;
+        let users = store.collection("users").await?;
+
+        // Insert
+        users.insert("test_user", json!({
+            "name": "Test User",
+            "email": "test@example.com"
+        })).await?;
+
+        // Get
+        let doc = users.get("test_user").await?.expect("Document not found");
+        assert_eq!(doc.id(), "test_user");
+        assert_eq!(doc.data()["name"], "Test User");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_update() -> Result<()> {
+        let (store, _temp) = setup_test_store().await?;
+        let users = store.collection("users").await?;
+
+        // Insert
+        users.insert("test_user", json!({
+            "name": "Original Name"
+        })).await?;
+
+        // Update
+        users.update("test_user", json!({
+            "name": "Updated Name"
+        })).await?;
+
+        // Verify
+        let doc = users.get("test_user").await?.expect("Document not found");
+        assert_eq!(doc.data()["name"], "Updated Name");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_delete() -> Result<()> {
+        let (store, _temp) = setup_test_store().await?;
+        let users = store.collection("users").await?;
+
+        // Insert
+        users.insert("test_user", json!({"name": "Test"})).await?;
+
+        // Delete
+        users.delete("test_user").await?;
+
+        // Verify deleted
+        let doc = users.get("test_user").await?;
+        assert!(doc.is_none());
+
+        Ok(())
+    }
+}
+```
+
+## Next Steps
+
+- Explore [Advanced Querying](/docs/querying) for more query patterns
+- Learn about [Cryptography](/docs/cryptography) for secure storage
+- Understand [Architecture](/docs/architecture) for system design
+- See [CLI Commands](/docs/cli-commands) for command-line usage

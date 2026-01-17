@@ -1,0 +1,605 @@
+---
+title: Troubleshooting & FAQ
+description: Common issues, solutions, and frequently asked questions about Sentinel.
+section: References
+order: 51
+keywords: ["troubleshooting", "faq", "problems", "solutions", "debugging"]
+related: ["architecture", "examples", "api-reference"]
+---
+
+This guide helps you troubleshoot common issues and answers frequently asked questions about Sentinel.
+
+## Common Issues
+
+### Store Creation Fails
+
+**Problem:** `Store::new()` returns an error.
+
+**Causes:**
+
+- Insufficient filesystem permissions
+- Path contains invalid characters
+- Disk full or read-only filesystem
+
+**Solutions:**
+
+```rust
+// Check directory permissions
+use std::fs;
+
+match Store::new("./my_store", None).await {
+    Ok(store) => println!("Store created"),
+    Err(e) => {
+        eprintln!("Error: {}", e);
+        // Check if we can write to parent directory
+        match fs::create_dir_all("./my_store") {
+            Ok(_) => println!("Directory writable"),
+            Err(e) => eprintln!("Permission error: {}", e),
+        }
+    }
+}
+```
+
+### Document Insert Fails
+
+**Problem:** `insert()` returns an error.
+
+**Causes:**
+
+- Invalid document ID (contains `/`, `\`, `..`, or starts with `.`)
+- Invalid JSON in data
+- Disk full
+- Passphrase mismatch for signed stores
+
+**Solutions:**
+
+```rust
+// Validate document ID
+fn is_valid_id(id: &str) -> bool {
+    !id.starts_with('.')
+        && !id.contains('/')
+        && !id.contains('\\')
+        && id != ".."
+        && id != "."
+}
+
+// Use before insert
+if !is_valid_id("my-doc-id") {
+    eprintln!("Invalid document ID");
+}
+
+// Validate JSON
+match serde_json::to_value(&my_struct) {
+    Ok(data) => {
+        collection.insert("doc-1", data).await?;
+    }
+    Err(e) => {
+        eprintln!("JSON serialization error: {}", e);
+    }
+}
+```
+
+### Query Returns No Results
+
+**Problem:** Query executes but returns empty results.
+
+**Causes:**
+
+- Incorrect filter values
+- Type mismatches (string vs number)
+- Field doesn't exist in documents
+- Case sensitivity
+
+**Solutions:**
+
+```rust
+// Debug query results
+let query = QueryBuilder::new()
+    .filter("age", Operator::GreaterThan, json!(25))
+    .build();
+
+let result = users.query(query).await?;
+println!("Execution time: {:?}", result.execution_time);
+
+// Check if documents exist
+let all_docs: Vec<_> = users.all().try_collect().await?;
+println!("Total documents: {}", all_docs.len());
+
+// Inspect document structure
+if let Some(doc) = all_docs.first() {
+    println!("Sample document: {}", serde_json::to_string_pretty(doc.data())?);
+}
+
+// Check field types
+for doc in all_docs {
+    if let Some(age) = doc.data().get("age") {
+        println!("Age type: {:?}", age);
+    }
+}
+```
+
+### Slow Query Performance
+
+**Problem:** Queries take too long to execute.
+
+**Causes:**
+
+- Large collection (many documents)
+- Complex filters
+- Missing field projection
+- Not using streaming
+
+**Solutions:**
+
+```rust
+// Use streaming instead of collecting all
+let query = QueryBuilder::new()
+    .filter("status", Operator::Equals, json!("active"))
+    .build();
+
+let result = users.query(query).await?;
+let mut stream = result.documents;
+
+// Process one at a time
+while let Some(doc) = stream.try_next().await? {
+    // Process document without loading all into memory
+    process_document(doc).await?;
+}
+
+// Use field projection to reduce data transfer
+let query = QueryBuilder::new()
+    .filter("role", Operator::Equals, json!("admin"))
+    .project(vec!["name".to_string(), "email".to_string()])
+    .build();
+
+// Use limit for pagination
+let query = QueryBuilder::new()
+    .limit(100)
+    .build();
+```
+
+### Passphrase Issues
+
+**Problem:** Cannot open store created with passphrase.
+
+**Causes:**
+
+- Wrong passphrase
+- Signing key file corrupted
+- Crypto config mismatch
+
+**Solutions:**
+
+```rust
+// Try to open store
+match Store::new("./my_store", Some("my-passphrase")).await {
+    Ok(store) => println!("Store opened successfully"),
+    Err(e) => {
+        eprintln!("Failed to open store: {}", e);
+        // Check if signing key file exists
+        if std::path::Path::new("./my_store/data/.keys/signing_key.json").exists() {
+            println!("Signing key file exists - passphrase may be incorrect");
+        } else {
+            println!("No signing key file found");
+        }
+    }
+}
+
+// Create store without passphrase if needed
+let store = Store::new("./my_store", None).await?;
+```
+
+### Crypto Configuration Errors
+
+**Problem:** `CryptoError` when performing operations.
+
+**Causes:**
+
+- Global config not set
+- Config set multiple times
+- Incompatible algorithm choices
+
+**Solutions:**
+
+```rust
+use sentinel_dbms::{CryptoConfig, set_global_crypto_config};
+
+// Set config once at application startup
+fn main() {
+    let config = CryptoConfig {
+        hash_algorithm: HashAlgorithmChoice::Blake3,
+        signature_algorithm: SignatureAlgorithmChoice::Ed25519,
+        encryption_algorithm: EncryptionAlgorithmChoice::XChaCha20Poly1305,
+        key_derivation_algorithm: KeyDerivationAlgorithmChoice::Argon2id,
+    };
+
+    // Only call once
+    if let Err(e) = set_global_crypto_config(config) {
+        eprintln!("Config already set: {}", e);
+    }
+}
+```
+
+## Frequently Asked Questions
+
+### General Questions
+
+**Q: Is Sentinel production-ready?**
+
+A: Sentinel is in active development. Current version (0.1.x) is suitable for:
+
+- Audit logging systems
+- Configuration management
+- Certificate storage
+- Development and testing
+- Low-to-medium write workloads
+
+Not recommended yet for:
+
+- High-frequency trading systems
+- Real-time bidding platforms
+- Applications requiring millions of writes per second
+
+**Q: How does Sentinel compare to PostgreSQL/MongoDB?**
+
+A: Sentinel prioritizes different goals:
+
+| Feature      | PostgreSQL/MongoDB  | Sentinel            |
+| ------------ | ------------------- | ------------------- |
+| Query Speed  | Faster (indexed)    | Slower (in-memory)  |
+| Setup        | Complex             | Simple (no server)  |
+| Auditability | Requires logging    | Built-in            |
+| Transparency | Binary formats      | Plain JSON          |
+| Tools        | Custom clients      | Standard Unix tools |
+| Scaling      | Vertical/Horizontal | Filesystem limits   |
+
+**Q: Can I use Sentinel for my project?**
+
+A: Good fit if you need:
+
+- ✓ Auditability and compliance
+- ✓ Human-readable data
+- ✓ Simple deployment
+- ✓ Git versioning
+- ✓ Filesystem-level security
+
+Not a good fit if you need:
+
+- ✗ Complex joins
+- ✗ High-frequency writes
+- ✗ Real-time analytics
+- ✗ Distributed transactions
+
+### Data & Storage
+
+**Q: What's the maximum collection size?**
+
+A: Practical limits:
+
+- **Documents**: Unlimited (filesystem dependent)
+- **Performance**: Starts degrading around 100,000 documents per collection
+- **Recommendation**: Use multiple collections or sharding for larger datasets
+
+**Q: Are documents really just JSON files?**
+
+A: Yes! You can:
+
+```bash
+# View documents
+cat ./data/users/alice.json
+
+# Edit documents (careful!)
+vim ./data/users/alice.json
+
+# Search documents
+grep -r "admin" ./data/users/
+
+# Backup
+tar -czf backup.tar.gz ./data/
+```
+
+**Q: What happens to deleted documents?**
+
+A: Sentinel uses soft deletes:
+
+- Documents moved to `.deleted/` subdirectory
+- Original filename preserved
+- Can be recovered manually
+- Maintains audit trail
+
+```bash
+# View deleted documents
+ls -la ./data/users/.deleted/
+
+# Restore deleted document
+mv ./data/users/.deleted/alice.json ./data/users/alice.json
+```
+
+**Q: Can I encrypt data at rest?**
+
+A: Yes, in two ways:
+
+1. **Document Signing** (tamper detection):
+
+```rust
+let store = Store::new("./data", Some("passphrase")).await?;
+```
+
+2. **Field Encryption** (data protection):
+
+```rust
+use sentinel_dbms::encrypt_data;
+
+let encrypted = encrypt_data(b"sensitive", &key).await?;
+users.insert("doc-1", json!({
+    "name": "Alice",
+    "ssn": encrypted  // Encrypted field
+})).await?;
+```
+
+### Querying
+
+**Q: Why are queries slow?**
+
+A: Current implementation:
+
+- No indices (yet) - scans all documents
+- In-memory filtering
+- File I/O for each document
+
+**Future improvements:**
+
+- Lazy-built indices for common queries
+- Hash indices for equality lookups
+- Range indices for comparisons
+
+**Q: Can I do full-text search?**
+
+A: Not yet. Planned for future release. Current workaround:
+
+```rust
+// Use Contains operator for substring search
+let query = QueryBuilder::new()
+    .filter("content", Operator::Contains, json!("search term"))
+    .build();
+```
+
+**Q: How do I do OR queries?**
+
+A: Use predicate-based filtering:
+
+```rust
+let results = users.filter(|doc| {
+    let role = doc.data().get("role").and_then(|v| v.as_str());
+    role == Some("admin") || role == Some("moderator")
+});
+```
+
+### Performance
+
+**Q: How fast is Sentinel?**
+
+A: Approximate performance (depends on hardware):
+
+| Operation | Speed    | Notes            |
+| --------- | -------- | ---------------- |
+| Insert    | 1-5ms    | Single document  |
+| Get       | 0.5-2ms  | By ID            |
+| Update    | 1-5ms    | Single document  |
+| Delete    | 0.5-1ms  | Rename operation |
+| Query     | 100ms-1s | For 10,000 docs  |
+
+**Q: How can I improve performance?**
+
+A: Best practices:
+
+1. Use streaming for large result sets
+2. Apply field projection to reduce data transfer
+3. Use meaningful document IDs for direct access
+4. Implement application-level caching
+5. Batch operations when possible
+6. Use limit/offset for pagination
+
+### Concurrency
+
+**Q: Can multiple processes access the same store?**
+
+A: Current limitations:
+
+- **Reads**: Safe from multiple processes
+- **Writes**: Last-write-wins, potential data loss
+- **Future**: File locking and WAL for safe concurrent writes
+
+**Q: Is Sentinel thread-safe?**
+
+A: Yes, within a single process:
+
+```rust
+let store = Arc::new(store);
+
+// Safe to share across threads
+let store1 = store.clone();
+tokio::spawn(async move {
+    let users = store1.collection("users").await?;
+    // Use collection
+});
+```
+
+### Security
+
+**Q: How secure is Sentinel?**
+
+A: Security features:
+
+- **Hashing**: BLAKE3 (256-bit security)
+- **Signing**: Ed25519 (128-bit security level)
+- **Encryption**: XChaCha20-Poly1305, AES-256-GCM-SIV, or Ascon-128
+- **Key Derivation**: Argon2id or PBKDF2
+
+**Q: Are signatures mandatory?**
+
+A: No. Signatures are optional:
+
+```rust
+// Without signing
+let store = Store::new("./data", None).await?;
+
+// With signing
+let store = Store::new("./data", Some("passphrase")).await?;
+```
+
+**Q: How do I verify document integrity?**
+
+A: Check the hash:
+
+```rust
+use sentinel_dbms::hash_data;
+
+let doc = users.get("alice").await?.unwrap();
+let computed_hash = hash_data(doc.data()).await?;
+
+if computed_hash == doc.hash() {
+    println!("✓ Document is intact");
+} else {
+    println!("✗ Document has been modified");
+}
+```
+
+### Deployment
+
+**Q: Do I need to install a database server?**
+
+A: No! Sentinel is:
+
+- Embedded in your application
+- No separate server process
+- No network configuration
+- Just a directory on disk
+
+**Q: How do I backup Sentinel?**
+
+A: Use standard tools:
+
+```bash
+# Tar backup
+tar -czf sentinel-backup.tar.gz ./data/
+
+# Rsync to remote server
+rsync -avz ./data/ user@backup-server:/backups/sentinel/
+
+# Git (for version control)
+cd ./data
+git init
+git add .
+git commit -m "Backup"
+git push origin main
+```
+
+**Q: Can I use Sentinel in Docker?**
+
+A: Yes:
+
+```dockerfile
+FROM rust:latest
+WORKDIR /app
+COPY . .
+RUN cargo build --release
+
+# Mount volume for persistent storage
+VOLUME /app/data
+CMD ["./target/release/myapp"]
+```
+
+### Development
+
+**Q: How do I test with Sentinel?**
+
+A: Use temporary directories:
+
+```rust
+#[tokio::test]
+async fn test_sentinel() -> Result<()> {
+    use tempfile::TempDir;
+
+    let temp = TempDir::new()?;
+    let store = Store::new(temp.path(), None).await?;
+
+    // Run tests
+
+    // Cleanup happens automatically
+    Ok(())
+}
+```
+
+**Q: Can I contribute to Sentinel?**
+
+A: Yes! We welcome contributions:
+
+1. Check [GitHub Issues](https://github.com/cyberpath-HQ/sentinel/issues)
+2. Read [CONTRIBUTING.md](https://github.com/cyberpath-HQ/sentinel/blob/main/CONTRIBUTING.md)
+3. Join [Discussions](https://github.com/cyberpath-HQ/sentinel/discussions)
+
+## Debugging Tips
+
+### Enable Verbose Logging
+
+```rust
+// In your application
+use tracing_subscriber;
+
+tracing_subscriber::fmt()
+    .with_max_level(tracing::Level::DEBUG)
+    .init();
+```
+
+### Inspect Store Structure
+
+```bash
+# List all collections
+ls -la ./data/
+
+# Count documents in collection
+find ./data/users -name "*.json" -not -path "*/.*" | wc -l
+
+# Check deleted documents
+ls -la ./data/users/.deleted/
+
+# View document
+cat ./data/users/alice.json | jq .
+```
+
+### Monitor File Operations
+
+```bash
+# On Linux
+strace -e trace=file ./my_app
+
+# On macOS
+dtruss -f ./my_app
+```
+
+### Profile Performance
+
+```rust
+use std::time::Instant;
+
+let start = Instant::now();
+let result = users.query(query).await?;
+println!("Query took: {:?}", start.elapsed());
+```
+
+## Getting Help
+
+If you're still stuck:
+
+1. **Search Issues**: [GitHub Issues](https://github.com/cyberpath-HQ/sentinel/issues)
+2. **Ask Questions**: [GitHub Discussions](https://github.com/cyberpath-HQ/sentinel/discussions)
+3. **Report Bugs**: [New Issue](https://github.com/cyberpath-HQ/sentinel/issues/new)
+4. **Read Docs**: Check [documentation](https://sentinel.cyberpath-hq.com)
+
+## Next Steps
+
+- Review [Examples](/docs/examples) for common patterns
+- Understand [Architecture](/docs/architecture) for deeper knowledge
+- Explore [API Reference](/docs/api-reference) for complete API
+- Check [Migration Guide](/docs/migration-guide) for transitions

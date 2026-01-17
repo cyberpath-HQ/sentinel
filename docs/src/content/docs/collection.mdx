@@ -84,14 +84,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-When you insert a document, Sentinel automatically computes a BLAKE3 hash of the data and optionally signs it if the
-store was created with a passphrase.
+When you insert a document, Sentinel automatically:
+
+- Computes a BLAKE3 hash of the data for integrity verification
+- Adds metadata fields (`id`, `version`, `created_at`, `updated_at`, `hash`)
+- Optionally signs the document with Ed25519 if the store was created with a passphrase
+- Writes the document atomically to disk as `{id}.json`
 
 ### Get
 
 The `get` method retrieves a document by its ID:
 
-```rust {13,25-26}
+```rust {13,15-17}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -341,17 +345,17 @@ async fn main() {
 When working with collections, consider these recommendations:
 
 - **Use meaningful collection names.** Choose names that describe the data: `users`, `audit_logs`, `certificates`,
-`api_keys`.
+  `api_keys`.
 
 - **Keep related documents together.** Group documents by type and access patterns in the same collection.
 
 - **Use consistent ID schemes.** Adopt a naming convention for IDs: `user-{uuid}`, `log-{timestamp}`,
-`cert-{fingerprint}`.
+  `cert-{fingerprint}`.
 
 - **Validate data before insertion.** Sentinel stores whatever JSON you give it, validate your data first.
 
 - **Consider using prefixes for large collections.** If you expect millions of documents, use ID prefixes to help with
-manual navigation: `a-alice`, `b-bob`.
+  manual navigation: `a-alice`, `b-bob`.
 
 ## Next Steps
 
