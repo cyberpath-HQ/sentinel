@@ -40,7 +40,7 @@ pub fn stream_document_ids(collection_path: PathBuf) -> Pin<Box<dyn Stream<Item 
             if !metadata.is_dir()
                 && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
                 && file_name.ends_with(".json") && !file_name.starts_with('.') {
-                let id = &file_name[..file_name.len() - 5]; // remove .json
+                let id = file_name.strip_suffix(".json").unwrap();
                 yield Ok(id.to_owned());
             }
         }
