@@ -642,7 +642,10 @@ mod tests {
         };
 
         let result = run(args).await;
-        assert!(result.is_err(), "Bulk insert should fail with invalid file path");
+        assert!(
+            result.is_err(),
+            "Bulk insert should fail with invalid file path"
+        );
     }
 
     /// Test bulk insert with invalid JSON content.
@@ -710,7 +713,11 @@ mod tests {
 
         // Create valid JSON file
         let test_data = json!({"user1": {"name": "Alice"}});
-        std::fs::write(&json_file, serde_json::to_string_pretty(&test_data).unwrap()).unwrap();
+        std::fs::write(
+            &json_file,
+            serde_json::to_string_pretty(&test_data).unwrap(),
+        )
+        .unwrap();
 
         // Setup store but not collection
         sentinel_dbms::Store::new(&store_path, None).await.unwrap();
@@ -726,7 +733,10 @@ mod tests {
         };
 
         let result = run(args).await;
-        assert!(result.is_ok(), "Bulk insert should succeed - collection gets created automatically");
+        assert!(
+            result.is_ok(),
+            "Bulk insert should succeed - collection gets created automatically"
+        );
     }
 
     /// Test bulk insert with invalid document ID.
@@ -741,7 +751,11 @@ mod tests {
 
         // Create JSON file with invalid document ID (empty string)
         let test_data = json!({"": {"name": "Alice"}, "user2": {"name": "Bob"}});
-        std::fs::write(&json_file, serde_json::to_string_pretty(&test_data).unwrap()).unwrap();
+        std::fs::write(
+            &json_file,
+            serde_json::to_string_pretty(&test_data).unwrap(),
+        )
+        .unwrap();
 
         // Setup store and collection
         let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
@@ -758,6 +772,9 @@ mod tests {
         };
 
         let result = run(args).await;
-        assert!(result.is_err(), "Bulk insert should fail with invalid document ID");
+        assert!(
+            result.is_err(),
+            "Bulk insert should fail with invalid document ID"
+        );
     }
 }

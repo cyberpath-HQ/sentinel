@@ -32,10 +32,10 @@ pub fn stream_document_ids(collection_path: PathBuf) -> Pin<Box<dyn Stream<Item 
             let path = entry.path();
             if !tokio_fs::metadata(&path).await?.is_dir()
                 && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
-                    && file_name.ends_with(".json") && !file_name.starts_with('.') {
-                        let id = &file_name[..file_name.len() - 5]; // remove .json
-                        yield Ok(id.to_owned());
-                    }
+                && file_name.ends_with(".json") && !file_name.starts_with('.') {
+                let id = &file_name[..file_name.len() - 5]; // remove .json
+                yield Ok(id.to_owned());
+            }
         }
     })
 }
@@ -45,6 +45,7 @@ mod tests {
     use tempfile::TempDir;
     use tokio::fs as tokio_fs;
     use futures::StreamExt;
+
     use super::*;
 
     #[tokio::test]
@@ -81,7 +82,7 @@ mod tests {
         }
 
         let mut stream = stream_document_ids(collection_path.clone());
-        
+
         // Consume one item first to ensure read_dir() succeeds
         let first_result = stream.next().await;
         assert!(first_result.is_some());
@@ -97,13 +98,16 @@ mod tests {
         while let Some(result) = stream.next().await {
             match result {
                 Ok(id) => found_ids.push(id),
-                Err(_) => {} // Error handling is tested by not panicking
+                Err(_) => {}, // Error handling is tested by not panicking
             }
         }
 
         // The behavior may vary by platform - some may continue reading, others may error
         // The important thing is that the error handling doesn't panic
-        assert!(!found_ids.is_empty(), "Expected to find at least one document id");
+        assert!(
+            !found_ids.is_empty(),
+            "Expected to find at least one document id"
+        );
         // Error count may be 0 or more depending on platform
     }
 
