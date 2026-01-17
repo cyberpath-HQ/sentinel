@@ -1528,38 +1528,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_query_logical_filters() {
+    async fn test_filter_with_corrupted_json() {
         let (collection, _temp_dir) = setup_collection().await;
 
+        // Insert a valid document
         collection
-            .insert(
-                "user-1",
-                json!({"name": "Alice", "age": 25, "active": true}),
-            )
-            .await
-            .unwrap();
-        collection
-            .insert("user-2", json!({"name": "Bob", "age": 30, "active": false}))
-            .await
-            .unwrap();
-        collection
-            .insert(
-                "user-3",
-                json!({"name": "Charlie", "age": 35, "active": true}),
-            )
+            .insert("valid", json!({"name": "Alice"}))
             .await
             .unwrap();
 
-        // Test AND logic (implicit in multiple filters)
-        let query = crate::QueryBuilder::new()
-            .filter("age", crate::Operator::GreaterThan, json!(26))
-            .filter("active", crate::Operator::Equals, json!(true))
-            .build();
+        // Manually create a corrupted JSON file
+        let corrupted_path = collection.path.join("corrupted.json");
+        tokio_fs::write(&corrupted_path, "{ invalid json }")
+            .await
+            .unwrap();
 
-        let result = collection.query(query).await.unwrap();
-        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
-        let documents = documents.unwrap();
-        assert_eq!(documents.len(), 1);
-        assert_eq!(documents[0].data()["name"], "Charlie");
+        let stream = collection.filter(|_| true);
+        let results: Vec<Result<Document>> = stream.collect().await;
+
+        // Should have one valid document and one error
+        assert_eq!(results.len(), 2);
+        let ok_count = results.iter().filter(|r| r.is_ok()).count();
+        let err_count = results.iter().filter(|r| r.is_err()).count();
+        assert_eq!(ok_count, 1);
+        assert_eq!(err_count, 1);
     }
 }

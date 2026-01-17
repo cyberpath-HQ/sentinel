@@ -583,6 +583,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_store_new_with_passphrase_load_existing() {
+        let temp_dir = tempdir().unwrap();
+        // Create first store with passphrase
+        let store1 = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
+        let key1 = store1.signing_key.as_ref().unwrap().clone();
+
+        // Create second store with same passphrase, should load existing key
+        let store2 = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
+        let key2 = store2.signing_key.as_ref().unwrap().clone();
+
+        // Should be the same key
+        assert_eq!(key1.to_bytes(), key2.to_bytes());
+    }
+
+    #[tokio::test]
     async fn test_store_new_with_corrupted_keys() {
         let temp_dir = tempdir().unwrap();
         // First create a store with passphrase to generate keys

@@ -158,7 +158,7 @@ impl QueryBuilder {
             },
             Operator::StartsWith => {
                 if let Value::String(s) = value {
-                    Filter::EndsWith(field.to_owned(), s)
+                    Filter::StartsWith(field.to_owned(), s)
                 }
                 else {
                     return self;
@@ -166,7 +166,7 @@ impl QueryBuilder {
             },
             Operator::EndsWith => {
                 if let Value::String(s) = value {
-                    Filter::Contains(field.to_owned(), s)
+                    Filter::EndsWith(field.to_owned(), s)
                 }
                 else {
                     return self;
@@ -323,5 +323,284 @@ impl QueryBuilder {
             offset:     self.offset,
             projection: self.projection,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_query_builder_new() {
+        let qb = QueryBuilder::new();
+        assert!(qb.filters.is_empty());
+        assert!(qb.sort.is_none());
+        assert!(qb.limit.is_none());
+        assert!(qb.offset.is_none());
+        assert!(qb.projection.is_none());
+    }
+
+    #[test]
+    fn test_query_builder_filter_equals() {
+        let qb = QueryBuilder::new().filter("name", Operator::Equals, json!("Alice"));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Equals(field, value) => {
+                assert_eq!(field, "name");
+                assert_eq!(value, &json!("Alice"));
+            },
+            _ => panic!("Expected Equals filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_greater_than() {
+        let qb = QueryBuilder::new().filter("age", Operator::GreaterThan, json!(18));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::GreaterThan(field, value) => {
+                assert_eq!(field, "age");
+                assert_eq!(value, &json!(18));
+            },
+            _ => panic!("Expected GreaterThan filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_less_than() {
+        let qb = QueryBuilder::new().filter("age", Operator::LessThan, json!(65));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::LessThan(field, value) => {
+                assert_eq!(field, "age");
+                assert_eq!(value, &json!(65));
+            },
+            _ => panic!("Expected LessThan filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_greater_or_equal() {
+        let qb = QueryBuilder::new().filter("age", Operator::GreaterOrEqual, json!(18));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::GreaterOrEqual(field, value) => {
+                assert_eq!(field, "age");
+                assert_eq!(value, &json!(18));
+            },
+            _ => panic!("Expected GreaterOrEqual filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_less_or_equal() {
+        let qb = QueryBuilder::new().filter("age", Operator::LessOrEqual, json!(65));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::LessOrEqual(field, value) => {
+                assert_eq!(field, "age");
+                assert_eq!(value, &json!(65));
+            },
+            _ => panic!("Expected LessOrEqual filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_contains_valid() {
+        let qb = QueryBuilder::new().filter("name", Operator::Contains, json!("Ali"));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Contains(field, value) => {
+                assert_eq!(field, "name");
+                assert_eq!(value, "Ali");
+            },
+            _ => panic!("Expected Contains filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_contains_invalid() {
+        let qb = QueryBuilder::new().filter("name", Operator::Contains, json!(123));
+        assert!(qb.filters.is_empty());
+    }
+
+    #[test]
+    fn test_query_builder_filter_starts_with_valid() {
+        let qb = QueryBuilder::new().filter("name", Operator::StartsWith, json!("Ali"));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::StartsWith(field, value) => {
+                assert_eq!(field, "name");
+                assert_eq!(value, "Ali");
+            },
+            _ => panic!("Expected StartsWith filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_starts_with_invalid() {
+        let qb = QueryBuilder::new().filter("name", Operator::StartsWith, json!(123));
+        assert!(qb.filters.is_empty());
+    }
+
+    #[test]
+    fn test_query_builder_filter_ends_with_valid() {
+        let qb = QueryBuilder::new().filter("name", Operator::EndsWith, json!("ice"));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::EndsWith(field, value) => {
+                assert_eq!(field, "name");
+                assert_eq!(value, "ice");
+            },
+            _ => panic!("Expected EndsWith filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_ends_with_invalid() {
+        let qb = QueryBuilder::new().filter("name", Operator::EndsWith, json!(123));
+        assert!(qb.filters.is_empty());
+    }
+
+    #[test]
+    fn test_query_builder_filter_in_valid() {
+        let qb = QueryBuilder::new().filter("status", Operator::In, json!(["active", "inactive"]));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::In(field, values) => {
+                assert_eq!(field, "status");
+                assert_eq!(values, &vec![json!("active"), json!("inactive")]);
+            },
+            _ => panic!("Expected In filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_in_invalid() {
+        let qb = QueryBuilder::new().filter("status", Operator::In, json!("active"));
+        assert!(qb.filters.is_empty());
+    }
+
+    #[test]
+    fn test_query_builder_filter_exists_bool() {
+        let qb = QueryBuilder::new().filter("name", Operator::Exists, json!(true));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Exists(field, exists) => {
+                assert_eq!(field, "name");
+                assert!(*exists);
+            },
+            _ => panic!("Expected Exists filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_exists_number() {
+        let qb = QueryBuilder::new().filter("name", Operator::Exists, json!(1));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Exists(field, exists) => {
+                assert_eq!(field, "name");
+                assert!(*exists);
+            },
+            _ => panic!("Expected Exists filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_filter_exists_false() {
+        let qb = QueryBuilder::new().filter("name", Operator::Exists, json!(false));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Exists(field, exists) => {
+                assert_eq!(field, "name");
+                assert!(!*exists);
+            },
+            _ => panic!("Expected Exists filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_sort() {
+        let qb = QueryBuilder::new().sort("age", SortOrder::Descending);
+        assert_eq!(qb.sort, Some(("age".to_string(), SortOrder::Descending)));
+    }
+
+    #[test]
+    fn test_query_builder_limit() {
+        let qb = QueryBuilder::new().limit(10);
+        assert_eq!(qb.limit, Some(10));
+    }
+
+    #[test]
+    fn test_query_builder_offset() {
+        let qb = QueryBuilder::new().offset(5);
+        assert_eq!(qb.offset, Some(5));
+    }
+
+    #[test]
+    fn test_query_builder_projection() {
+        let qb = QueryBuilder::new().projection(vec!["name", "age"]);
+        assert_eq!(qb.projection, Some(vec!["name".to_string(), "age".to_string()]));
+    }
+
+    #[test]
+    fn test_query_builder_and() {
+        let qb = QueryBuilder::new()
+            .filter("age", Operator::GreaterThan, json!(18))
+            .and(Filter::Equals("status".to_string(), json!("active")));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::And(left, right) => {
+                match **left {
+                    Filter::GreaterThan(ref field, _) => assert_eq!(field, "age"),
+                    _ => panic!("Expected GreaterThan in left"),
+                }
+                match **right {
+                    Filter::Equals(ref field, _) => assert_eq!(field, "status"),
+                    _ => panic!("Expected Equals in right"),
+                }
+            },
+            _ => panic!("Expected And filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_or() {
+        let qb = QueryBuilder::new()
+            .filter("age", Operator::GreaterThan, json!(18))
+            .or(Filter::Equals("status".to_string(), json!("active")));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Or(left, right) => {
+                match **left {
+                    Filter::GreaterThan(ref field, _) => assert_eq!(field, "age"),
+                    _ => panic!("Expected GreaterThan in left"),
+                }
+                match **right {
+                    Filter::Equals(ref field, _) => assert_eq!(field, "status"),
+                    _ => panic!("Expected Equals in right"),
+                }
+            },
+            _ => panic!("Expected Or filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_build() {
+        let query = QueryBuilder::new()
+            .filter("age", Operator::GreaterThan, json!(18))
+            .sort("name", SortOrder::Ascending)
+            .limit(10)
+            .offset(5)
+            .projection(vec!["name", "age"])
+            .build();
+
+        assert_eq!(query.filters.len(), 1);
+        assert_eq!(query.sort, Some(("name".to_string(), SortOrder::Ascending)));
+        assert_eq!(query.limit, Some(10));
+        assert_eq!(query.offset, Some(5));
+        assert_eq!(query.projection, Some(vec!["name".to_string(), "age".to_string()]));
     }
 }
