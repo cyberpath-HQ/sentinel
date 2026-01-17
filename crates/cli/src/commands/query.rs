@@ -369,8 +369,7 @@ fn parse_sort(sort_str: &str) -> sentinel_dbms::Result<(String, String)> {
             message: format!("Invalid sort format: {}", sort_str),
         });
     }
-    let first = parts
-        .get(0)
+    let first = parts.first()
         .ok_or(sentinel_dbms::SentinelError::ConfigError {
             message: format!("Invalid sort format: {}", sort_str),
         })?;
