@@ -178,11 +178,14 @@ pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tracing_subscriber;
 
+    use super::*;
+
     fn init_logging() {
-        let _ = tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).try_init();
+        let _ = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .try_init();
     }
 
     #[test]
@@ -306,5 +309,30 @@ mod tests {
         // Test invalid hex
         let hex_error = verify_signature(&hash, "invalid", &public_key);
         assert!(hex_error.is_err());
+    }
+
+    #[test]
+    fn test_derive_key_from_passphrase_with_salt() {
+        init_logging();
+        let passphrase = "test passphrase";
+        let salt = vec![
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+            30, 31, 32,
+        ];
+
+        let key = derive_key_from_passphrase_with_salt(passphrase, &salt).unwrap();
+        assert_eq!(key.len(), 32);
+
+        // Test that same passphrase and salt gives same key
+        let key2 = derive_key_from_passphrase_with_salt(passphrase, &salt).unwrap();
+        assert_eq!(key, key2);
+
+        // Test that different salt gives different key
+        let salt2 = vec![
+            2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+            31, 32, 33,
+        ];
+        let key3 = derive_key_from_passphrase_with_salt(passphrase, &salt2).unwrap();
+        assert_ne!(key, key3);
     }
 }
