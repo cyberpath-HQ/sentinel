@@ -23,9 +23,8 @@ fn bench_sign_hash(c: &mut Criterion) {
     let hash = "some_hash_value";
 
     c.bench_function("sign_hash", |b| {
-        b.to_async(FuturesExecutor).iter(|| async {
-            sign_hash(black_box(hash), black_box(&key)).await
-        })
+        b.to_async(FuturesExecutor)
+            .iter(|| async { sign_hash(black_box(hash), black_box(&key)).await })
     });
 }
 
@@ -33,7 +32,10 @@ fn bench_verify_signature(c: &mut Criterion) {
     let key = SigningKeyManager::generate_key();
     let public_key = key.verifying_key();
     let hash = "some_hash_value";
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let signature = rt.block_on(sign_hash(hash, &key)).unwrap();
 
     c.bench_function("verify_signature", |b| {
@@ -58,16 +60,18 @@ fn bench_encrypt_data(c: &mut Criterion) {
     let data = b"some data to encrypt";
 
     c.bench_function("encrypt_data", |b| {
-        b.to_async(FuturesExecutor).iter(|| async {
-            encrypt_data(black_box(data), black_box(&key)).await
-        })
+        b.to_async(FuturesExecutor)
+            .iter(|| async { encrypt_data(black_box(data), black_box(&key)).await })
     });
 }
 
 fn bench_decrypt_data(c: &mut Criterion) {
     let key = [0u8; 32];
     let data = b"some data to encrypt";
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
     let encrypted = rt.block_on(encrypt_data(data, &key)).unwrap();
 
     c.bench_function("decrypt_data", |b| {
