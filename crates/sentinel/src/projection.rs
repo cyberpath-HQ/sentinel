@@ -41,7 +41,9 @@ mod tests {
     #[tokio::test]
     async fn test_project_document_with_fields() {
         let doc = create_doc(json!({"name": "Alice", "age": 25, "city": "NYC"})).await;
-        let projected = project_document(&doc, &["name".to_string(), "age".to_string()]).await.unwrap();
+        let projected = project_document(&doc, &["name".to_string(), "age".to_string()])
+            .await
+            .unwrap();
         let expected = json!({"name": "Alice", "age": 25});
         assert_eq!(projected.data(), &expected);
     }
@@ -49,7 +51,9 @@ mod tests {
     #[tokio::test]
     async fn test_project_document_missing_fields() {
         let doc = create_doc(json!({"name": "Alice"})).await;
-        let projected = project_document(&doc, &["name".to_string(), "age".to_string()]).await.unwrap();
+        let projected = project_document(&doc, &["name".to_string(), "age".to_string()])
+            .await
+            .unwrap();
         let expected = json!({"name": "Alice"});
         assert_eq!(projected.data(), &expected);
     }
