@@ -671,7 +671,7 @@ impl Collection {
             .take(end_idx - start_idx)
         {
             let projected_doc = if let Some(ref fields) = query.projection {
-                self.project_document(&doc, fields).await
+                self.project_document(&doc, fields).await?
             }
             else {
                 doc
@@ -740,7 +740,7 @@ impl Collection {
                         break;
                     }
                     let final_doc = if let Some(ref fields) = projection_fields {
-                        project_document(&doc, fields).await
+                        project_document(&doc, fields).await?
                     } else {
                         doc
                     };
@@ -755,7 +755,7 @@ impl Collection {
     fn compare_values(&self, a: Option<&Value>, b: Option<&Value>) -> std::cmp::Ordering { compare_values(a, b) }
 
     /// Projects a document to include only specified fields.
-    async fn project_document(&self, doc: &Document, fields: &[String]) -> Document {
+    async fn project_document(&self, doc: &Document, fields: &[String]) -> Result<Document> {
         project_document(doc, fields).await
     }
 }
