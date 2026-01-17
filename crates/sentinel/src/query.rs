@@ -328,8 +328,9 @@ impl QueryBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn test_query_builder_new() {
@@ -522,6 +523,19 @@ mod tests {
     }
 
     #[test]
+    fn test_query_builder_filter_exists_string() {
+        let qb = QueryBuilder::new().filter("name", Operator::Exists, json!("yes"));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Exists(field, exists) => {
+                assert_eq!(field, "name");
+                assert!(*exists); // Default to exists for non-bool/number values
+            },
+            _ => panic!("Expected Exists filter"),
+        }
+    }
+
+    #[test]
     fn test_query_builder_sort() {
         let qb = QueryBuilder::new().sort("age", SortOrder::Descending);
         assert_eq!(qb.sort, Some(("age".to_string(), SortOrder::Descending)));
@@ -542,7 +556,10 @@ mod tests {
     #[test]
     fn test_query_builder_projection() {
         let qb = QueryBuilder::new().projection(vec!["name", "age"]);
-        assert_eq!(qb.projection, Some(vec!["name".to_string(), "age".to_string()]));
+        assert_eq!(
+            qb.projection,
+            Some(vec!["name".to_string(), "age".to_string()])
+        );
     }
 
     #[test]
@@ -601,6 +618,42 @@ mod tests {
         assert_eq!(query.sort, Some(("name".to_string(), SortOrder::Ascending)));
         assert_eq!(query.limit, Some(10));
         assert_eq!(query.offset, Some(5));
-        assert_eq!(query.projection, Some(vec!["name".to_string(), "age".to_string()]));
+        assert_eq!(
+            query.projection,
+            Some(vec!["name".to_string(), "age".to_string()])
+        );
+    }
+
+    #[test]
+    fn test_query_builder_filter_exists_number_zero() {
+        let qb = QueryBuilder::new().filter("name", Operator::Exists, json!(0));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Exists(field, exists) => {
+                assert_eq!(field, "name");
+                assert!(!*exists);
+            },
+            _ => panic!("Expected Exists filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_and_empty() {
+        let qb = QueryBuilder::new().and(Filter::Equals("status".to_string(), json!("active")));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Equals(field, _) => assert_eq!(field, "status"),
+            _ => panic!("Expected Equals filter"),
+        }
+    }
+
+    #[test]
+    fn test_query_builder_or_empty() {
+        let qb = QueryBuilder::new().or(Filter::Equals("status".to_string(), json!("active")));
+        assert_eq!(qb.filters.len(), 1);
+        match &qb.filters[0] {
+            Filter::Equals(field, _) => assert_eq!(field, "status"),
+            _ => panic!("Expected Equals filter"),
+        }
     }
 }

@@ -227,6 +227,11 @@ mod tests {
 
         let filter = Filter::StartsWith("name".to_string(), "Bob".to_string());
         assert!(!matches_filters(&doc, &[filter]));
+
+        // Test with non-string field (should return false)
+        let doc = create_doc(json!({"age": 25}));
+        let filter = Filter::StartsWith("age".to_string(), "2".to_string());
+        assert!(!matches_filters(&doc, &[filter]));
     }
 
     #[test]
@@ -236,6 +241,11 @@ mod tests {
         assert!(matches_filters(&doc, &[filter]));
 
         let filter = Filter::EndsWith("name".to_string(), "Bob".to_string());
+        assert!(!matches_filters(&doc, &[filter]));
+
+        // Test with non-string field (should return false)
+        let doc = create_doc(json!({"age": 25}));
+        let filter = Filter::EndsWith("age".to_string(), "5".to_string());
         assert!(!matches_filters(&doc, &[filter]));
     }
 

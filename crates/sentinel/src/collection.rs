@@ -806,12 +806,18 @@ pub fn validate_document_id(id: &str) -> Result<()> {
 mod tests {
     use serde_json::json;
     use tempfile::tempdir;
+    use tracing_subscriber;
 
     use super::*;
     use crate::Store;
 
     /// Helper function to set up a temporary collection for testing
     async fn setup_collection() -> (Collection, tempfile::TempDir) {
+        // Initialize tracing for tests to ensure debug! macros are executed
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter("debug")
+            .try_init();
+
         let temp_dir = tempdir().unwrap();
         let store = Store::new(temp_dir.path(), None).await.unwrap();
         let collection = store.collection("test_collection").await.unwrap();
@@ -820,6 +826,11 @@ mod tests {
 
     /// Helper function to set up a temporary collection with signing key for testing
     async fn setup_collection_with_signing_key() -> (Collection, tempfile::TempDir) {
+        // Initialize tracing for tests to ensure debug! macros are executed
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter("debug")
+            .try_init();
+
         let temp_dir = tempdir().unwrap();
         let store = Store::new(temp_dir.path(), Some("test_passphrase"))
             .await
@@ -1552,5 +1563,102 @@ mod tests {
         let err_count = results.iter().filter(|r| r.is_err()).count();
         assert_eq!(ok_count, 1);
         assert_eq!(err_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_filter_contains_comprehensive() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Test Contains on string field (should match)
+        collection
+            .insert("doc1", json!({"text": "Hello World"}))
+            .await
+            .unwrap();
+
+        // Test Contains on array field with strings (should match)
+        collection
+            .insert("doc2", json!({"tags": ["rust", "programming", "async"]}))
+            .await
+            .unwrap();
+
+        // Test Contains on array field with mixed types (should not match non-strings)
+        collection
+            .insert("doc3", json!({"mixed": ["string", 123, true]}))
+            .await
+            .unwrap();
+
+        // Test Contains on non-string, non-array field (should not match)
+        collection
+            .insert("doc4", json!({"number": 42}))
+            .await
+            .unwrap();
+
+        // Query for string contains
+        let result = collection
+            .query(
+                crate::QueryBuilder::new()
+                    .filter("text", crate::Operator::Contains, json!("World"))
+                    .build(),
+            )
+            .await
+            .unwrap();
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].id(), "doc1");
+
+        // Query for array contains (string in array)
+        let result = collection
+            .query(
+                crate::QueryBuilder::new()
+                    .filter("tags", crate::Operator::Contains, json!("rust"))
+                    .build(),
+            )
+            .await
+            .unwrap();
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].id(), "doc2");
+
+        // Query for array contains (non-existent string)
+        let result = collection
+            .query(
+                crate::QueryBuilder::new()
+                    .filter("tags", crate::Operator::Contains, json!("python"))
+                    .build(),
+            )
+            .await
+            .unwrap();
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 0);
+
+        // Query for mixed array contains (should not match numbers/bools)
+        let result = collection
+            .query(
+                crate::QueryBuilder::new()
+                    .filter("mixed", crate::Operator::Contains, json!("string"))
+                    .build(),
+            )
+            .await
+            .unwrap();
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].id(), "doc3");
+
+        // Query for number field contains (should not match)
+        let result = collection
+            .query(
+                crate::QueryBuilder::new()
+                    .filter("number", crate::Operator::Contains, json!("42"))
+                    .build(),
+            )
+            .await
+            .unwrap();
+        let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
+        let documents = documents.unwrap();
+        assert_eq!(documents.len(), 0);
     }
 }
