@@ -145,8 +145,8 @@ impl Store {
                         reason: format!("stored signing key salt is not valid hex ({})", err),
                     }
                 })?;
-                let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt)?;
-                let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key)?;
+                let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt).await?;
+                let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key).await?;
                 let key_array: [u8; 32] = key_bytes.try_into().map_err(|kb: Vec<u8>| {
                     error!(
                         "Stored signing key has invalid length: {}, expected 32",
@@ -166,10 +166,10 @@ impl Store {
             else {
                 // Generate new signing key and salt
                 debug!("Generating new signing key");
-                let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(passphrase)?;
+                let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(passphrase).await?;
                 let signing_key = sentinel_crypto::SigningKeyManager::generate_key();
                 let key_bytes = signing_key.to_bytes();
-                let encrypted = sentinel_crypto::encrypt_data(&key_bytes, &encryption_key)?;
+                let encrypted = sentinel_crypto::encrypt_data(&key_bytes, &encryption_key).await?;
                 let salt_hex = hex::encode(&salt);
                 keys_collection
                     .insert(

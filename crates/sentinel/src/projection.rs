@@ -5,7 +5,7 @@ use serde_json::Value;
 use crate::Document;
 
 /// Projects a document to include only specified fields.
-pub fn project_document(doc: &Document, fields: &[String]) -> Document {
+pub async fn project_document(doc: &Document, fields: &[String]) -> Document {
     if fields.is_empty() {
         return doc.clone();
     }
@@ -16,37 +16,42 @@ pub fn project_document(doc: &Document, fields: &[String]) -> Document {
         }
     }
     // Create a new document with projected data
-    Document::new_without_signature(doc.id().to_owned(), Value::Object(projected_data)).unwrap_or_else(|_| doc.clone())
+    Document::new_without_signature(doc.id().to_owned(), Value::Object(projected_data))
+        .await
+        .unwrap_or_else(|_| doc.clone())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
 
-    fn create_doc(data: Value) -> Document {
-        Document::new_without_signature("test".to_string(), data).unwrap()
+    use super::*;
+
+    async fn create_doc(data: Value) -> Document {
+        Document::new_without_signature("test".to_string(), data)
+            .await
+            .unwrap()
     }
 
-    #[test]
-    fn test_project_document_empty_fields() {
-        let doc = create_doc(json!({"name": "Alice", "age": 25}));
-        let projected = project_document(&doc, &[]);
+    #[tokio::test]
+    async fn test_project_document_empty_fields() {
+        let doc = create_doc(json!({"name": "Alice", "age": 25})).await;
+        let projected = project_document(&doc, &[]).await;
         assert_eq!(projected.data(), doc.data());
     }
 
-    #[test]
-    fn test_project_document_with_fields() {
-        let doc = create_doc(json!({"name": "Alice", "age": 25, "city": "NYC"}));
-        let projected = project_document(&doc, &["name".to_string(), "age".to_string()]);
+    #[tokio::test]
+    async fn test_project_document_with_fields() {
+        let doc = create_doc(json!({"name": "Alice", "age": 25, "city": "NYC"})).await;
+        let projected = project_document(&doc, &["name".to_string(), "age".to_string()]).await;
         let expected = json!({"name": "Alice", "age": 25});
         assert_eq!(projected.data(), &expected);
     }
 
-    #[test]
-    fn test_project_document_missing_fields() {
-        let doc = create_doc(json!({"name": "Alice"}));
-        let projected = project_document(&doc, &["name".to_string(), "age".to_string()]);
+    #[tokio::test]
+    async fn test_project_document_missing_fields() {
+        let doc = create_doc(json!({"name": "Alice"})).await;
+        let projected = project_document(&doc, &["name".to_string(), "age".to_string()]).await;
         let expected = json!({"name": "Alice"});
         assert_eq!(projected.data(), &expected);
     }

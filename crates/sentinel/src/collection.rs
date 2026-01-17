@@ -136,11 +136,11 @@ impl Collection {
         #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
         let doc = if let Some(key) = &self.signing_key {
             debug!("Creating signed document for id: {}", id);
-            Document::new(id.to_owned(), data, key)?
+            Document::new(id.to_owned(), data, key).await?
         }
         else {
             debug!("Creating unsigned document for id: {}", id);
-            Document::new_without_signature(id.to_owned(), data)?
+            Document::new_without_signature(id.to_owned(), data).await?
         };
         let json = serde_json::to_string_pretty(&doc).map_err(|e| {
             error!("Failed to serialize document {} to JSON: {}", id, e);
@@ -671,7 +671,7 @@ impl Collection {
             .take(end_idx - start_idx)
         {
             let projected_doc = if let Some(ref fields) = query.projection {
-                self.project_document(&doc, fields)
+                self.project_document(&doc, fields).await
             }
             else {
                 doc
@@ -720,8 +720,10 @@ impl Collection {
                 let doc = match serde_json::from_str::<Document>(&content) {
                     Ok(doc) => {
                         // Create a new document with the correct ID
-                        Document::new_without_signature(id, doc.data().clone())
-                            .unwrap_or(doc)
+                        match Document::new_without_signature(id, doc.data().clone()).await {
+                            Ok(new_doc) => new_doc,
+                            Err(_) => doc,
+                        }
                     }
                     Err(e) => {
                         yield Err(e.into());
@@ -738,7 +740,7 @@ impl Collection {
                         break;
                     }
                     let final_doc = if let Some(ref fields) = projection_fields {
-                        project_document(&doc, fields)
+                        project_document(&doc, fields).await
                     } else {
                         doc
                     };
@@ -753,7 +755,9 @@ impl Collection {
     fn compare_values(&self, a: Option<&Value>, b: Option<&Value>) -> std::cmp::Ordering { compare_values(a, b) }
 
     /// Projects a document to include only specified fields.
-    fn project_document(&self, doc: &Document, fields: &[String]) -> Document { project_document(doc, fields) }
+    async fn project_document(&self, doc: &Document, fields: &[String]) -> Document {
+        project_document(doc, fields).await
+    }
 }
 
 /// Validates that a document ID is filesystem-safe across all platforms.
