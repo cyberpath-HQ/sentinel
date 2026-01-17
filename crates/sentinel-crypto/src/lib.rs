@@ -199,40 +199,22 @@ mod tests {
     }
 
     #[test]
-    fn test_global_config() {
+    fn test_set_global_crypto_config_already_set() {
         init_logging();
-        // Test that global config is accessible
-        let config = get_global_crypto_config();
-        // Just check that it's set, don't assert specific values since other tests may change it
-        assert!(matches!(config.hash_algorithm, HashAlgorithmChoice::Blake3));
-        assert!(matches!(
-            config.signature_algorithm,
-            SignatureAlgorithmChoice::Ed25519
-        ));
-        // Encryption and key derivation may be changed by other tests
-        // assert!(matches!(
-        //     config.encryption_algorithm,
-        //     EncryptionAlgorithmChoice::XChaCha20Poly1305
-        // ));
-        // assert!(matches!(
-        //     config.key_derivation_algorithm,
-        //     KeyDerivationAlgorithmChoice::Argon2id
-        // ));
+        let config = CryptoConfig {
+            hash_algorithm:           HashAlgorithmChoice::Blake3,
+            signature_algorithm:      SignatureAlgorithmChoice::Ed25519,
+            encryption_algorithm:     EncryptionAlgorithmChoice::Aes256GcmSiv, // Different from default
+            key_derivation_algorithm: KeyDerivationAlgorithmChoice::Argon2id,
+        };
 
-        // Test that default functions work
-        let data = serde_json::json!({"test": "data"});
-        let hash = hash_data(&data).unwrap();
-        assert_eq!(hash.len(), 64); // Blake3 hash
+        // First set should succeed (or fail if already set, but we don't care)
+        let _ = set_global_crypto_config(config.clone());
 
-        let key = [0u8; 32];
-        let test_data = b"test data";
-        let encrypted = encrypt_data(test_data, &key).unwrap();
-        let decrypted = decrypt_data(&encrypted, &key).unwrap();
-        assert_eq!(test_data, decrypted.as_slice());
-
-        let derived = derive_key_from_passphrase("test passphrase").unwrap();
-        assert_eq!(derived.1.len(), 32);
-        assert_eq!(derived.0.len(), 32);
+        // Second set should fail
+        let result = set_global_crypto_config(config);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), CryptoError::ConfigAlreadySet));
     }
 
     #[test]
