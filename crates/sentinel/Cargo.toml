@@ -12,7 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [lib]
-crate-type = ["rlib", "cdylib"]
+crate-type = ["rlib"]
 
 [dependencies]
 tokio = { version = "1.49.0", features = ["full"] }
@@ -32,6 +32,7 @@ async-stream = "0.3.6"
 tempfile = "3.24.0"
 criterion = { version = "0.8.1", features = ["html_reports"] }
 rand = "0.8"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
 [lints]
 workspace = true
