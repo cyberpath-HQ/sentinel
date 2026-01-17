@@ -742,4 +742,68 @@ mod tests {
             "run_command should fail for invalid hash algorithm"
         );
     }
+
+    #[test]
+    fn test_parse_hash_algorithm_valid() {
+        assert_eq!(
+            parse_hash_algorithm("blake3"),
+            Ok(sentinel_crypto::HashAlgorithmChoice::Blake3)
+        );
+    }
+
+    #[test]
+    fn test_parse_hash_algorithm_invalid() {
+        assert!(parse_hash_algorithm("invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_signature_algorithm_valid() {
+        assert_eq!(
+            parse_signature_algorithm("ed25519"),
+            Ok(sentinel_crypto::SignatureAlgorithmChoice::Ed25519)
+        );
+    }
+
+    #[test]
+    fn test_parse_signature_algorithm_invalid() {
+        assert!(parse_signature_algorithm("invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_encryption_algorithm_valid() {
+        assert_eq!(
+            parse_encryption_algorithm("xchacha20poly1305"),
+            Ok(sentinel_crypto::EncryptionAlgorithmChoice::XChaCha20Poly1305)
+        );
+        assert_eq!(
+            parse_encryption_algorithm("aes256gcmsiv"),
+            Ok(sentinel_crypto::EncryptionAlgorithmChoice::Aes256GcmSiv)
+        );
+        assert_eq!(
+            parse_encryption_algorithm("ascon128"),
+            Ok(sentinel_crypto::EncryptionAlgorithmChoice::Ascon128)
+        );
+    }
+
+    #[test]
+    fn test_parse_encryption_algorithm_invalid() {
+        assert!(parse_encryption_algorithm("invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_key_derivation_algorithm_valid() {
+        assert_eq!(
+            parse_key_derivation_algorithm("argon2id"),
+            Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Argon2id)
+        );
+        assert_eq!(
+            parse_key_derivation_algorithm("pbkdf2"),
+            Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Pbkdf2)
+        );
+    }
+
+    #[test]
+    fn test_parse_key_derivation_algorithm_invalid() {
+        assert!(parse_key_derivation_algorithm("invalid").is_err());
+    }
 }

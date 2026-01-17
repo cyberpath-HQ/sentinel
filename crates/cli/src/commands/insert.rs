@@ -728,4 +728,36 @@ mod tests {
         let result = run(args).await;
         assert!(result.is_ok(), "Bulk insert should succeed - collection gets created automatically");
     }
+
+    /// Test bulk insert with invalid document ID.
+    ///
+    /// This test verifies that bulk insert fails when one of the document IDs is invalid,
+    /// covering the error handling in bulk_insert.
+    #[tokio::test]
+    async fn test_bulk_insert_invalid_document_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let json_file = temp_dir.path().join("invalid_data.json");
+
+        // Create JSON file with invalid document ID (empty string)
+        let test_data = json!({"": {"name": "Alice"}, "user2": {"name": "Bob"}});
+        std::fs::write(&json_file, serde_json::to_string_pretty(&test_data).unwrap()).unwrap();
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let _collection = store.collection("test_collection").await.unwrap();
+
+        // Test bulk insert with invalid ID
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some(json_file.to_string_lossy().to_string()),
+            passphrase: None,
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Bulk insert should fail with invalid document ID");
+    }
 }

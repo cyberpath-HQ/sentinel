@@ -676,4 +676,303 @@ mod tests {
         // This should fail due to invalid sort order
         assert!(run(args).await.is_err());
     }
+
+    /// Test query with greater than filter.
+    #[tokio::test]
+    async fn test_query_filter_greater_than() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "age": 25}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "age": 30}))
+            .await
+            .unwrap();
+
+        // Test query with greater than filter
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec!["age>25".to_string()],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test query with less than filter.
+    #[tokio::test]
+    async fn test_query_filter_less_than() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "age": 25}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "age": 30}))
+            .await
+            .unwrap();
+
+        // Test query with less than filter
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec!["age<30".to_string()],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test query with contains filter.
+    #[tokio::test]
+    async fn test_query_filter_contains() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob"}))
+            .await
+            .unwrap();
+
+        // Test query with contains filter
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec!["name~Ali".to_string()],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test query with starts with filter.
+    #[tokio::test]
+    async fn test_query_filter_starts_with() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob"}))
+            .await
+            .unwrap();
+
+        // Test query with starts with filter
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec!["name^Al".to_string()],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test query with ends with filter.
+    #[tokio::test]
+    async fn test_query_filter_ends_with() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob"}))
+            .await
+            .unwrap();
+
+        // Test query with ends with filter
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec!["name$ce".to_string()],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test query with in filter.
+    #[tokio::test]
+    async fn test_query_filter_in() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"city": "NYC"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"city": "LA"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc3", json!({"city": "Chicago"}))
+            .await
+            .unwrap();
+
+        // Test query with in filter
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec!["city in:NYC,LA".to_string()],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test query with exists filter.
+    #[tokio::test]
+    async fn test_query_filter_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert test documents
+        collection
+            .insert(
+                "doc1",
+                json!({"name": "Alice", "email": "alice@example.com"}),
+            )
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob"}))
+            .await
+            .unwrap();
+
+        // Test query with exists true filter
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec!["email exists:true".to_string()],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test query with invalid format.
+    #[tokio::test]
+    async fn test_query_invalid_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert a test document so the query processes something
+        collection
+            .insert("doc1", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+
+        // Test query with invalid format
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec![],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "invalid".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err());
+    }
 }
