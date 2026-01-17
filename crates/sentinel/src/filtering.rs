@@ -6,43 +6,60 @@ use crate::{Document, Filter};
 
 /// Checks if a document matches all the given filters.
 pub fn matches_filters(doc: &Document, filters: &[&Filter]) -> bool {
+    #[allow(clippy::needless_borrowed_reference, reason = "clippy suggestions are incorrect for matching &Value patterns")]
     for &filter in filters {
-        let matches = match filter {
-            Filter::Equals(field, value) => doc.data().get(field) == Some(value),
-            Filter::GreaterThan(field, value) => {
-                match (doc.data().get(field), value) {
-                    (Some(Value::Number(n)), Value::Number(v)) => n.as_f64().unwrap_or(0.0) > v.as_f64().unwrap_or(0.0),
-                    _ => false,
+        let matches = match *filter {
+            Filter::Equals(ref field, ref value) => doc.data().get(field.as_str()) == Some(value),
+            Filter::GreaterThan(ref field, ref value) => {
+                if let &Value::Number(ref v) = value {
+                    if let Some(&Value::Number(ref n)) = doc.data().get(field.as_str()) {
+                        n.as_f64().unwrap_or(0.0) > v.as_f64().unwrap_or(0.0)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
                 }
             },
-            Filter::LessThan(field, value) => {
-                match (doc.data().get(field), value) {
-                    (Some(Value::Number(n)), Value::Number(v)) => n.as_f64().unwrap_or(0.0) < v.as_f64().unwrap_or(0.0),
-                    _ => false,
+            Filter::LessThan(ref field, ref value) => {
+                if let &Value::Number(ref v) = value {
+                    if let Some(&Value::Number(ref n)) = doc.data().get(field.as_str()) {
+                        n.as_f64().unwrap_or(0.0) < v.as_f64().unwrap_or(0.0)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
                 }
             },
-            Filter::GreaterOrEqual(field, value) => {
-                match (doc.data().get(field), value) {
-                    (Some(Value::Number(n)), Value::Number(v)) => {
+            Filter::GreaterOrEqual(ref field, ref value) => {
+                if let &Value::Number(ref v) = value {
+                    if let Some(&Value::Number(ref n)) = doc.data().get(field.as_str()) {
                         n.as_f64().unwrap_or(0.0) >= v.as_f64().unwrap_or(0.0)
-                    },
-                    _ => false,
+                    } else {
+                        false
+                    }
+                } else {
+                    false
                 }
             },
-            Filter::LessOrEqual(field, value) => {
-                match (doc.data().get(field), value) {
-                    (Some(Value::Number(n)), Value::Number(v)) => {
+            Filter::LessOrEqual(ref field, ref value) => {
+                if let &Value::Number(ref v) = value {
+                    if let Some(&Value::Number(ref n)) = doc.data().get(field.as_str()) {
                         n.as_f64().unwrap_or(0.0) <= v.as_f64().unwrap_or(0.0)
-                    },
-                    _ => false,
+                    } else {
+                        false
+                    }
+                } else {
+                    false
                 }
             },
-            Filter::In(field, values) => doc.data().get(field).is_some_and(|v| values.contains(v)),
-            Filter::Contains(field, substring) => {
-                match doc.data().get(field) {
-                    Some(Value::Array(arr)) => {
+            Filter::In(ref field, ref values) => doc.data().get(field.as_str()).is_some_and(|v| values.contains(v)),
+            Filter::Contains(ref field, ref substring) => {
+                match doc.data().get(field.as_str()) {
+                    Some(&Value::Array(ref arr)) => {
                         arr.iter().any(|v| {
-                            if let Value::String(s) = v {
+                            if let &Value::String(ref s) = v {
                                 s.contains(substring)
                             }
                             else {
@@ -50,30 +67,30 @@ pub fn matches_filters(doc: &Document, filters: &[&Filter]) -> bool {
                             }
                         })
                     },
-                    Some(Value::String(s)) => s.contains(substring),
+                    Some(&Value::String(ref s)) => s.contains(substring),
                     _ => false,
                 }
             },
-            Filter::StartsWith(field, prefix) => {
-                match doc.data().get(field) {
-                    Some(Value::String(s)) => s.starts_with(prefix),
+            Filter::StartsWith(ref field, ref prefix) => {
+                match doc.data().get(field.as_str()) {
+                    Some(&Value::String(ref s)) => s.starts_with(prefix),
                     _ => false,
                 }
             },
-            Filter::EndsWith(field, suffix) => {
-                match doc.data().get(field) {
-                    Some(Value::String(s)) => s.ends_with(suffix),
+            Filter::EndsWith(ref field, ref suffix) => {
+                match doc.data().get(field.as_str()) {
+                    Some(&Value::String(ref s)) => s.ends_with(suffix),
                     _ => false,
                 }
             },
-            Filter::Exists(field, exists) => {
-                let field_exists = doc.data().get(field).is_some();
+            Filter::Exists(ref field, ref exists) => {
+                let field_exists = doc.data().get(field.as_str()).is_some();
                 field_exists == *exists
             },
-            Filter::And(left, right) => {
+            Filter::And(ref left, ref right) => {
                 matches_filters(doc, &[left.as_ref()]) && matches_filters(doc, &[right.as_ref()])
             },
-            Filter::Or(left, right) => {
+            Filter::Or(ref left, ref right) => {
                 matches_filters(doc, &[left.as_ref()]) || matches_filters(doc, &[right.as_ref()])
             },
         };
