@@ -18,8 +18,8 @@ coverage:
     patch: true
     project:
       default:
-        # Require 80% overall project coverage
-        target: 80%
+        # Require 90% overall project coverage
+        target: 90%
         threshold: 1%
         base: auto
         if_ci_failed: error
