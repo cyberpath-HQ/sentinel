@@ -28,10 +28,12 @@ argon2 = {version="0.5.3", features = ["zeroize"]}
 pbkdf2 = "0.12"
 sha2 = "0.10.9"
 tracing = "0.1.44"
+tokio = { version = "1.49.0", features = ["sync"] }
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["html_reports"] }
 tracing-subscriber = "0.3.22"
+lazy_static = "1.4"
 
 [[bench]]
 name = "crypto_benches"
