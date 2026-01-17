@@ -42,8 +42,9 @@ use crate::{
 /// # Example
 ///
 /// ```rust
-/// use sentinel_dbms::{Store, Collection, json};
+/// use sentinel_dbms::{Store, Collection};
 /// use futures::TryStreamExt;
+/// use serde_json::json;
 ///
 /// # async fn example() -> sentinel_dbms::Result<()> {
 /// // Create a store and get a collection
@@ -633,10 +634,11 @@ impl Collection {
         let mut matching_docs = Vec::new();
 
         for id in all_ids {
-            if let Some(doc) = self.get(id).await?
-                && matches_filters(&doc, &query.filters) {
-                    matching_docs.push(doc);
-                }
+            if let Some(doc) = self.get(id).await? &&
+                matches_filters(&doc, &query.filters)
+            {
+                matching_docs.push(doc);
+            }
         }
 
         // Apply sorting
