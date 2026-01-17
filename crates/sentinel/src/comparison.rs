@@ -28,7 +28,30 @@ pub fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Number(na), Value::Number(nb)) => {
             match (na.as_f64(), nb.as_f64()) {
                 (Some(fa), Some(fb)) => fa.partial_cmp(&fb).unwrap_or(std::cmp::Ordering::Equal),
-                _ => na.to_string().cmp(&nb.to_string()),
+                _ => {
+                    let sa = na.to_string();
+                    let sb = nb.to_string();
+                    match (sa.starts_with('-'), sb.starts_with('-')) {
+                        (true, false) => std::cmp::Ordering::Less,
+                        (false, true) => std::cmp::Ordering::Greater,
+                        _ => {
+                            let (sa_num, sb_num, negative) = if sa.starts_with('-') {
+                                (&sa[1..], &sb[1..], true)
+                            } else {
+                                (sa.as_str(), sb.as_str(), false)
+                            };
+                            let len_cmp = sa_num.len().cmp(&sb_num.len());
+                            if len_cmp == std::cmp::Ordering::Equal {
+                                let cmp = sa_num.cmp(sb_num);
+                                if negative { cmp.reverse() } else { cmp }
+                            } else if negative {
+                                len_cmp.reverse()
+                            } else {
+                                len_cmp
+                            }
+                        }
+                    }
+                },
             }
         },
         (Value::String(sa), Value::String(sb)) => sa.cmp(sb),
