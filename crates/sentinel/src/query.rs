@@ -5,18 +5,19 @@ use tokio_stream::Stream;
 ///
 /// A query consists of filters, sorting, limits, offsets, and field projections.
 /// Queries are executed in-memory for basic filtering operations.
+#[allow(clippy::missing_docs_in_private_items, reason = "fields are documented with ///")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
-    /// List of filters to apply
-    pub filters:    Vec<Filter>,
-    /// Optional sorting (field, order)
-    pub sort:       Option<(String, SortOrder)>,
-    /// Maximum number of results
-    pub limit:      Option<usize>,
-    /// Number of results to skip
-    pub offset:     Option<usize>,
-    /// Fields to include in results (projection)
-    pub projection: Option<Vec<String>>,
+/// List of filters to apply
+pub filters:    Vec<Filter>,
+/// Optional sorting (field, order)
+pub sort:       Option<(String, SortOrder)>,
+/// Maximum number of results
+pub limit:      Option<usize>,
+/// Number of results to skip
+pub offset:     Option<usize>,
+/// Fields to include in results (projection)
+pub projection: Option<Vec<String>>,
 }
 
 /// The result of executing a query.
@@ -30,7 +31,7 @@ pub struct QueryResult {
 }
 
 /// Sort order for query results.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortOrder {
     /// Ascending order
     Ascending,
@@ -95,10 +96,15 @@ pub enum Operator {
 /// Builder pattern for constructing queries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryBuilder {
+    /// List of filters to apply
     filters:    Vec<Filter>,
+    /// Optional sorting field and order
     sort:       Option<(String, SortOrder)>,
+    /// Optional limit on number of results
     limit:      Option<usize>,
+    /// Optional offset for pagination
     offset:     Option<usize>,
+    /// Optional projection of fields
     projection: Option<Vec<String>>,
 }
 
