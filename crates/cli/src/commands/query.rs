@@ -342,7 +342,12 @@ fn parse_value(value_str: &str) -> sentinel_dbms::Result<Value> {
         return Ok(Value::Number(num.into()));
     }
     if let Ok(num) = value_str.parse::<f64>() {
-        return Ok(Value::Number(serde_json::Number::from_f64(num).unwrap()));
+        if let Some(number) = serde_json::Number::from_f64(num) {
+            return Ok(Value::Number(number));
+        }
+        return Err(sentinel_dbms::SentinelError::ConfigError {
+            message: format!("Invalid numeric value: {}", value_str),
+        });
     }
     // Try to parse as boolean
     if value_str == "true" {
