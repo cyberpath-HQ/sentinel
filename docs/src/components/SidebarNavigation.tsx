@@ -18,8 +18,17 @@ interface SidebarNavigationProps {
  * Client-side sidebar navigation with accordions
  */
 export default function SidebarNavigation({ sections, sortedSections, currentSlug }: SidebarNavigationProps) {
+    // Determine the current section based on currentSlug
+    let currentSection = null;
+    for (const section of sortedSections) {
+        if (sections[section].some(doc => doc.id === currentSlug)) {
+            currentSection = section;
+            break;
+        }
+    }
+
     return (
-        <Accordion type="multiple" defaultValue={sortedSections} className="space-y-2">
+        <Accordion type="multiple" defaultValue={currentSection ? [currentSection] : []} className="space-y-2">
             {sortedSections.map((section) => (
                 <AccordionItem key={section} value={section} className="border-0">
                     <AccordionTrigger className="cursor-pointer py-2 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:no-underline">
