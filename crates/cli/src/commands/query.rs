@@ -369,7 +369,17 @@ fn parse_sort(sort_str: &str) -> sentinel_dbms::Result<(String, String)> {
             message: format!("Invalid sort format: {}", sort_str),
         });
     }
-    Ok((parts[0].to_owned(), parts[1].to_owned()))
+    let first = parts
+        .get(0)
+        .ok_or(sentinel_dbms::SentinelError::ConfigError {
+            message: format!("Invalid sort format: {}", sort_str),
+        })?;
+    let second = parts
+        .get(1)
+        .ok_or(sentinel_dbms::SentinelError::ConfigError {
+            message: format!("Invalid sort format: {}", sort_str),
+        })?;
+    Ok((first.to_string(), second.to_string()))
 }
 
 #[cfg(test)]
