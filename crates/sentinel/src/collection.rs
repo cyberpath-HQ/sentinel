@@ -528,7 +528,7 @@ impl Collection {
                 if !tokio_fs::metadata(&path).await.map(|m| m.is_dir()).unwrap_or(false)
                     && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
                         && file_name.ends_with(".json") && !file_name.starts_with('.') {
-                            let id = &file_name[..file_name.len() - 5]; // remove .json
+                            let id = file_name.strip_suffix(".json").unwrap();
                             // Load document
                             let file_path = collection_path.join(format!("{}.json", id));
                             match tokio_fs::read_to_string(&file_path).await {
@@ -644,14 +644,17 @@ impl Collection {
             }
         }
 
-        // Apply sorting
-        if let Some((field, order)) = &query.sort {
+        if let Some(ref inner) = query.sort {
+            let field = &inner.0;
+            let order = &inner.1;
             matching_docs.sort_by(|a, b| {
-                let a_val = a.data().get(field);
-                let b_val = b.data().get(field);
-                match order {
-                    crate::SortOrder::Ascending => self.compare_values(a_val, b_val),
-                    crate::SortOrder::Descending => self.compare_values(b_val, a_val),
+                let a_val = a.data().get(field.as_str());
+                let b_val = b.data().get(field.as_str());
+                if *order == crate::SortOrder::Ascending {
+                    self.compare_values(a_val, b_val)
+                }
+                else {
+                    self.compare_values(b_val, a_val)
                 }
             });
         }
@@ -659,19 +662,16 @@ impl Collection {
         // Apply offset and limit
         let offset = query.offset.unwrap_or(0);
         let start_idx = offset.min(matching_docs.len());
-        let end_idx = if let Some(limit) = query.limit {
-            (start_idx + limit).min(matching_docs.len())
-        }
-        else {
-            matching_docs.len()
-        };
+        let end_idx = query.limit.map_or(matching_docs.len(), |limit| {
+            start_idx.saturating_add(limit).min(matching_docs.len())
+        });
 
         // Apply projection to the final results
         let mut final_docs = Vec::new();
         for doc in matching_docs
             .into_iter()
             .skip(start_idx)
-            .take(end_idx - start_idx)
+            .take(end_idx.saturating_sub(start_idx))
         {
             let projected_doc = if let Some(ref fields) = query.projection {
                 self.project_document(&doc, fields).await?
@@ -726,10 +726,7 @@ impl Collection {
                 let doc = match serde_json::from_str::<Document>(&content) {
                     Ok(doc) => {
                         // Create a new document with the correct ID
-                        match Document::new_without_signature(id, doc.data().clone()).await {
-                            Ok(new_doc) => new_doc,
-                            Err(_) => doc,
-                        }
+                        Document::new_without_signature(id, doc.data().clone()).await.unwrap_or(doc)
                     }
                     Err(e) => {
                         yield Err(e.into());
@@ -739,7 +736,7 @@ impl Collection {
 
                 if matches_filters(&doc, &filter_refs) {
                     if skipped < offset {
-                        skipped += 1;
+                        skipped = skipped.saturating_add(1);
                         continue;
                     }
                     if yielded >= limit {
@@ -751,7 +748,7 @@ impl Collection {
                         doc
                     };
                     yield Ok(final_doc);
-                    yielded += 1;
+                    yielded = yielded.saturating_add(1);
                 }
             }
         }))
