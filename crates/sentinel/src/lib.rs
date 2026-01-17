@@ -1,12 +1,22 @@
+/// Collection management module.
 mod collection;
+/// Comparison utilities module.
 mod comparison;
+/// Document handling module.
 mod document;
+/// Error types module.
 mod error;
+/// Filtering utilities module.
 mod filtering;
+/// Projection utilities module.
 mod projection;
+/// Query building module.
 mod query;
+/// Store management module.
 mod store;
+/// Streaming utilities module.
 mod streaming;
+/// Validation utilities module.
 mod validation;
 
 // Re-export commonly used external crates for convenience
