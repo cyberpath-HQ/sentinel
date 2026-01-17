@@ -179,9 +179,15 @@ pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tracing_subscriber;
+
+    fn init_logging() {
+        let _ = tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).try_init();
+    }
 
     #[test]
     fn test_hash_data() {
+        init_logging();
         let data = serde_json::json!({"key": "value", "number": 42});
         let hash = hash_data(&data).unwrap();
         assert_eq!(hash.len(), 64);
@@ -191,6 +197,7 @@ mod tests {
 
     #[test]
     fn test_global_config() {
+        init_logging();
         // Test that global config is accessible
         let config = get_global_crypto_config();
         // Just check that it's set, don't assert specific values since other tests may change it
@@ -227,6 +234,7 @@ mod tests {
 
     #[test]
     fn test_aes256gcm_siv_encryption() {
+        init_logging();
         let config = CryptoConfig {
             hash_algorithm:           HashAlgorithmChoice::Blake3,
             signature_algorithm:      SignatureAlgorithmChoice::Ed25519,
@@ -244,6 +252,7 @@ mod tests {
 
     #[test]
     fn test_ascon128_encryption() {
+        init_logging();
         let config = CryptoConfig {
             hash_algorithm:           HashAlgorithmChoice::Blake3,
             signature_algorithm:      SignatureAlgorithmChoice::Ed25519,
@@ -261,6 +270,7 @@ mod tests {
 
     #[test]
     fn test_pbkdf2_key_derivation() {
+        init_logging();
         let config = CryptoConfig {
             hash_algorithm:           HashAlgorithmChoice::Blake3,
             signature_algorithm:      SignatureAlgorithmChoice::Ed25519,
@@ -276,6 +286,7 @@ mod tests {
 
     #[test]
     fn test_sign_and_verify_hash() {
+        init_logging();
         let data = serde_json::json!({"key": "value"});
         let hash = hash_data(&data).unwrap();
         assert_eq!(hash.len(), 64);

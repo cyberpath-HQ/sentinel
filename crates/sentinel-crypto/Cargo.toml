@@ -31,6 +31,7 @@ tracing = "0.1.44"
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["html_reports"] }
+tracing-subscriber = "0.3.22"
 
 [[bench]]
 name = "crypto_benches"
