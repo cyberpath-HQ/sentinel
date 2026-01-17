@@ -633,9 +633,12 @@ impl Collection {
         // But we can optimize by only keeping document IDs and sort values during filtering
         let mut matching_docs = Vec::new();
 
+        // Precompute filter references to avoid allocating a new Vec for each document
+        let filter_refs: Vec<_> = query.filters.iter().collect();
+
         for id in all_ids {
             if let Some(doc) = self.get(id).await? &&
-                matches_filters(&doc, &query.filters.iter().collect::<Vec<_>>())
+                matches_filters(&doc, &filter_refs)
             {
                 matching_docs.push(doc);
             }
@@ -698,6 +701,9 @@ impl Collection {
             let mut yielded = 0;
             let mut skipped = 0;
 
+            // Precompute filter references to avoid allocating a new Vec for each document
+            let filter_refs: Vec<_> = filters.iter().collect();
+
             while let Some(id_result) = id_stream.next().await {
                 let id = match id_result {
                     Ok(id) => id,
@@ -731,7 +737,7 @@ impl Collection {
                     }
                 };
 
-                if matches_filters(&doc, &filters.iter().collect::<Vec<_>>()) {
+                if matches_filters(&doc, &filter_refs) {
                     if skipped < offset {
                         skipped += 1;
                         continue;
