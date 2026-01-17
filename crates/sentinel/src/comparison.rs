@@ -26,9 +26,10 @@ pub fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Null, Value::Null) => std::cmp::Ordering::Equal,
         (Value::Bool(ba), Value::Bool(bb)) => ba.cmp(bb),
         (Value::Number(na), Value::Number(nb)) => {
-            let fa = na.as_f64().unwrap_or(0.0);
-            let fb = nb.as_f64().unwrap_or(0.0);
-            fa.partial_cmp(&fb).unwrap_or(std::cmp::Ordering::Equal)
+            match (na.as_f64(), nb.as_f64()) {
+                (Some(fa), Some(fb)) => fa.partial_cmp(&fb).unwrap_or(std::cmp::Ordering::Equal),
+                _ => na.to_string().cmp(&nb.to_string()),
+            }
         },
         (Value::String(sa), Value::String(sb)) => sa.cmp(sb),
         (Value::Array(aa), Value::Array(ab)) => aa.len().cmp(&ab.len()),
@@ -108,6 +109,28 @@ mod tests {
         assert_eq!(
             compare_json_values(&json!("string"), &json!(1)),
             std::cmp::Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn test_compare_json_values_large_numbers() {
+        let large1: Value =
+            serde_json::from_str("1000000000000000000000000000000000000000000000000000000000000000000000000000000")
+                .unwrap();
+        let large2: Value =
+            serde_json::from_str("2000000000000000000000000000000000000000000000000000000000000000000000000000000")
+                .unwrap();
+        assert_eq!(
+            compare_json_values(&large1, &large2),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            compare_json_values(&large2, &large1),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_json_values(&large1, &large1),
+            std::cmp::Ordering::Equal
         );
     }
 
