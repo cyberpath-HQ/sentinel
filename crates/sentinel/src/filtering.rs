@@ -6,7 +6,10 @@ use crate::{Document, Filter};
 
 /// Checks if a document matches all the given filters.
 pub fn matches_filters(doc: &Document, filters: &[&Filter]) -> bool {
-    #[allow(clippy::needless_borrowed_reference, reason = "clippy suggestions are incorrect for matching &Value patterns")]
+    #[allow(
+        clippy::needless_borrowed_reference,
+        reason = "clippy suggestions are incorrect for matching &Value patterns"
+    )]
     for &filter in filters {
         let matches = match *filter {
             Filter::Equals(ref field, ref value) => doc.data().get(field.as_str()) == Some(value),
@@ -14,10 +17,12 @@ pub fn matches_filters(doc: &Document, filters: &[&Filter]) -> bool {
                 if let &Value::Number(ref v) = value {
                     if let Some(&Value::Number(ref n)) = doc.data().get(field.as_str()) {
                         n.as_f64().unwrap_or(0.0) > v.as_f64().unwrap_or(0.0)
-                    } else {
+                    }
+                    else {
                         false
                     }
-                } else {
+                }
+                else {
                     false
                 }
             },
@@ -25,10 +30,12 @@ pub fn matches_filters(doc: &Document, filters: &[&Filter]) -> bool {
                 if let &Value::Number(ref v) = value {
                     if let Some(&Value::Number(ref n)) = doc.data().get(field.as_str()) {
                         n.as_f64().unwrap_or(0.0) < v.as_f64().unwrap_or(0.0)
-                    } else {
+                    }
+                    else {
                         false
                     }
-                } else {
+                }
+                else {
                     false
                 }
             },
@@ -36,10 +43,12 @@ pub fn matches_filters(doc: &Document, filters: &[&Filter]) -> bool {
                 if let &Value::Number(ref v) = value {
                     if let Some(&Value::Number(ref n)) = doc.data().get(field.as_str()) {
                         n.as_f64().unwrap_or(0.0) >= v.as_f64().unwrap_or(0.0)
-                    } else {
+                    }
+                    else {
                         false
                     }
-                } else {
+                }
+                else {
                     false
                 }
             },
@@ -47,14 +56,20 @@ pub fn matches_filters(doc: &Document, filters: &[&Filter]) -> bool {
                 if let &Value::Number(ref v) = value {
                     if let Some(&Value::Number(ref n)) = doc.data().get(field.as_str()) {
                         n.as_f64().unwrap_or(0.0) <= v.as_f64().unwrap_or(0.0)
-                    } else {
+                    }
+                    else {
                         false
                     }
-                } else {
+                }
+                else {
                     false
                 }
             },
-            Filter::In(ref field, ref values) => doc.data().get(field.as_str()).is_some_and(|v| values.contains(v)),
+            Filter::In(ref field, ref values) => {
+                doc.data()
+                    .get(field.as_str())
+                    .is_some_and(|v| values.contains(v))
+            },
             Filter::Contains(ref field, ref substring) => {
                 match doc.data().get(field.as_str()) {
                     Some(&Value::Array(ref arr)) => {

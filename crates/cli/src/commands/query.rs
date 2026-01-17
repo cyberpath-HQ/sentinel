@@ -263,7 +263,10 @@ enum ParsedFilter {
 }
 
 /// Parse a filter string like "field=value" or "field>value".
-#[allow(clippy::arithmetic_side_effects, reason = "Slicing with small constants is safe")]
+#[allow(
+    clippy::arithmetic_side_effects,
+    reason = "Slicing with small constants is safe"
+)]
 fn parse_filter(filter_str: &str) -> sentinel_dbms::Result<ParsedFilter> {
     // Check for special syntaxes first
     if let Some(exists_pos) = filter_str.find(" exists:") {
@@ -380,7 +383,8 @@ fn parse_sort(sort_str: &str) -> sentinel_dbms::Result<(String, String)> {
             message: format!("Invalid sort format: {}", sort_str),
         });
     }
-    let first = parts.first()
+    let first = parts
+        .first()
         .ok_or(sentinel_dbms::SentinelError::ConfigError {
             message: format!("Invalid sort format: {}", sort_str),
         })?;
