@@ -50,7 +50,7 @@ pub async fn run(args: ListArgs) -> sentinel_dbms::Result<()> {
     let stream = coll.list();
     pin_mut!(stream);
 
-    let mut count = 0;
+    let mut count: usize = 0;
     // Process the stream item by item to avoid loading all IDs into memory
     while let Some(item) = stream.next().await {
         match item {
@@ -59,7 +59,7 @@ pub async fn run(args: ListArgs) -> sentinel_dbms::Result<()> {
                 {
                     println!("{}", id);
                 }
-                count += 1;
+                count = count.saturating_add(1);
             },
             Err(e) => {
                 error!(
