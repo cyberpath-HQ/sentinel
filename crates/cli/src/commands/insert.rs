@@ -620,4 +620,112 @@ mod tests {
         assert!(ids.contains(&"user2".to_string()));
         assert!(ids.contains(&"user3".to_string()));
     }
+
+    /// Test bulk insert with invalid JSON file path.
+    #[tokio::test]
+    async fn test_bulk_insert_invalid_file_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        store.collection("test_collection").await.unwrap();
+
+        // Test bulk insert with non-existent file
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some("non_existent_file.json".to_string()),
+            passphrase: None,
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Bulk insert should fail with invalid file path");
+    }
+
+    /// Test bulk insert with invalid JSON content.
+    #[tokio::test]
+    async fn test_bulk_insert_invalid_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let json_file = temp_dir.path().join("invalid.json");
+
+        // Create invalid JSON file
+        std::fs::write(&json_file, "invalid json content").unwrap();
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        store.collection("test_collection").await.unwrap();
+
+        // Test bulk insert with invalid JSON
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some(json_file.to_string_lossy().to_string()),
+            passphrase: None,
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Bulk insert should fail with invalid JSON");
+    }
+
+    /// Test bulk insert with JSON that is not an object.
+    #[tokio::test]
+    async fn test_bulk_insert_json_not_object() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let json_file = temp_dir.path().join("array.json");
+
+        // Create JSON array file (not object)
+        std::fs::write(&json_file, "[1, 2, 3]").unwrap();
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        store.collection("test_collection").await.unwrap();
+
+        // Test bulk insert with JSON array
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some(json_file.to_string_lossy().to_string()),
+            passphrase: None,
+        };
+
+        let result = run(args).await;
+        assert!(result.is_err(), "Bulk insert should fail with JSON array");
+    }
+
+    /// Test bulk insert into non-existent collection.
+    #[tokio::test]
+    async fn test_bulk_insert_non_existent_collection() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let json_file = temp_dir.path().join("data.json");
+
+        // Create valid JSON file
+        let test_data = json!({"user1": {"name": "Alice"}});
+        std::fs::write(&json_file, serde_json::to_string_pretty(&test_data).unwrap()).unwrap();
+
+        // Setup store but not collection
+        sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+
+        // Test bulk insert into non-existent collection (should succeed - collection gets created)
+        let args = InsertArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "non_existent_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some(json_file.to_string_lossy().to_string()),
+            passphrase: None,
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok(), "Bulk insert should succeed - collection gets created automatically");
+    }
 }

@@ -441,6 +441,66 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// Test query with table format.
+    #[tokio::test]
+    async fn test_query_table_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let collection = store.collection("test_collection").await.unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "age": 25}))
+            .await
+            .unwrap();
+
+        // Test query command with table format
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec![],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "table".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    /// Test query with table format and no results.
+    #[tokio::test]
+    async fn test_query_table_format_no_results() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        // Setup store and collection
+        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        let _collection = store.collection("test_collection").await.unwrap();
+
+        // Test query command with table format on empty collection
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            passphrase: None,
+            filter:     vec![],
+            sort:       None,
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "table".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
     /// Test filter parsing.
     #[test]
     fn test_parse_filter() {
@@ -555,6 +615,12 @@ mod tests {
             },
             _ => panic!("Expected Exists"),
         }
+
+        // Test invalid filter format
+        assert!(parse_filter("invalid").is_err());
+
+        // Test invalid exists value
+        assert!(parse_filter("field exists:maybe").is_err());
     }
 
     /// Test value parsing.
@@ -583,5 +649,31 @@ mod tests {
         let (field, order) = parse_sort("age:desc").unwrap();
         assert_eq!(field, "age");
         assert_eq!(order, "desc");
+
+        // Test invalid sort format
+        assert!(parse_sort("invalid").is_err());
+        assert!(parse_sort("field:order:extra").is_err());
+    }
+
+    /// Test query with invalid sort order.
+    #[tokio::test]
+    async fn test_query_invalid_sort_order() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        let args = QueryArgs {
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test".to_string(),
+            passphrase: None,
+            filter:     vec![],
+            sort:       Some("name:invalid".to_string()),
+            limit:      None,
+            offset:     None,
+            project:    None,
+            format:     "json".to_string(),
+        };
+
+        // This should fail due to invalid sort order
+        assert!(run(args).await.is_err());
     }
 }
