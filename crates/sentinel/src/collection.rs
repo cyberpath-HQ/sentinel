@@ -551,6 +551,82 @@ impl Collection {
         })
     }
 
+    /// Streams all documents in the collection.
+    ///
+    /// This method performs streaming by loading documents one by one,
+    /// minimizing memory usage.
+    ///
+    /// # Returns
+    ///
+    /// Returns a stream of all documents in the collection.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Collection, Store};
+    /// use futures::stream::StreamExt;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Stream all documents
+    /// let mut all_docs = collection.all();
+    /// while let Some(doc) = all_docs.next().await {
+    ///     let doc = doc?;
+    ///     println!("Document: {}", doc.id());
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn all(&self) -> std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>> {
+        let collection_path = self.path.clone();
+
+        Box::pin(stream! {
+            trace!("Streaming all documents on collection");
+            let mut entries = match tokio_fs::read_dir(&collection_path).await {
+                Ok(entries) => entries,
+                Err(e) => {
+                    yield Err(e.into());
+                    return;
+                }
+            };
+
+            loop {
+                let entry = match entries.next_entry().await {
+                    Ok(Some(entry)) => entry,
+                    Ok(None) => break,
+                    Err(e) => {
+                        yield Err(e.into());
+                        continue;
+                    }
+                };
+
+                let path = entry.path();
+                if !tokio_fs::metadata(&path).await.map(|m| m.is_dir()).unwrap_or(false)
+                    && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
+                        && file_name.ends_with(".json") && !file_name.starts_with('.') {
+                            let id = file_name.strip_suffix(".json").unwrap();
+                            // Load document
+                            let file_path = collection_path.join(format!("{}.json", id));
+                            match tokio_fs::read_to_string(&file_path).await {
+                                Ok(content) => {
+                                    match serde_json::from_str::<Document>(&content) {
+                                        Ok(mut doc) => {
+                                            doc.id = id.to_owned();
+                                            yield Ok(doc);
+                                        }
+                                        Err(e) => yield Err(e.into()),
+                                    }
+                                }
+                                Err(e) => yield Err(e.into()),
+                            }
+                        }
+            }
+            debug!("Streaming all completed");
+        })
+    }
+
     /// Executes a structured query against the collection.
     ///
     /// This method supports complex filtering, sorting, pagination, and field projection.
@@ -1667,5 +1743,28 @@ mod tests {
         let documents: Result<Vec<_>> = futures::TryStreamExt::try_collect(result.documents).await;
         let documents = documents.unwrap();
         assert_eq!(documents.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_all_documents() {
+        let (collection, _temp) = setup_collection().await;
+
+        // Insert some documents
+        collection
+            .insert("doc1", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob"}))
+            .await
+            .unwrap();
+
+        // Stream all documents
+        let all_docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert_eq!(all_docs.len(), 2);
+
+        let ids: std::collections::HashSet<_> = all_docs.iter().map(|d| d.id()).collect();
+        assert!(ids.contains("doc1"));
+        assert!(ids.contains("doc2"));
     }
 }
