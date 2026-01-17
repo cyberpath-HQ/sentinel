@@ -343,6 +343,16 @@ mod tests {
     }
 
     #[test]
+    fn test_query_builder_default() {
+        let qb = QueryBuilder::default();
+        assert!(qb.filters.is_empty());
+        assert!(qb.sort.is_none());
+        assert!(qb.limit.is_none());
+        assert!(qb.offset.is_none());
+        assert!(qb.projection.is_none());
+    }
+
+    #[test]
     fn test_query_builder_filter_equals() {
         let qb = QueryBuilder::new().filter("name", Operator::Equals, json!("Alice"));
         assert_eq!(qb.filters.len(), 1);

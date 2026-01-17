@@ -144,6 +144,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_matches_filters_less_than() {
+        let doc = create_doc(json!({"age": 25})).await;
+        let filter = Filter::LessThan("age".to_string(), json!(20));
+        assert!(!matches_filters(&doc, &[filter]));
+
+        let filter = Filter::LessThan("age".to_string(), json!(30));
+        assert!(matches_filters(&doc, &[filter]));
+
+        // Test with non-number field
+        let doc = create_doc(json!({"name": "Alice"})).await;
+        let filter = Filter::LessThan("name".to_string(), json!(20));
+        assert!(!matches_filters(&doc, &[filter]));
+    }
+
+    #[tokio::test]
     async fn test_matches_filters_less_or_equal() {
         let doc = create_doc(json!({"age": 25})).await;
         let filter = Filter::LessOrEqual("age".to_string(), json!(25));

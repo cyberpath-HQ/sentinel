@@ -59,3 +59,22 @@ pub fn is_reserved_name(name: &str) -> bool {
     let base_name = name_upper.split('.').next().unwrap_or(&name_upper);
     WINDOWS_RESERVED_NAMES.contains(&name_upper.as_str()) || WINDOWS_RESERVED_NAMES.contains(&base_name)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_valid_name_chars() {
+        assert!(is_valid_name_chars("valid_name-123.txt"));
+        assert!(!is_valid_name_chars("invalid/name"));
+        assert!(!is_valid_name_chars("invalid\\name"));
+        assert!(!is_valid_name_chars("invalid<name>"));
+        assert!(!is_valid_name_chars("invalid:name"));
+        assert!(!is_valid_name_chars("invalid|name"));
+        assert!(!is_valid_name_chars("invalid?name"));
+        assert!(!is_valid_name_chars("invalid*name"));
+        assert!(!is_valid_name_chars("invalid\u{0001}name")); // Control character
+        assert!(!is_valid_name_chars("invalid\u{FFFF}name")); // Control character
+    }
+}
