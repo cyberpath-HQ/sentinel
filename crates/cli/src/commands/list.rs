@@ -169,6 +169,7 @@ mod tests {
     ///
     /// This test verifies that list fails when the collection directory
     /// is unreadable, covering the error handling in the stream processing.
+    #[cfg(unix)]
     #[tokio::test]
     async fn test_list_unreadable_collection() {
         let temp_dir = TempDir::new().unwrap();
