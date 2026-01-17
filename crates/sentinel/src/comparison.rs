@@ -5,7 +5,7 @@ use serde_json::Value;
 /// Compares two JSON values for sorting purposes.
 pub fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     const fn type_order(v: &Value) -> u8 {
-        match v {
+        match *v {
             Value::Null => 0,
             Value::Bool(_) => 1,
             Value::Number(_) => 2,
@@ -22,10 +22,14 @@ pub fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         return type_a.cmp(&type_b);
     }
 
+    #[allow(
+        clippy::needless_borrowed_reference,
+        reason = "clippy suggestions are incorrect for matching &Value patterns"
+    )]
     match (a, b) {
-        (Value::Null, Value::Null) => std::cmp::Ordering::Equal,
-        (Value::Bool(ba), Value::Bool(bb)) => ba.cmp(bb),
-        (Value::Number(na), Value::Number(nb)) => {
+        (&Value::Null, &Value::Null) => std::cmp::Ordering::Equal,
+        (&Value::Bool(ba), &Value::Bool(bb)) => ba.cmp(&bb),
+        (&Value::Number(ref na), &Value::Number(ref nb)) => {
             match (na.as_f64(), nb.as_f64()) {
                 (Some(fa), Some(fb)) => fa.partial_cmp(&fb).unwrap_or(std::cmp::Ordering::Equal),
                 _ => {
@@ -35,12 +39,15 @@ pub fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
                         (true, false) => std::cmp::Ordering::Less,
                         (false, true) => std::cmp::Ordering::Greater,
                         _ => {
-                            let (sa_num, sb_num, negative) = if sa.starts_with('-') {
-                                (&sa[1 ..], &sb[1 ..], true)
-                            }
-                            else {
-                                (sa.as_str(), sb.as_str(), false)
-                            };
+                            let (sa_num, sb_num, negative) =
+                                sa.strip_prefix('-')
+                                    .map_or((sa.as_str(), sb.as_str(), false), |sa_stripped| {
+                                        (
+                                            sa_stripped,
+                                            sb.strip_prefix('-').unwrap_or(sb.as_str()),
+                                            true,
+                                        )
+                                    });
                             let len_cmp = sa_num.len().cmp(&sb_num.len());
                             if len_cmp == std::cmp::Ordering::Equal {
                                 let cmp = sa_num.cmp(sb_num);
@@ -62,10 +69,10 @@ pub fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
                 },
             }
         },
-        (Value::String(sa), Value::String(sb)) => sa.cmp(sb),
-        (Value::Array(aa), Value::Array(ab)) => aa.len().cmp(&ab.len()),
-        (Value::Object(oa), Value::Object(ob)) => oa.len().cmp(&ob.len()),
-        _ => unreachable!(),
+        (&Value::String(ref sa), &Value::String(ref sb)) => sa.cmp(sb),
+        (&Value::Array(ref aa), &Value::Array(ref ab)) => aa.len().cmp(&ab.len()),
+        (&Value::Object(ref oa), &Value::Object(ref ob)) => oa.len().cmp(&ob.len()),
+        _ => std::cmp::Ordering::Equal,
     }
 }
 
