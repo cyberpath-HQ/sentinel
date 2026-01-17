@@ -1338,6 +1338,7 @@ dependencies = [
  "signature",
  "thiserror",
  "tracing",
+ "tracing-subscriber",
  "zeroize",
 ]
 
@@ -1360,6 +1361,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
