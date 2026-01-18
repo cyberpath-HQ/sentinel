@@ -147,13 +147,19 @@ impl Collection {
         // serialization failures that cannot realistically occur with valid Document structs.
         // Testing would require corrupting serde_json itself. Tarpaulin doesn't track map_err closures
         // properly.
+        #[allow(
+            unexpected_cfgs,
+            reason = "tarpaulin_include is set by code coverage tool"
+        )]
         let json = serde_json::to_string_pretty(&doc).map_err(|e| {
             #[cfg(not(tarpaulin_include))]
             error!("Failed to serialize document {} to JSON: {}", id, e);
             e
         })?;
-        // COVERAGE BYPASS: The error! call in map_err (lines 150-153) is defensive code for filesystem
-        // write failures. Testable but requires platform-specific permission manipulation unreliable in CI.
+        #[allow(
+            unexpected_cfgs,
+            reason = "tarpaulin_include is set by code coverage tool"
+        )]
         tokio_fs::write(&file_path, json).await.map_err(|e| {
             #[cfg(not(tarpaulin_include))]
             error!(
@@ -1354,12 +1360,15 @@ impl Collection {
     /// # Ok(())
     /// # }
     /// ```
-
     /// Merges two JSON values, with `new_value` taking precedence over `existing_value`.
     ///
     /// For objects, this performs a deep merge where fields from `new_value` override
     /// or add to fields in `existing_value`. For other types, `new_value` completely replaces
     /// `existing_value`.
+    #[allow(
+        clippy::pattern_type_mismatch,
+        reason = "false positive with serde_json::Value"
+    )]
     fn merge_json_values(existing_value: &Value, new_value: Value) -> Value {
         match (existing_value, &new_value) {
             (Value::Object(existing_map), Value::Object(new_map)) => {
@@ -1376,9 +1385,9 @@ impl Collection {
     /// Extracts a numeric value from a document field for aggregation operations.
     fn extract_numeric_value(doc: &Document, field: &str) -> Option<f64> {
         doc.data().get(field).and_then(|v| {
-            match v {
-                Value::Number(n) => n.as_f64(),
-                _ => None,
+            match *v {
+                Value::Number(ref n) => n.as_f64(),
+                Value::Null | Value::Bool(_) | Value::String(_) | Value::Array(_) | Value::Object(_) => None,
             }
         })
     }
@@ -1400,7 +1409,7 @@ impl Collection {
         let merged_data = Self::merge_json_values(existing_doc.data(), data);
 
         // Update the document data and metadata
-        if let Some(key) = &self.signing_key {
+        if let Some(key) = self.signing_key.as_ref() {
             existing_doc.set_data(merged_data, key).await?;
         }
         else {
@@ -1606,18 +1615,19 @@ impl Collection {
                 }
             }
 
-            count += 1;
+            count = count.saturating_add(1);
 
             // Extract value for field-based aggregations
             if let Aggregation::Sum(ref field) |
             Aggregation::Avg(ref field) |
             Aggregation::Min(ref field) |
-            Aggregation::Max(ref field) = aggregation
-                && let Some(value) = Self::extract_numeric_value(&doc, field) {
-                    sum += value;
-                    min = min.min(value);
-                    max = max.max(value);
-                }
+            Aggregation::Max(ref field) = aggregation &&
+                let Some(value) = Self::extract_numeric_value(&doc, field)
+            {
+                sum += value;
+                min = min.min(value);
+                max = max.max(value);
+            }
         }
 
         let result = match aggregation {
