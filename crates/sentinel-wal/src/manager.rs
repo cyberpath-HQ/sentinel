@@ -18,8 +18,8 @@ use crate::{LogEntry, Result};
 pub struct WalConfig {
     /// Optional maximum file size in bytes
     pub max_file_size:        Option<u64>,
-    /// Optional compression mode: true for size-optimized, false for performance-optimized
-    pub compression_mode:     Option<bool>,
+    /// Optional compression algorithm for rotated files
+    pub compression_algorithm: Option<crate::CompressionAlgorithm>,
     /// Optional maximum number of records per file
     pub max_records_per_file: Option<usize>,
 }
@@ -27,9 +27,9 @@ pub struct WalConfig {
 impl Default for WalConfig {
     fn default() -> Self {
         Self {
-            max_file_size:        None,
-            compression_mode:     None,
-            max_records_per_file: None,
+            max_file_size:         Some(10 * 1024 * 1024), // 10MB
+            compression_algorithm: Some(crate::CompressionAlgorithm::Zstd),
+            max_records_per_file:  Some(1000),
         }
     }
 }
@@ -105,6 +105,57 @@ impl WalManager {
         Ok(())
     }
 
+    /// Compress a WAL file using the specified algorithm
+    async fn compress_file(path: &PathBuf, alg: crate::CompressionAlgorithm) -> Result<()> {
+        let input = tokio::fs::File::open(&path).await?;
+        let compressed_path = match alg {
+            crate::CompressionAlgorithm::Zstd => path.with_extension("wal.zst"),
+            crate::CompressionAlgorithm::Lz4 => path.with_extension("wal.lz4"),
+            crate::CompressionAlgorithm::Brotli => path.with_extension("wal.br"),
+            crate::CompressionAlgorithm::Deflate => path.with_extension("wal.deflate"),
+            crate::CompressionAlgorithm::Gzip => path.with_extension("wal.gz"),
+        };
+        let output = tokio::fs::File::create(&compressed_path).await?;
+
+        match alg {
+            crate::CompressionAlgorithm::Zstd => {
+                use async_compression::tokio::bufread::ZstdEncoder;
+                let reader = tokio::io::BufReader::new(input);
+                let mut encoder = ZstdEncoder::new(reader);
+                tokio::io::copy(&mut encoder, &mut tokio::io::BufWriter::new(output)).await?;
+            }
+            crate::CompressionAlgorithm::Lz4 => {
+                use async_compression::tokio::bufread::Lz4Encoder;
+                let reader = tokio::io::BufReader::new(input);
+                let mut encoder = Lz4Encoder::new(reader);
+                tokio::io::copy(&mut encoder, &mut tokio::io::BufWriter::new(output)).await?;
+            }
+            crate::CompressionAlgorithm::Brotli => {
+                use async_compression::tokio::bufread::BrotliEncoder;
+                let reader = tokio::io::BufReader::new(input);
+                let mut encoder = BrotliEncoder::new(reader);
+                tokio::io::copy(&mut encoder, &mut tokio::io::BufWriter::new(output)).await?;
+            }
+            crate::CompressionAlgorithm::Deflate => {
+                use async_compression::tokio::bufread::DeflateEncoder;
+                let reader = tokio::io::BufReader::new(input);
+                let mut encoder = DeflateEncoder::new(reader);
+                tokio::io::copy(&mut encoder, &mut tokio::io::BufWriter::new(output)).await?;
+            }
+            crate::CompressionAlgorithm::Gzip => {
+                use async_compression::tokio::bufread::GzipEncoder;
+                let reader = tokio::io::BufReader::new(input);
+                let mut encoder = GzipEncoder::new(reader);
+                tokio::io::copy(&mut encoder, &mut tokio::io::BufWriter::new(output)).await?;
+            }
+        }
+
+        // Remove the original file after successful compression
+        tokio::fs::remove_file(&path).await?;
+        tracing::info!("Compressed WAL file {} to {}", path.display(), compressed_path.display());
+        Ok(())
+    }
+
     /// Rotate the WAL file if limits are reached
     async fn rotate(&self) -> Result<()> {
         info!("Rotating WAL file");
@@ -121,11 +172,12 @@ impl WalManager {
         tokio::fs::rename(&self.path, &new_path).await?;
 
         // If compression is enabled, compress asynchronously
-        if self.config.compression_mode.unwrap_or(false) {
+        if let Some(alg) = self.config.compression_algorithm {
             let path = new_path.clone();
             tokio::spawn(async move {
-                // TODO: Implement compression (e.g., using async-compression crate)
-                tracing::info!("Compression enabled, would compress {}", path.display());
+                if let Err(e) = compress_file(&path, alg).await {
+                    tracing::error!("Failed to compress WAL file {}: {}", path.display(), e);
+                }
             });
         }
 
