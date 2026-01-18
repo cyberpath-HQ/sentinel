@@ -365,9 +365,16 @@ impl Store {
             error!("Failed to read directory entry: {}", e);
             e
         })? {
-            let path = entry.path();
-            if path.is_dir() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if entry
+                .file_type()
+                .await
+                .map_err(|e| {
+                    error!("Failed to get file type for entry: {}", e);
+                    e
+                })?
+                .is_dir()
+            {
+                if let Some(name) = entry.file_name().to_str() {
                     collections.push(name.to_string());
                 }
             }
@@ -906,5 +913,72 @@ mod tests {
 
         // Verify directory was created
         assert!(tokio::fs::metadata(&new_path).await.unwrap().is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_delete_collection_non_existent() {
+        // Test lines 304-306: Deleting non-existent collection
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
+
+        // Delete collection that doesn't exist should succeed
+        let result = store.delete_collection("non_existent").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_delete_collection_success() {
+        // Test lines 310-312, 315-316: Successful collection deletion
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
+
+        // Create a collection
+        let _collection = store.collection("test_delete").await.unwrap();
+
+        // Verify it exists
+        let collections = store.list_collections().await.unwrap();
+        assert!(collections.contains(&"test_delete".to_string()));
+
+        // Delete it
+        store.delete_collection("test_delete").await.unwrap();
+
+        // Verify it's gone
+        let collections = store.list_collections().await.unwrap();
+        assert!(!collections.contains(&"test_delete".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_list_collections_creates_data_dir() {
+        // Test lines 352-354: list_collections creates data directory if needed
+        let temp_dir = tempdir().unwrap();
+        let new_path = temp_dir.path().join("new_store");
+        let store = Store::new(&new_path, None).await.unwrap();
+
+        // Data dir should be created when listing
+        let collections = store.list_collections().await.unwrap();
+        assert!(collections.is_empty());
+
+        // Verify data directory exists
+        let data_path = new_path.join("data");
+        assert!(tokio::fs::metadata(&data_path).await.unwrap().is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_list_collections_with_entries() {
+        // Test lines 363-366, 368-371, 376-377: Reading directory entries
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
+
+        // Create multiple collections
+        let _c1 = store.collection("collection1").await.unwrap();
+        let _c2 = store.collection("collection2").await.unwrap();
+        let _c3 = store.collection("collection3").await.unwrap();
+
+        // List and verify
+        let collections = store.list_collections().await.unwrap();
+        assert_eq!(collections.len(), 3);
+        assert!(collections.contains(&"collection1".to_string()));
+        assert!(collections.contains(&"collection2".to_string()));
+        assert!(collections.contains(&"collection3".to_string()));
     }
 }
