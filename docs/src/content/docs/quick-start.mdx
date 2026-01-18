@@ -436,6 +436,7 @@ Remove an entire collection and all its documents:
 
 ```rust
 use sentinel_dbms::Store;
+use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
