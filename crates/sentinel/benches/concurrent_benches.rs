@@ -2,7 +2,7 @@ use std::{hint::black_box, sync::Arc};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use sentinel_dbms::{Collection, Store};
-use serde_json::{json, Value};
+use serde_json::json;
 use tempfile::tempdir;
 use tokio::runtime::Runtime;
 
@@ -98,7 +98,7 @@ fn bench_mixed_concurrent_operations(c: &mut Criterion) {
                     let mut handles = vec![];
 
                     // Reader threads
-                    for thread_id in 0 .. 3 {
+                    for _thread_id in 0 .. 3 {
                         let coll = Arc::clone(&collection);
                         let handle = tokio::spawn(async move {
                             for i in 0 .. 200 {

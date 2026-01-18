@@ -31,11 +31,6 @@ fn bench_fuzzy_crypto_malformed_json(c: &mut Criterion) {
 }
 
 fn bench_fuzzy_crypto_invalid_keys(c: &mut Criterion) {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
     c.bench_function("fuzzy_crypto_invalid_keys", |b| {
         b.to_async(FuturesExecutor).iter(|| {
             async {
@@ -102,7 +97,7 @@ fn bench_fuzzy_crypto_corrupted_ciphertext(c: &mut Criterion) {
                 for i in 0 .. corrupted.len().min(20) {
                     let chars: Vec<char> = corrupted.chars().collect();
                     if i < chars.len() {
-                        let mut flipped = chars[i] as u8 ^ 0xff;
+                        let flipped = chars[i] as u8 ^ 0xff;
                         if flipped.is_ascii() {
                             corrupted =
                                 corrupted[.. i].to_string() + &(flipped as char).to_string() + &corrupted[i + 1 ..];
