@@ -3,6 +3,7 @@
 use chrono::Utc;
 use crc32fast::Hasher as Crc32Hasher;
 use serde::{Deserialize, Serialize};
+use tracing::trace;
 
 use crate::{Result, WalError};
 
@@ -109,7 +110,7 @@ impl From<&[u8]> for FixedBytes256 {
 }
 
 /// Types of WAL entries
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EntryType {
     /// Begin a transaction
     Begin,
@@ -174,6 +175,11 @@ impl LogEntry {
         bytes.extend_from_slice(&serialized);
         bytes.extend_from_slice(&checksum.to_le_bytes());
 
+        trace!(
+            "Serialized entry to {} bytes (entry_type: {:?})",
+            bytes.len(),
+            self.entry_type
+        );
         Ok(bytes)
     }
 
@@ -198,6 +204,94 @@ impl LogEntry {
 
         let entry: LogEntry =
             postcard::from_bytes(data).map_err(|e: postcard::Error| WalError::Serialization(e.to_string()))?;
+        trace!(
+            "Deserialized binary entry (entry_type: {:?})",
+            entry.entry_type
+        );
+        Ok(entry)
+    }
+
+    /// Serialize the entry to JSON format
+    pub fn to_json(&self) -> Result<String> {
+        let json_value = serde_json::json!({
+            "entry_type": self.entry_type,
+            "transaction_id": self.transaction_id_str(),
+            "collection": self.collection_str(),
+            "document_id": self.document_id_str(),
+            "timestamp": self.timestamp,
+            "data": self.data
+        });
+        let json_str = serde_json::to_string(&json_value)
+            .map_err(|e| WalError::Serialization(format!("JSON serialization error: {}", e)))?;
+        trace!(
+            "Serialized entry to JSON (entry_type: {:?})",
+            self.entry_type
+        );
+        Ok(json_str)
+    }
+
+    /// Deserialize from JSON format
+    pub fn from_json(json_str: &str) -> Result<Self> {
+        let json_value: serde_json::Value = serde_json::from_str(json_str)
+            .map_err(|e| WalError::Serialization(format!("JSON parsing error: {}", e)))?;
+
+        let entry_type = match json_value.get("entry_type") {
+            Some(v) => {
+                serde_json::from_value(v.clone())
+                    .map_err(|e| WalError::Serialization(format!("Invalid entry_type: {}", e)))?
+            },
+            None => return Err(WalError::InvalidEntry("Missing entry_type".to_string())),
+        };
+
+        let transaction_id = match json_value.get("transaction_id") {
+            Some(v) => {
+                v.as_str()
+                    .ok_or_else(|| WalError::InvalidEntry("transaction_id must be string".to_string()))?
+            },
+            None => return Err(WalError::InvalidEntry("Missing transaction_id".to_string())),
+        };
+
+        let collection = match json_value.get("collection") {
+            Some(v) => {
+                v.as_str()
+                    .ok_or_else(|| WalError::InvalidEntry("collection must be string".to_string()))?
+            },
+            None => return Err(WalError::InvalidEntry("Missing collection".to_string())),
+        };
+
+        let document_id = match json_value.get("document_id") {
+            Some(v) => {
+                v.as_str()
+                    .ok_or_else(|| WalError::InvalidEntry("document_id must be string".to_string()))?
+            },
+            None => return Err(WalError::InvalidEntry("Missing document_id".to_string())),
+        };
+
+        let timestamp = match json_value.get("timestamp") {
+            Some(v) => {
+                v.as_u64()
+                    .ok_or_else(|| WalError::InvalidEntry("timestamp must be number".to_string()))?
+            },
+            None => return Err(WalError::InvalidEntry("Missing timestamp".to_string())),
+        };
+
+        let data = json_value
+            .get("data")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let entry = LogEntry {
+            entry_type,
+            transaction_id: FixedBytes32::from(transaction_id.as_bytes()),
+            collection: FixedBytes256::from(collection.as_bytes()),
+            document_id: FixedBytes256::from(document_id.as_bytes()),
+            timestamp,
+            data,
+        };
+        trace!(
+            "Deserialized JSON entry (entry_type: {:?})",
+            entry.entry_type
+        );
         Ok(entry)
     }
 
