@@ -558,7 +558,7 @@ async fn safe_operation(store: &Store) {
         Ok(collection) => {
             info!("Collection accessed successfully");
         }
-        Err(SentinelError::PermissionDenied { .. }) => {
+        Err(SentinelError::Io { source }) if source.kind() == std::io::ErrorKind::PermissionDenied => {
             error!("Permission denied accessing collection");
             // Critical: user intervention needed
         }
