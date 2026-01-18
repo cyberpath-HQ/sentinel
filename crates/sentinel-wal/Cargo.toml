@@ -25,6 +25,7 @@ chrono = { version = "0.4.43", features = ["serde"] }
 tracing = "0.1.44"
 async-trait = "0.1.89"
 cuid2 = "0.1.4"
+async-compression = { version = "0.4.37", features = ["tokio", "zstd", "lz4", "brotli", "deflate", "gzip"] }
 futures = "0.3.31"
 async-stream = "0.3.6"
 
