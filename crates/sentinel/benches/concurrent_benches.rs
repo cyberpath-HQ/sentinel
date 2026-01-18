@@ -98,11 +98,13 @@ fn bench_mixed_concurrent_operations(c: &mut Criterion) {
                     let mut handles = vec![];
 
                     // Reader threads
-                    for _thread_id in 0 .. 3 {
+                    for thread_id in 0 .. 3 {
                         let coll = Arc::clone(&collection);
                         let handle = tokio::spawn(async move {
-                            for i in 0 .. 200 {
-                                let doc_id = format!("doc_{}", i % 500);
+                            let start = 200 + thread_id * 100;
+                            let end = start + 100;
+                            for i in start .. end {
+                                let doc_id = format!("doc_{}", i);
                                 let doc = coll.get(&doc_id).await.unwrap();
                                 black_box(doc);
                             }
@@ -132,11 +134,13 @@ fn bench_mixed_concurrent_operations(c: &mut Criterion) {
                     for thread_id in 0 .. 2 {
                         let coll = Arc::clone(&collection);
                         let handle = tokio::spawn(async move {
-                            for i in 0 .. 50 {
-                                let doc_id = format!("doc_{}", i % 500);
+                            let start = thread_id * 50;
+                            let end = start + 50;
+                            for i in start .. end {
+                                let doc_id = format!("doc_{}", i);
                                 let doc = json!({
-                                    "id": i % 500,
-                                    "value": (i % 500) * 100,
+                                    "id": i,
+                                    "value": i * 100,
                                     "thread": thread_id,
                                     "operation": "update"
                                 });
