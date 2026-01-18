@@ -372,6 +372,7 @@ For simple filtering, use closures with the `filter` method:
 ```rust
 use sentinel_dbms::Store;
 use futures::StreamExt;
+use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
