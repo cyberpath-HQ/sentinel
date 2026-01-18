@@ -94,7 +94,7 @@ impl QueryArgs {
 ///     store_path:       "/tmp/my_store".to_string(),
 ///     collection:       "users".to_string(),
 ///     passphrase:       None,
-///     verify_signature: true,
+///     verify_signature: false,
 ///     verify_hash:      true,
 ///     signature_mode:   "strict".to_string(),
 ///     hash_mode:        "strict".to_string(),
@@ -479,15 +479,19 @@ mod tests {
 
         // Test query command
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec!["city=NYC".to_string()],
-            sort:       Some("age:asc".to_string()),
-            limit:      Some(10),
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec!["city=NYC".to_string()],
+            sort:             Some("age:asc".to_string()),
+            limit:            Some(10),
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         let result = run(args).await;
@@ -506,15 +510,19 @@ mod tests {
 
         // Test query command on empty collection
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec![],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         let result = run(args).await;
@@ -539,15 +547,19 @@ mod tests {
 
         // Test query command with table format
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec![],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "table".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "table".to_string(),
         };
 
         let result = run(args).await;
@@ -566,15 +578,19 @@ mod tests {
 
         // Test query command with table format on empty collection
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec![],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "table".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "table".to_string(),
         };
 
         let result = run(args).await;
@@ -742,15 +758,19 @@ mod tests {
         let store_path = temp_dir.path().join("test_store");
 
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test".to_string(),
-            passphrase: None,
-            filter:     vec![],
-            sort:       Some("name:invalid".to_string()),
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             Some("name:invalid".to_string()),
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         // This should fail due to invalid sort order
@@ -779,15 +799,19 @@ mod tests {
 
         // Test query with greater than filter
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec!["age>25".to_string()],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec!["age>25".to_string()],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         let result = run(args).await;
@@ -816,15 +840,19 @@ mod tests {
 
         // Test query with less than filter
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec!["age<30".to_string()],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec!["age<30".to_string()],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         let result = run(args).await;
@@ -853,15 +881,19 @@ mod tests {
 
         // Test query with contains filter
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec!["name~Ali".to_string()],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec!["name~Ali".to_string()],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         let result = run(args).await;
@@ -890,15 +922,19 @@ mod tests {
 
         // Test query with starts with filter
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec!["name^Al".to_string()],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec!["name^Al".to_string()],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         let result = run(args).await;
@@ -927,15 +963,19 @@ mod tests {
 
         // Test query with ends with filter
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec!["name$ce".to_string()],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec!["name$ce".to_string()],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         let result = run(args).await;
@@ -968,15 +1008,19 @@ mod tests {
 
         // Test query with in filter
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec!["city in:NYC,LA".to_string()],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec!["city in:NYC,LA".to_string()],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         let result = run(args).await;
@@ -1008,15 +1052,19 @@ mod tests {
 
         // Test query with exists true filter
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec!["email exists:true".to_string()],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "json".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec!["email exists:true".to_string()],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
         };
 
         let result = run(args).await;
@@ -1041,15 +1089,19 @@ mod tests {
 
         // Test query with invalid format
         let args = QueryArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
-            filter:     vec![],
-            sort:       None,
-            limit:      None,
-            offset:     None,
-            project:    None,
-            format:     "invalid".to_string(),
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "invalid".to_string(),
         };
 
         let result = run(args).await;

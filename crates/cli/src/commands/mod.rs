@@ -545,7 +545,11 @@ mod tests {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
             id: "doc1".to_string(),
-            ..Default::default()
+            passphrase: None,
+            verify_signature: false,
+            verify_hash: false,
+            signature_mode: "strict".to_string(),
+            hash_mode: "strict".to_string(),
         };
         let cli = Cli {
             command:                  Commands::Get(args),

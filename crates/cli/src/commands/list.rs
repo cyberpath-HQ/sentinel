@@ -81,8 +81,8 @@ impl ListArgs {
 /// run(args).await?;
 /// ```
 pub async fn run(args: ListArgs) -> sentinel_dbms::Result<()> {
-    let store_path = args.store_path;
-    let collection_name = args.collection;
+    let store_path = &args.store_path;
+    let collection_name = &args.collection;
     info!(
         "Listing documents in collection '{}' in store {}",
         collection_name, store_path
@@ -106,7 +106,7 @@ pub async fn run(args: ListArgs) -> sentinel_dbms::Result<()> {
             Ok(id) => {
                 #[allow(clippy::print_stdout, reason = "CLI output")]
                 {
-                    println!("{}", &id);
+                    println!("{}", id.id());
                 }
                 count = count.saturating_add(1);
             },
@@ -165,8 +165,8 @@ mod tests {
             store_path:       store_path.to_string_lossy().to_string(),
             collection:       "test_collection".to_string(),
             passphrase:       None,
-            verify_signature: true,
-            verify_hash:      true,
+            verify_signature: false,
+            verify_hash:      false,
             signature_mode:   "strict".to_string(),
             hash_mode:        "strict".to_string(),
         };

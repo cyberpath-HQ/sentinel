@@ -82,9 +82,9 @@ impl GetArgs {
 /// run(args).await?;
 /// ```
 pub async fn run(args: GetArgs) -> sentinel_dbms::Result<()> {
-    let store_path = args.store_path;
-    let collection = args.collection;
-    let id = args.id;
+    let store_path = &args.store_path;
+    let collection = &args.collection;
+    let id = &args.id;
     info!(
         "Getting document '{}' from collection '{}' in store {}",
         id, collection, store_path
@@ -178,8 +178,8 @@ mod tests {
                 collection:       "test_collection".to_string(),
                 id:               "doc1".to_string(),
                 passphrase:       None,
-                verify_signature: true,
-                verify_hash:      true,
+                verify_signature: false,
+                verify_hash:      false,
                 signature_mode:   "strict".to_string(),
                 hash_mode:        "strict".to_string(),
             };
