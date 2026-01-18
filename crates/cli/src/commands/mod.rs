@@ -542,14 +542,14 @@ mod tests {
         run_command(create_cli).await.unwrap();
 
         let args = super::get::GetArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            passphrase: None,
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            id:               "doc1".to_string(),
+            passphrase:       None,
             verify_signature: false,
-            verify_hash: false,
-            signature_mode: "strict".to_string(),
-            hash_mode: "strict".to_string(),
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
         };
         let cli = Cli {
             command:                  Commands::Get(args),
