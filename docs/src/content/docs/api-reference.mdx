@@ -667,7 +667,7 @@ pub struct CryptoConfig {
 ### Setting Global Config
 
 ```rust
-pub fn set_global_crypto_config(
+pub async fn set_global_crypto_config(
     config: CryptoConfig
 ) -> Result<(), CryptoError>
 ```
