@@ -112,9 +112,10 @@ mod tests {
     /// Test WAL checkpoint functionality.
     ///
     /// This test verifies:
-    /// - Checkpoint truncates the WAL file
-    /// - File size is reset to zero after checkpoint
+    /// - Checkpoint flushes WAL entries to disk
+    /// - File size remains unchanged (entries preserved)
     /// - WAL remains functional after checkpoint
+    /// - Checkpoint creates a durable recovery point
     #[tokio::test]
     async fn test_wal_checkpoint() {
         let temp_dir = tempdir().unwrap();
@@ -133,11 +134,20 @@ mod tests {
 
         wal.write_entry(entry).await.unwrap();
 
-        assert!(wal.size().await.unwrap() > 0);
+        let size_before_checkpoint = wal.size().await.unwrap();
+        assert!(size_before_checkpoint > 0);
 
         wal.checkpoint().await.unwrap();
 
-        assert_eq!(wal.size().await.unwrap(), 0);
+        // File size should remain the same (entries preserved)
+        let size_after_checkpoint = wal.size().await.unwrap();
+        assert_eq!(size_before_checkpoint, size_after_checkpoint);
+
+        // Verify entries can still be read after checkpoint
+        let entries = wal.read_all_entries().await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].collection_str(), "users");
+        assert_eq!(entries[0].document_id_str(), "user-123");
     }
 
     /// Test WAL file format demonstration.
