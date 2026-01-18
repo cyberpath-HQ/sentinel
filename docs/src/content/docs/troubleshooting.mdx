@@ -205,7 +205,8 @@ let store = Store::new("./my_store", None).await?;
 use sentinel_dbms::{CryptoConfig, set_global_crypto_config};
 
 // Set config once at application startup
-fn main() {
+#[tokio::main]
+async fn main() {
     let config = CryptoConfig {
         hash_algorithm: HashAlgorithmChoice::Blake3,
         signature_algorithm: SignatureAlgorithmChoice::Ed25519,
@@ -214,7 +215,7 @@ fn main() {
     };
 
     // Only call once
-    if let Err(e) = set_global_crypto_config(config) {
+    if let Err(e) = set_global_crypto_config(config).await {
         eprintln!("Config already set: {}", e);
     }
 }
