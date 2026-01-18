@@ -390,6 +390,7 @@ Use `all_with_verification()` for custom verification options:
 
 ```rust
 use sentinel_dbms::{Store, VerificationOptions};
+use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
