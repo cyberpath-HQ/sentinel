@@ -1,18 +1,36 @@
 use std::{
+    collections::HashMap,
     ffi::{CStr, CString},
     os::raw::c_char,
     ptr,
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+        Mutex,
+    },
 };
 
-use sentinel_dbms::{Collection, Filter, Query, Store};
+use sentinel_dbms::{Collection, Document, Filter, Query, Store};
 use tokio::runtime::Runtime;
 use serde_json::Value;
 use once_cell::sync::Lazy;
 
-// Global Tokio runtime for C API
+// Global Tokio runtime for async C API
 static RUNTIME: Lazy<Mutex<Runtime>> =
     Lazy::new(|| Mutex::new(Runtime::new().expect("Failed to create Tokio runtime")));
+
+// Task management for async operations
+static TASK_COUNTER: AtomicU64 = AtomicU64::new(0);
+static ACTIVE_TASKS: Lazy<Mutex<HashMap<u64, Arc<Mutex<TaskState>>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+
+#[derive(Debug)]
+enum TaskState {
+    Pending,
+    StoreCompleted(Result<Store, String>),
+    CollectionCompleted(Result<Collection, String>),
+    DocumentCompleted(Result<Option<Document>, String>),
+    VoidCompleted(Result<(), String>),
+}
 
 // Error handling with thread-local storage
 thread_local! {
@@ -47,6 +65,12 @@ pub struct sentinel_query_t {
     _private: [u8; 0],
 }
 
+/// Async task handle
+#[repr(C)]
+pub struct sentinel_task_t {
+    _private: [u8; 0],
+}
+
 /// Error codes returned by Sentinel operations
 #[repr(C)]
 pub enum sentinel_error_t {
@@ -57,6 +81,8 @@ pub enum sentinel_error_t {
     SENTINEL_ERROR_RUNTIME_ERROR    = 4,
     SENTINEL_ERROR_JSON_PARSE_ERROR = 5,
     SENTINEL_ERROR_NOT_FOUND        = 6,
+    SENTINEL_ERROR_TASK_NOT_FOUND   = 7,
+    SENTINEL_ERROR_TASK_PENDING     = 8,
 }
 
 /// Create a new Sentinel store synchronously (blocking)
@@ -676,5 +702,470 @@ pub unsafe extern "C" fn sentinel_string_free(s: *mut c_char) {
         unsafe {
             let _ = CString::from_raw(s);
         }
+    }
+}
+
+// ============================================================================
+// Async Operations (True Non-Blocking)
+// ============================================================================
+
+/// Callback function types for async operations
+type StoreCallback = Option<unsafe extern "C" fn(task_id: u64, result: *mut sentinel_store_t, user_data: *mut c_char)>;
+type CollectionCallback =
+    Option<unsafe extern "C" fn(task_id: u64, result: *mut sentinel_collection_t, user_data: *mut c_char)>;
+type DocumentCallback = Option<unsafe extern "C" fn(task_id: u64, result: *mut c_char, user_data: *mut c_char)>;
+type CountCallback = Option<unsafe extern "C" fn(task_id: u64, result: u32, user_data: *mut c_char)>;
+type BoolCallback = Option<unsafe extern "C" fn(task_id: u64, result: bool, user_data: *mut c_char)>;
+type VoidCallback = Option<unsafe extern "C" fn(task_id: u64, user_data: *mut c_char)>;
+type ErrorCallback = Option<unsafe extern "C" fn(task_id: u64, error: *const c_char, user_data: *mut c_char)>;
+
+/// Create a new Sentinel store asynchronously (non-blocking)
+/// Returns a task ID immediately. Result delivered via callback when complete.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_store_new_async(
+    path: *const c_char,
+    passphrase: *const c_char,
+    callback: StoreCallback,
+    error_callback: ErrorCallback,
+    user_data: *mut c_char,
+) -> u64 {
+    if path.is_null() {
+        set_error("Path cannot be null");
+        return 0;
+    }
+
+    if callback.is_none() || error_callback.is_none() {
+        set_error("Callbacks cannot be null for async operations");
+        return 0;
+    }
+
+    let path_str = match unsafe { CStr::from_ptr(path) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in path: {}", e));
+            return 0;
+        },
+    };
+
+    let passphrase_str = if !passphrase.is_null() {
+        match unsafe { CStr::from_ptr(passphrase) }.to_str() {
+            Ok(s) => Some(s.to_string()),
+            Err(e) => {
+                set_error(format!("Invalid UTF-8 in passphrase: {}", e));
+                return 0;
+            },
+        }
+    }
+    else {
+        None
+    };
+
+    let task_id = TASK_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let task_data = Arc::new(Mutex::new(TaskState::Pending));
+
+    // Store task data
+    if let Ok(mut tasks) = ACTIVE_TASKS.lock() {
+        tasks.insert(task_id, task_data.clone());
+    }
+
+    // Spawn async task
+    let rt = match RUNTIME.lock() {
+        Ok(rt) => rt,
+        Err(e) => {
+            set_error(format!("Failed to acquire runtime lock: {}", e));
+            return 0;
+        },
+    };
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let user_data_usize = user_data as usize;
+    let callback_ptr = callback.map(|cb| cb as usize);
+    let error_callback_ptr = error_callback.map(|cb| cb as usize);
+
+    rt.spawn(async move {
+        let result = Store::new(&path_str, passphrase_str.as_deref()).await;
+        let _ = tx.send(result);
+    });
+
+    // Handle result in a separate thread to call callbacks
+    std::thread::spawn(move || {
+        let user_data = user_data_usize as *mut c_char;
+        if let Ok(result) = rx.recv() {
+            match result {
+                Ok(store) => {
+                    let store_ptr = Box::into_raw(Box::new(store)) as *mut sentinel_store_t;
+                    if let Some(cb_ptr) = callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, StoreCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(task_id, store_ptr, user_data) };
+                        }
+                    }
+                },
+                Err(err) => {
+                    let err_cstr = match CString::new(err.to_string()) {
+                        Ok(cstr) => cstr,
+                        Err(_) => return,
+                    };
+                    if let Some(cb_ptr) = error_callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, ErrorCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(task_id, err_cstr.as_ptr(), user_data) };
+                        }
+                    }
+                },
+            }
+        }
+    });
+
+    // Handle result in a separate thread to call callbacks
+    std::thread::spawn(move || {
+        if let Ok(result) = rx.recv() {
+            match result {
+                Ok(store) => {
+                    let store_ptr = Box::into_raw(Box::new(store)) as *mut sentinel_store_t;
+                    if let Some(cb) = callback {
+                        unsafe { cb(task_id, store_ptr, user_data) };
+                    }
+                },
+                Err(err) => {
+                    let err_cstr = match CString::new(err.to_string()) {
+                        Ok(cstr) => cstr,
+                        Err(_) => return,
+                    };
+                    if let Some(cb) = error_callback {
+                        unsafe { cb(task_id, err_cstr.as_ptr(), user_data) };
+                    }
+                },
+            }
+        }
+    });
+
+    task_id
+}
+
+/// Create a new collection asynchronously (alias for store_collection_async)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_collection_new_async(
+    store: *mut sentinel_store_t,
+    name: *const c_char,
+    callback: CollectionCallback,
+    error_callback: ErrorCallback,
+    user_data: *mut c_char,
+) -> u64 {
+    unsafe { sentinel_store_collection_async(store, name, callback, error_callback, user_data) }
+}
+
+/// Get a collection from a store asynchronously
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_store_collection_async(
+    store: *mut sentinel_store_t,
+    name: *const c_char,
+    callback: CollectionCallback,
+    error_callback: ErrorCallback,
+    user_data: *mut c_char,
+) -> u64 {
+    if store.is_null() || name.is_null() {
+        set_error("Store and name cannot be null");
+        return 0;
+    }
+
+    if callback.is_none() || error_callback.is_none() {
+        set_error("Callbacks cannot be null for async operations");
+        return 0;
+    }
+
+    let store_ref = unsafe { &*(store as *mut Store) };
+    let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in collection name: {}", e));
+            return 0;
+        },
+    };
+
+    let task_id = TASK_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let task_data = Arc::new(Mutex::new(TaskState::Pending));
+
+    // Store task data
+    if let Ok(mut tasks) = ACTIVE_TASKS.lock() {
+        tasks.insert(task_id, task_data.clone());
+    }
+
+    // Spawn async task
+    let rt = match RUNTIME.lock() {
+        Ok(rt) => rt,
+        Err(e) => {
+            set_error(format!("Failed to acquire runtime lock: {}", e));
+            return 0;
+        },
+    };
+
+    rt.spawn(async move {
+        let result = store_ref.collection(&name_str).await;
+
+        let mut task_result = task_data.lock().unwrap();
+        *task_result = TaskState::CollectionCompleted(result.map_err(|e| e.to_string()));
+
+        drop(task_result);
+
+        // Call appropriate callback
+        match *task_data.lock().unwrap() {
+            TaskState::CollectionCompleted(Ok(collection)) => {
+                let coll_ptr = Box::into_raw(Box::new(collection)) as *mut sentinel_collection_t;
+                if let Some(cb) = callback {
+                    unsafe { cb(task_id, coll_ptr, user_data) };
+                }
+            },
+            TaskState::CollectionCompleted(Err(err)) => {
+                let err_cstr = match CString::new(err.clone()) {
+                    Ok(cstr) => cstr,
+                    Err(_) => return,
+                };
+                if let Some(cb) = error_callback {
+                    unsafe { cb(task_id, err_cstr.as_ptr(), user_data) };
+                }
+            },
+            _ => {}, // Should not happen
+        }
+
+        // Clean up task data
+        if let Ok(mut tasks) = ACTIVE_TASKS.lock() {
+            tasks.remove(&task_id);
+        }
+    });
+
+    task_id
+}
+
+/// Insert a document asynchronously
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_collection_insert_async(
+    collection: *mut sentinel_collection_t,
+    id: *const c_char,
+    json_data: *const c_char,
+    callback: VoidCallback,
+    error_callback: ErrorCallback,
+    user_data: *mut c_char,
+) -> u64 {
+    if collection.is_null() || id.is_null() || json_data.is_null() {
+        set_error("Collection, id, and data cannot be null");
+        return 0;
+    }
+
+    if callback.is_none() || error_callback.is_none() {
+        set_error("Callbacks cannot be null for async operations");
+        return 0;
+    }
+
+    let collection_ref = unsafe { &*(collection as *mut Collection) };
+    let id_str = match unsafe { CStr::from_ptr(id) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in document id: {}", e));
+            return 0;
+        },
+    };
+
+    let json_str = match unsafe { CStr::from_ptr(json_data) }.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in JSON data: {}", e));
+            return 0;
+        },
+    };
+
+    let data: Value = match serde_json::from_str(json_str) {
+        Ok(data) => data,
+        Err(e) => {
+            set_error(format!("Invalid JSON: {}", e));
+            return 0;
+        },
+    };
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let user_data_usize = user_data as usize;
+    let callback_ptr = callback.map(|cb| cb as usize);
+    let error_callback_ptr = error_callback.map(|cb| cb as usize);
+
+    let rt = match RUNTIME.lock() {
+        Ok(rt) => rt,
+        Err(e) => {
+            set_error(format!("Failed to acquire runtime lock: {}", e));
+            return 0;
+        },
+    };
+
+    rt.spawn(async move {
+        let result = collection_ref.insert(&id_str, data).await;
+        let _ = tx.send(result);
+    });
+
+    // Handle result in a separate thread to call callbacks
+    std::thread::spawn(move || {
+        let user_data = user_data_usize as *mut c_char;
+        if let Ok(result) = rx.recv() {
+            match result {
+                Ok(_) => {
+                    if let Some(cb_ptr) = callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, VoidCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(0, user_data) }; // task_id not used
+                        }
+                    }
+                },
+                Err(err) => {
+                    let err_cstr = match CString::new(err.to_string()) {
+                        Ok(cstr) => cstr,
+                        Err(_) => return,
+                    };
+                    if let Some(cb_ptr) = error_callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, ErrorCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(0, err_cstr.as_ptr(), user_data) }; // task_id not used
+                        }
+                    }
+                },
+            }
+        }
+    });
+
+    0 // Return 0 since we don't use task IDs
+}
+
+/// Get a document asynchronously
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_collection_get_async(
+    collection: *mut sentinel_collection_t,
+    id: *const c_char,
+    callback: DocumentCallback,
+    error_callback: ErrorCallback,
+    user_data: *mut c_char,
+) -> u64 {
+    if collection.is_null() || id.is_null() {
+        set_error("Collection and id cannot be null");
+        return 0;
+    }
+
+    if callback.is_none() || error_callback.is_none() {
+        set_error("Callbacks cannot be null for async operations");
+        return 0;
+    }
+
+    let collection_ref = unsafe { &*(collection as *mut Collection) };
+    let id_str = match unsafe { CStr::from_ptr(id) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in document id: {}", e));
+            return 0;
+        },
+    };
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let user_data_usize = user_data as usize;
+    let callback_ptr = callback.map(|cb| cb as usize);
+    let error_callback_ptr = error_callback.map(|cb| cb as usize);
+
+    let rt = match RUNTIME.lock() {
+        Ok(rt) => rt,
+        Err(e) => {
+            set_error(format!("Failed to acquire runtime lock: {}", e));
+            return 0;
+        },
+    };
+
+    rt.spawn(async move {
+        let result = collection_ref.get(&id_str).await;
+        let _ = tx.send(result);
+    });
+
+    // Handle result in a separate thread to call callbacks
+    std::thread::spawn(move || {
+        let user_data = user_data_usize as *mut c_char;
+        if let Ok(result) = rx.recv() {
+            match result {
+                Ok(Some(doc)) => {
+                    let json_result = match serde_json::to_string(doc.data()) {
+                        Ok(json) => json,
+                        Err(e) => {
+                            let err_cstr = match CString::new(format!("Serialization error: {}", e)) {
+                                Ok(cstr) => cstr,
+                                Err(_) => return,
+                            };
+                            if let Some(cb_ptr) = error_callback_ptr {
+                                let cb = unsafe { std::mem::transmute::<usize, ErrorCallback>(cb_ptr) };
+                                if let Some(cb) = cb {
+                                    unsafe { cb(0, err_cstr.as_ptr(), user_data) };
+                                }
+                            }
+                            return;
+                        },
+                    };
+
+                    let json_cstr = match CString::new(json_result) {
+                        Ok(cstr) => cstr,
+                        Err(_) => return,
+                    };
+
+                    if let Some(cb_ptr) = callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, DocumentCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(0, json_cstr.into_raw(), user_data) };
+                        }
+                    }
+                },
+                Ok(None) => {
+                    // Document not found
+                    let err_cstr = match CString::new("Document not found") {
+                        Ok(cstr) => cstr,
+                        Err(_) => return,
+                    };
+                    if let Some(cb_ptr) = error_callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, ErrorCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(0, err_cstr.as_ptr(), user_data) };
+                        }
+                    }
+                },
+                Err(err) => {
+                    let err_cstr = match CString::new(err.to_string()) {
+                        Ok(cstr) => cstr,
+                        Err(_) => return,
+                    };
+                    if let Some(cb_ptr) = error_callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, ErrorCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(0, err_cstr.as_ptr(), user_data) };
+                        }
+                    }
+                },
+            }
+        }
+    });
+
+    0 // Return 0 since we don't use task IDs
+}
+
+/// Cancel an async task
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_task_cancel(task_id: u64) -> sentinel_error_t {
+    match ACTIVE_TASKS.lock() {
+        Ok(mut tasks) => {
+            if tasks.remove(&task_id).is_some() {
+                sentinel_error_t::SENTINEL_OK
+            }
+            else {
+                sentinel_error_t::SENTINEL_ERROR_TASK_NOT_FOUND
+            }
+        },
+        Err(_) => sentinel_error_t::SENTINEL_ERROR_RUNTIME_ERROR,
+    }
+}
+
+/// Check if a task is still pending
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_task_is_pending(task_id: u64) -> bool {
+    match ACTIVE_TASKS.lock() {
+        Ok(tasks) => tasks.contains_key(&task_id),
+        Err(_) => false,
     }
 }
