@@ -1,6 +1,6 @@
 //! WAL manager for handling log operations
 
-use std::{path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use crc32fast::Hasher as Crc32Hasher;
 use tokio::{
@@ -79,19 +79,19 @@ impl WalManager {
         let bytes = entry.to_bytes()?;
         let entry_size = bytes.len() as u64;
 
-        // Check file size limit
+        // Check file size limit and rotate if needed
         if let Some(max_size) = self.config.max_file_size {
             let current_size = tokio::fs::metadata(&self.path).await?.len();
             if current_size + entry_size > max_size {
-                return Err(crate::WalError::FileSizeLimitExceeded.into());
+                self.rotate().await?;
             }
         }
 
-        // Check record limit
+        // Check record limit and rotate if needed
         if let Some(max_records) = self.config.max_records_per_file {
             let count = *self.entries_count.lock().await;
             if count >= max_records {
-                return Err(crate::WalError::RecordLimitExceeded.into());
+                self.rotate().await?;
             }
         }
 
@@ -105,17 +105,47 @@ impl WalManager {
         Ok(())
     }
 
-    /// Read all entries from the WAL (for recovery)
-    pub async fn read_all_entries(&self) -> Result<Vec<LogEntry>> {
-        info!("Reading all WAL entries for recovery");
+    /// Rotate the WAL file if limits are reached
+    async fn rotate(&self) -> Result<()> {
+        info!("Rotating WAL file");
 
-        let file = File::open(&self.path).await?;
-        let mut reader = BufReader::new(file);
+        // Close current file
+        drop(self.file.write().await);
 
+        // Rename current file to wal.{timestamp}.wal
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let new_path = self.path.with_extension(format!("{}.wal", timestamp));
+        tokio::fs::rename(&self.path, &new_path).await?;
+
+        // If compression is enabled, compress asynchronously
+        if self.config.compression_mode.unwrap_or(false) {
+            let path = new_path.clone();
+            tokio::spawn(async move {
+                // TODO: Implement compression (e.g., using async-compression crate)
+                tracing::info!("Compression enabled, would compress {}", path.display());
+            });
+        }
+
+        // Create new file
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(&self.path)
+            .await?;
+        *self.file.write().await = BufWriter::new(file);
+        *self.entries_count.lock().await = 0;
+
+        info!("WAL file rotated successfully");
+        Ok(())
+    }
+
+    /// Parse entries from a buffer
+    fn parse_entries_from_buffer(buffer: &[u8]) -> Result<Vec<LogEntry>> {
         let mut entries = Vec::new();
-        let mut buffer = Vec::new();
-        reader.read_to_end(&mut buffer).await?;
-
         let mut offset = 0;
         while offset < buffer.len() {
             // Find the next entry by checking checksums
@@ -154,10 +184,59 @@ impl WalManager {
                 break;
             }
         }
-
-        info!("Read {} WAL entries", entries.len());
-        *self.entries_count.lock().await = entries.len();
         Ok(entries)
+    }
+
+    /// Get all WAL files in the directory
+    fn get_wal_files(&self) -> Result<Vec<PathBuf>> {
+        let mut files = Vec::new();
+        if self.path.exists() {
+            files.push(self.path.clone());
+        }
+        if let Some(parent) = self.path.parent() {
+            let dir = fs::read_dir(parent)?;
+            for entry in dir {
+                let entry = entry?;
+                let path = entry.path();
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if file_name != self.path.file_name().unwrap().to_str().unwrap() &&
+                        file_name.starts_with("wal") &&
+                        file_name.ends_with(".wal")
+                    {
+                        files.push(path);
+                    }
+                }
+            }
+        }
+        files.sort_by(|a, b| {
+            if a == &self.path {
+                std::cmp::Ordering::Less
+            }
+            else if b == &self.path {
+                std::cmp::Ordering::Greater
+            }
+            else {
+                a.file_name().cmp(&b.file_name())
+            }
+        });
+        Ok(files)
+    }
+
+    /// Read all entries from the WAL (for recovery)
+    pub async fn read_all_entries(&self) -> Result<Vec<LogEntry>> {
+        info!("Reading all WAL entries for recovery");
+
+        let files = self.get_wal_files()?;
+        let mut all_entries = Vec::new();
+        for file_path in files {
+            let file = File::open(&file_path).await?;
+            let mut reader = BufReader::new(file);
+            let mut buffer = Vec::new();
+            reader.read_to_end(&mut buffer).await?;
+            all_entries.extend(Self::parse_entries_from_buffer(&buffer)?);
+        }
+        *self.entries_count.lock().await = all_entries.len();
+        Ok(all_entries)
     }
 
     /// Stream all entries from the WAL file
