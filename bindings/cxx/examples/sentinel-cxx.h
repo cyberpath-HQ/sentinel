@@ -10,9 +10,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-/**
- * Error codes returned by Sentinel operations
- */
 typedef enum sentinel_error_t {
     SENTINEL_OK = 0,
     SENTINEL_ERROR_NULL_POINTER = 1,
@@ -25,30 +22,18 @@ typedef enum sentinel_error_t {
     SENTINEL_ERROR_TASK_PENDING = 8,
 } sentinel_error_t;
 
-/**
- * Opaque handle to a Sentinel Store
- */
 typedef struct sentinel_store_t {
     uint8_t _private[0];
 } sentinel_store_t;
 
-/**
- * Opaque handle to a Sentinel Collection
- */
 typedef struct sentinel_collection_t {
     uint8_t _private[0];
 } sentinel_collection_t;
 
-/**
- * Opaque handle to a Sentinel Query
- */
 typedef struct sentinel_query_t {
     uint8_t _private[0];
 } sentinel_query_t;
 
-/**
- * Callback function types for async operations
- */
 typedef void (*StoreCallback)(uint64_t task_id, struct sentinel_store_t *result, char *user_data);
 
 typedef void (*ErrorCallback)(uint64_t task_id, const char *error, char *user_data);
@@ -65,151 +50,74 @@ typedef void (*BoolCallback)(uint64_t task_id, bool result, char *user_data);
 
 typedef void (*CountCallback)(uint64_t task_id, uint32_t result, char *user_data);
 
-/**
- * Opaque handle to a Sentinel Document
- */
 typedef struct sentinel_document_t {
     uint8_t _private[0];
 } sentinel_document_t;
 
-/**
- * Create a new Sentinel store synchronously (blocking)
- * Returns NULL on error, check sentinel_get_last_error() for details
- */
 struct sentinel_store_t *sentinel_store_new(const char *path, const char *passphrase);
 
-/**
- * Free a Sentinel store
- */
 void sentinel_store_free(struct sentinel_store_t *store);
 
-/**
- * Get a collection from the store
- * Returns NULL on error, check sentinel_get_last_error() for details
- */
 struct sentinel_collection_t *sentinel_store_collection(struct sentinel_store_t *store,
                                                         const char *name);
 
-/**
- * Delete a collection from the store
- */
 enum sentinel_error_t sentinel_store_delete_collection(struct sentinel_store_t *store,
                                                        const char *name);
 
-/**
- * List all collections in the store
- * Returns NULL on error, result is a JSON array string that must be freed
- */
 char *sentinel_store_list_collections(struct sentinel_store_t *store);
 
-/**
- * Free a Sentinel collection
- */
 void sentinel_collection_free(struct sentinel_collection_t *collection);
 
-/**
- * Insert a document into a collection
- */
 enum sentinel_error_t sentinel_collection_insert(struct sentinel_collection_t *collection,
                                                  const char *id,
                                                  const char *json_data);
 
-/**
- * Get a document by ID
- * Returns NULL if not found or on error, check sentinel_get_last_error() for details
- * Result is a JSON string that must be freed
- */
 char *sentinel_collection_get(struct sentinel_collection_t *collection, const char *id);
 
-/**
- * Delete a document by ID
- */
 enum sentinel_error_t sentinel_collection_delete(struct sentinel_collection_t *collection,
                                                  const char *id);
 
-/**
- * Get the count of documents in the collection
- */
 enum sentinel_error_t sentinel_collection_count(struct sentinel_collection_t *collection,
                                                 uint32_t *count);
 
-/**
- * Update a document
- */
 enum sentinel_error_t sentinel_collection_update(struct sentinel_collection_t *collection,
                                                  const char *id,
                                                  const char *json_data);
 
-/**
- * Upsert a document (insert or update)
- */
 enum sentinel_error_t sentinel_collection_upsert(struct sentinel_collection_t *collection,
                                                  const char *id,
                                                  const char *json_data,
                                                  bool *was_insert);
 
-/**
- * Create a new query with a simple filter
- * Returns NULL on error, check sentinel_get_last_error() for details
- */
 struct sentinel_query_t *sentinel_query_new_simple(const char *field, const char *value);
 
-/**
- * Free a query
- */
 void sentinel_query_free(struct sentinel_query_t *query);
 
-/**
- * Execute a query synchronously
- * Returns JSON array of matching documents, NULL on error
- * Check sentinel_get_last_error() for details
- */
 char *sentinel_collection_query(struct sentinel_collection_t *collection,
                                 struct sentinel_query_t *query);
 
-/**
- * Get the last error message as a C string
- * Returns NULL if no error occurred
- * The returned string must be freed with sentinel_string_free
- */
 char *sentinel_get_last_error(void);
 
-/**
- * Free a string returned by Sentinel functions
- */
 void sentinel_string_free(char *s);
 
-/**
- * Create a new Sentinel store asynchronously (non-blocking)
- * Returns a task ID immediately. Result delivered via callback when complete.
- */
 uint64_t sentinel_store_new_async(const char *path,
                                   const char *passphrase,
                                   StoreCallback callback,
                                   ErrorCallback error_callback,
                                   char *user_data);
 
-/**
- * Create a new collection asynchronously (alias for store_collection_async)
- */
 uint64_t sentinel_collection_new_async(struct sentinel_store_t *store,
                                        const char *name,
                                        CollectionCallback callback,
                                        ErrorCallback error_callback,
                                        char *user_data);
 
-/**
- * Get a collection from a store asynchronously
- */
 uint64_t sentinel_store_collection_async(struct sentinel_store_t *store,
                                          const char *name,
                                          CollectionCallback callback,
                                          ErrorCallback error_callback,
                                          char *user_data);
 
-/**
- * Insert a document asynchronously
- */
 uint64_t sentinel_collection_insert_async(struct sentinel_collection_t *collection,
                                           const char *id,
                                           const char *json_data,
@@ -217,18 +125,12 @@ uint64_t sentinel_collection_insert_async(struct sentinel_collection_t *collecti
                                           ErrorCallback error_callback,
                                           char *user_data);
 
-/**
- * Get a document asynchronously
- */
 uint64_t sentinel_collection_get_async(struct sentinel_collection_t *collection,
                                        const char *id,
                                        DocumentCallback callback,
                                        ErrorCallback error_callback,
                                        char *user_data);
 
-/**
- * Update a document asynchronously
- */
 uint64_t sentinel_collection_update_async(struct sentinel_collection_t *collection,
                                           const char *id,
                                           const char *json_data,
@@ -236,9 +138,6 @@ uint64_t sentinel_collection_update_async(struct sentinel_collection_t *collecti
                                           ErrorCallback error_callback,
                                           char *user_data);
 
-/**
- * Upsert a document asynchronously (insert or update)
- */
 uint64_t sentinel_collection_upsert_async(struct sentinel_collection_t *collection,
                                           const char *id,
                                           const char *json_data,
@@ -246,9 +145,6 @@ uint64_t sentinel_collection_upsert_async(struct sentinel_collection_t *collecti
                                           ErrorCallback error_callback,
                                           char *user_data);
 
-/**
- * Delete a document asynchronously
- */
 uint64_t sentinel_collection_delete_async(struct sentinel_collection_t *collection,
                                           const char *id,
                                           VoidCallback callback,
@@ -262,5 +158,59 @@ uint64_t sentinel_collection_count_async(struct sentinel_collection_t *collectio
                                          CountCallback callback,
                                          ErrorCallback error_callback,
                                          char *user_data);
+
+/**
+ * Create a new query builder
+ * Returns NULL on error
+ */
+struct sentinel_query_t *sentinel_query_builder_new(void);
+
+/**
+ * Add an equality filter to a query
+ * Returns 0 on success, error code on failure
+ */
+enum sentinel_error_t sentinel_query_builder_filter_equals(struct sentinel_query_t *query,
+                                                           const char *field,
+                                                           const char *json_value);
+
+/**
+ * Add a greater than filter to a query
+ */
+enum sentinel_error_t sentinel_query_builder_filter_greater_than(struct sentinel_query_t *query,
+                                                                 const char *field,
+                                                                 const char *json_value);
+
+/**
+ * Add a less than filter to a query
+ */
+enum sentinel_error_t sentinel_query_builder_filter_less_than(struct sentinel_query_t *query,
+                                                              const char *field,
+                                                              const char *json_value);
+
+/**
+ * Add a contains filter to a query (for string fields)
+ */
+enum sentinel_error_t sentinel_query_builder_filter_contains(struct sentinel_query_t *query,
+                                                             const char *field,
+                                                             const char *substring);
+
+/**
+ * Set sorting for a query
+ * order: 0 = ascending, 1 = descending
+ */
+enum sentinel_error_t sentinel_query_builder_sort(struct sentinel_query_t *query,
+                                                  const char *field,
+                                                  uint32_t order);
+
+/**
+ * Set limit for a query
+ */
+enum sentinel_error_t sentinel_query_builder_limit(struct sentinel_query_t *query, uint32_t limit);
+
+/**
+ * Set offset for a query (for pagination)
+ */
+enum sentinel_error_t sentinel_query_builder_offset(struct sentinel_query_t *query,
+                                                    uint32_t offset);
 
 #endif  /* SENTINEL_CXX_H */
