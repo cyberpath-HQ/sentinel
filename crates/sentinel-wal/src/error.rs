@@ -13,4 +13,8 @@ pub enum WalError {
     InvalidEntry(String),
     #[error("Checksum mismatch")]
     ChecksumMismatch,
+    #[error("File size limit exceeded")]
+    FileSizeLimitExceeded,
+    #[error("Record limit exceeded")]
+    RecordLimitExceeded,
 }
