@@ -9,8 +9,8 @@
 //! The WAL consists of log entries written to a binary file. Each entry contains:
 //! - Entry type (1 byte)
 //! - Transaction ID (32 bytes, fixed length, padded cuid2)
-//! - Collection name (256 bytes, fixed length, padded/truncated)
-//! - Document ID (256 bytes, fixed length, padded/truncated)
+//! - Collection name (variable, multiple of 16 bytes, max 256)
+//! - Document ID (variable, multiple of 16 bytes, max 256)
 //! - Timestamp (8 bytes, u64)
 //! - Data length (8 bytes)
 //! - Data (variable length, JSON string)
@@ -24,6 +24,7 @@
 //! - Checkpoint mechanism for log compaction
 //! - Crash recovery via log replay
 
+pub mod compression;
 pub mod entry;
 pub mod error;
 pub mod manager;
@@ -32,6 +33,7 @@ pub mod manager;
 pub use error::WalError;
 pub use entry::{EntryType, FixedBytes256, FixedBytes32, LogEntry};
 pub use manager::{WalConfig, WalManager};
+pub use compression::*;
 pub use postcard;
 pub use cuid2;
 
@@ -184,7 +186,9 @@ mod tests {
             }
             println!();
         }
-        tokio::fs::copy(&wal_path, "/home/ebalo/format_demo_backup.wal").await.unwrap();
+        tokio::fs::copy(&wal_path, "/home/ebalo/format_demo_backup.wal")
+            .await
+            .unwrap();
 
         // Verify we can read back the entries
         let read_entries = wal.read_all_entries().await.unwrap();
