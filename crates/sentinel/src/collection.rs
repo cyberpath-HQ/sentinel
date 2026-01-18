@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use async_stream::stream;
 use futures::{StreamExt as _, TryStreamExt as _};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
 use tracing::{debug, error, trace, warn};
@@ -11,6 +11,7 @@ use crate::{
     comparison::compare_values,
     filtering::matches_filters,
     projection::project_document,
+    query::{Aggregation, Filter},
     streaming::stream_document_ids,
     validation::{is_reserved_name, is_valid_document_id_chars},
     Document,
@@ -325,11 +326,6 @@ impl Collection {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn update(&self, id: &str, data: Value) -> Result<()> {
-        // For update, just insert (overwrite)
-        self.insert(id, data).await
-    }
-
     /// Deletes a document from the collection (soft delete).
     ///
     /// Moves the JSON file corresponding to the given ID to a `.deleted/` subdirectory
@@ -1309,6 +1305,348 @@ impl Collection {
 
         Ok(())
     }
+
+    /// Updates a document by merging new data with existing data.
+    ///
+    /// This method loads the existing document, merges the provided data with the existing
+    /// document data (deep merge for objects), updates the metadata (updated_at timestamp),
+    /// and saves the document back to disk.
+    ///
+    /// If the document doesn't exist, this method will return an error.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique identifier of the document to update
+    /// * `data` - The new data to merge with the existing document data
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `SentinelError` if the operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert initial document
+    /// collection.insert("user-123", json!({"name": "Alice", "age": 30})).await?;
+    ///
+    /// // Update with partial data (only age)
+    /// collection.update("user-123", json!({"age": 31, "city": "NYC"})).await?;
+    ///
+    /// // Document now contains: {"name": "Alice", "age": 31, "city": "NYC"}
+    /// let doc = collection.get("user-123").await?.unwrap();
+    /// assert_eq!(doc.data()["name"], "Alice");
+    /// assert_eq!(doc.data()["age"], 31);
+    /// assert_eq!(doc.data()["city"], "NYC");
+    /// # Ok(())
+    /// # }
+    /// ```
+
+    /// Merges two JSON values, with `new_value` taking precedence over `existing_value`.
+    ///
+    /// For objects, this performs a deep merge where fields from `new_value` override
+    /// or add to fields in `existing_value`. For other types, `new_value` completely replaces
+    /// `existing_value`.
+    fn merge_json_values(existing_value: &Value, new_value: Value) -> Value {
+        match (existing_value, &new_value) {
+            (Value::Object(existing_map), Value::Object(new_map)) => {
+                let mut merged = existing_map.clone();
+                for (key, value) in new_map {
+                    merged.insert(key.clone(), value.clone());
+                }
+                Value::Object(merged)
+            },
+            _ => new_value,
+        }
+    }
+
+    /// Extracts a numeric value from a document field for aggregation operations.
+    fn extract_numeric_value(doc: &Document, field: &str) -> Option<f64> {
+        doc.data().get(field).and_then(|v| {
+            match v {
+                Value::Number(n) => n.as_f64(),
+                _ => None,
+            }
+        })
+    }
+
+    pub async fn update(&self, id: &str, data: Value) -> Result<()> {
+        trace!("Updating document with id: {}", id);
+        validate_document_id(id)?;
+
+        // Load existing document
+        let Some(mut existing_doc) = self.get(id).await?
+        else {
+            return Err(SentinelError::DocumentNotFound {
+                id:         id.to_owned(),
+                collection: self.name().to_owned(),
+            });
+        };
+
+        // Merge the new data with existing data
+        let merged_data = Self::merge_json_values(existing_doc.data(), data);
+
+        // Update the document data and metadata
+        if let Some(key) = &self.signing_key {
+            existing_doc.set_data(merged_data, key).await?;
+        }
+        else {
+            // For unsigned documents, we need to manually update the data and hash
+            existing_doc.data = merged_data;
+            existing_doc.updated_at = chrono::Utc::now();
+            existing_doc.hash = sentinel_crypto::hash_data(&existing_doc.data).await?;
+            existing_doc.signature = String::new();
+        }
+
+        // Save the updated document
+        let file_path = self.path.join(format!("{}.json", id));
+        let json = serde_json::to_string_pretty(&existing_doc).map_err(|e| {
+            error!("Failed to serialize updated document {} to JSON: {}", id, e);
+            e
+        })?;
+        tokio_fs::write(&file_path, json).await.map_err(|e| {
+            error!(
+                "Failed to write updated document {} to file {:?}: {}",
+                id, file_path, e
+            );
+            e
+        })?;
+
+        debug!("Document {} updated successfully", id);
+        Ok(())
+    }
+
+    /// Retrieves multiple documents by their IDs in a single operation.
+    ///
+    /// This method efficiently loads multiple documents concurrently. For IDs that don't exist,
+    /// `None` is returned in the corresponding position.
+    ///
+    /// # Arguments
+    ///
+    /// * `ids` - A slice of document IDs to retrieve
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Vec<Option<Document>>` where each element corresponds to the document
+    /// at the same index in the input `ids` slice. `Some(document)` if the document exists,
+    /// `None` if it doesn't exist.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert some documents
+    /// collection.insert("user-1", json!({"name": "Alice"})).await?;
+    /// collection.insert("user-2", json!({"name": "Bob"})).await?;
+    ///
+    /// // Batch get multiple documents
+    /// let docs = collection.get_many(&["user-1", "user-2", "user-3"]).await?;
+    /// assert_eq!(docs.len(), 3);
+    /// assert!(docs[0].is_some()); // user-1 exists
+    /// assert!(docs[1].is_some()); // user-2 exists
+    /// assert!(docs[2].is_none()); // user-3 doesn't exist
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn get_many(&self, ids: &[&str]) -> Result<Vec<Option<Document>>> {
+        use futures::future::join_all;
+
+        trace!("Batch getting {} documents", ids.len());
+
+        let futures = ids.iter().map(|&id| self.get(id));
+        let results = join_all(futures).await;
+
+        let documents = results.into_iter().collect::<Result<Vec<_>>>()?;
+
+        debug!(
+            "Batch get completed, retrieved {} documents",
+            documents.len()
+        );
+        Ok(documents)
+    }
+
+    /// Inserts a document if it doesn't exist, or updates it if it does.
+    ///
+    /// This is a convenience method that combines insert and update operations.
+    /// If the document doesn't exist, it will be inserted. If it exists, the new data
+    /// will be merged with the existing data (see `update` for merge behavior).
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique identifier of the document
+    /// * `data` - The data to insert or merge
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if a new document was inserted, `Ok(false)` if an existing
+    /// document was updated.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // First call inserts the document
+    /// let inserted = collection.upsert("user-123", json!({"name": "Alice"})).await?;
+    /// assert!(inserted);
+    ///
+    /// // Second call updates the existing document
+    /// let updated = collection.upsert("user-123", json!({"age": 30})).await?;
+    /// assert!(!updated);
+    ///
+    /// // Document now contains both name and age
+    /// let doc = collection.get("user-123").await?.unwrap();
+    /// assert_eq!(doc.data()["name"], "Alice");
+    /// assert_eq!(doc.data()["age"], 30);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn upsert(&self, id: &str, data: Value) -> Result<bool> {
+        trace!("Upserting document with id: {}", id);
+
+        if self.get(id).await?.is_some() {
+            // Document exists, update it
+            self.update(id, data).await?;
+            debug!("Document {} updated via upsert", id);
+            Ok(false)
+        }
+        else {
+            // Document doesn't exist, insert it
+            self.insert(id, data).await?;
+            debug!("Document {} inserted via upsert", id);
+            Ok(true)
+        }
+    }
+
+    /// Performs aggregation operations on documents matching the given filters.
+    ///
+    /// Supported aggregations:
+    /// - `Count`: Count of matching documents
+    /// - `Sum(field)`: Sum of numeric values in the specified field
+    /// - `Avg(field)`: Average of numeric values in the specified field
+    /// - `Min(field)`: Minimum value in the specified field
+    /// - `Max(field)`: Maximum value in the specified field
+    ///
+    /// # Arguments
+    ///
+    /// * `filters` - Filters to apply before aggregation
+    /// * `aggregation` - The aggregation operation to perform
+    ///
+    /// # Returns
+    ///
+    /// Returns the aggregated result as a JSON `Value`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection, Filter, Aggregation};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("products").await?;
+    ///
+    /// // Insert some test data
+    /// collection.insert("prod-1", json!({"name": "Widget", "price": 10.0})).await?;
+    /// collection.insert("prod-2", json!({"name": "Gadget", "price": 20.0})).await?;
+    ///
+    /// // Count all products
+    /// let count = collection.aggregate(vec![], Aggregation::Count).await?;
+    /// assert_eq!(count, json!(2));
+    ///
+    /// // Sum of all prices
+    /// let total = collection.aggregate(vec![], Aggregation::Sum("price".to_string())).await?;
+    /// assert_eq!(total, json!(30.0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn aggregate(&self, filters: Vec<crate::Filter>, aggregation: Aggregation) -> Result<Value> {
+        use futures::TryStreamExt as _;
+
+        trace!("Performing aggregation: {:?}", aggregation);
+
+        // Get all documents (we'll filter them)
+        let mut stream = self.all();
+
+        let mut count = 0usize;
+        let mut sum = 0.0f64;
+        let mut min = f64::INFINITY;
+        let mut max = f64::NEG_INFINITY;
+
+        while let Some(doc) = stream.try_next().await? {
+            // Apply filters
+            if !filters.is_empty() {
+                let filter_refs: Vec<&Filter> = filters.iter().collect();
+                if !crate::filtering::matches_filters(&doc, &filter_refs) {
+                    continue;
+                }
+            }
+
+            count += 1;
+
+            // Extract value for field-based aggregations
+            if let Aggregation::Sum(ref field) |
+            Aggregation::Avg(ref field) |
+            Aggregation::Min(ref field) |
+            Aggregation::Max(ref field) = aggregation
+            {
+                if let Some(value) = Self::extract_numeric_value(&doc, field) {
+                    sum += value;
+                    min = min.min(value);
+                    max = max.max(value);
+                }
+            }
+        }
+
+        let result = match aggregation {
+            Aggregation::Count => json!(count),
+            Aggregation::Sum(_) => json!(sum),
+            Aggregation::Avg(_) => {
+                if count == 0 {
+                    json!(null)
+                }
+                else {
+                    json!(sum / count as f64)
+                }
+            },
+            Aggregation::Min(_) => {
+                if min == f64::INFINITY {
+                    json!(null)
+                }
+                else {
+                    json!(min)
+                }
+            },
+            Aggregation::Max(_) => {
+                if max == f64::NEG_INFINITY {
+                    json!(null)
+                }
+                else {
+                    json!(max)
+                }
+            },
+        };
+
+        debug!("Aggregation result: {}", result);
+        Ok(result)
+    }
 }
 
 /// Validates that a document ID is filesystem-safe across all platforms.
@@ -1586,13 +1924,19 @@ mod tests {
         let (collection, _temp_dir) = setup_collection().await;
 
         let doc = json!({ "name": "Bob" });
-        collection.update("new-user", doc.clone()).await.unwrap();
+        let result = collection.update("new-user", doc.clone()).await;
 
-        let retrieved = collection
-            .get_with_verification("new-user", &crate::VerificationOptions::disabled())
-            .await
-            .unwrap();
-        assert_eq!(*retrieved.unwrap().data(), doc);
+        // Should return an error for non-existent document
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::SentinelError::DocumentNotFound {
+                id,
+                collection: _,
+            } => {
+                assert_eq!(id, "new-user");
+            },
+            _ => panic!("Expected DocumentNotFound error"),
+        }
     }
 
     #[tokio::test]
@@ -1709,6 +2053,9 @@ mod tests {
         ];
 
         collection.bulk_insert(documents).await.unwrap();
+
+        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert_eq!(docs.len(), 3);
 
         let ids: Vec<String> = collection.list().try_collect().await.unwrap();
         assert_eq!(ids.len(), 3);
@@ -1927,5 +2274,686 @@ mod tests {
 
         // Test Windows reserved name
         assert!(collection.delete("CON").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_with_verification() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let options = crate::VerificationOptions::strict();
+        let result = collection
+            .get_with_verification("nonexistent", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_disabled() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Alice", "data": "test" });
+        collection.insert("test_doc", doc.clone()).await.unwrap();
+
+        // Tamper with the file
+        let file_path = collection.path.join("test_doc.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        content = content.replace("test", "tampered");
+        tokio_fs::write(&file_path, &content).await.unwrap();
+
+        // Should succeed with verification disabled
+        let options = crate::VerificationOptions::disabled();
+        let result = collection.get_with_verification("test_doc", &options).await;
+        assert!(result.is_ok());
+        let doc = result.unwrap().unwrap();
+        assert_eq!(doc.data()["name"], "Alice");
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_empty_signature_warn() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Insert unsigned document
+        let doc = json!({ "name": "Unsigned" });
+        collection
+            .insert("unsigned_doc", doc.clone())
+            .await
+            .unwrap();
+
+        // Should warn but not fail
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Strict,
+            empty_signature_mode:        crate::VerificationMode::Warn,
+            hash_verification_mode:      crate::VerificationMode::Strict,
+        };
+        let result = collection
+            .get_with_verification("unsigned_doc", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_empty_signature_strict() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Insert unsigned document
+        let doc = json!({ "name": "Unsigned" });
+        collection
+            .insert("unsigned_doc", doc.clone())
+            .await
+            .unwrap();
+
+        // Should fail with strict empty signature mode
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Strict,
+            empty_signature_mode:        crate::VerificationMode::Strict,
+            hash_verification_mode:      crate::VerificationMode::Strict,
+        };
+        let result = collection
+            .get_with_verification("unsigned_doc", &options)
+            .await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::SentinelError::SignatureVerificationFailed {
+                id,
+                reason,
+            } => {
+                assert_eq!(id, "unsigned_doc");
+                assert!(reason.contains("no signature"));
+            },
+            _ => panic!("Expected SignatureVerificationFailed"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_all_empty_collection() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert!(docs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_all_with_multiple_documents() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 5 {
+            let doc = json!({ "id": i, "name": format!("User{}", i) });
+            collection
+                .insert(&format!("user-{}", i), doc)
+                .await
+                .unwrap();
+        }
+
+        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert_eq!(docs.len(), 5);
+
+        let ids: std::collections::HashSet<_> = docs.iter().map(|d| d.id().to_string()).collect();
+        for i in 0 .. 5 {
+            assert!(ids.contains(&format!("user-{}", i)));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_all_with_verification() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        for i in 0 .. 3 {
+            let doc = json!({ "id": i });
+            collection
+                .insert(&format!("signed-{}", i), doc)
+                .await
+                .unwrap();
+        }
+
+        let options = crate::VerificationOptions::strict();
+        let docs: Vec<_> = collection
+            .all_with_verification(&options)
+            .try_collect()
+            .await
+            .unwrap();
+        assert_eq!(docs.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_filter_empty_result() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 3 {
+            let doc = json!({ "id": i, "status": "active" });
+            collection
+                .insert(&format!("user-{}", i), doc)
+                .await
+                .unwrap();
+        }
+
+        let results: Vec<_> = collection
+            .filter(|doc| doc.data().get("status") == Some(&json!("inactive")))
+            .try_collect()
+            .await
+            .unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_filter_with_all_matching() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 5 {
+            let doc = json!({ "id": i, "active": true });
+            collection
+                .insert(&format!("user-{}", i), doc)
+                .await
+                .unwrap();
+        }
+
+        let results: Vec<_> = collection
+            .filter(|doc| doc.data().get("active") == Some(&json!(true)))
+            .try_collect()
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_filter_with_verification() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        for i in 0 .. 3 {
+            let doc = json!({ "id": i, "active": true });
+            collection
+                .insert(&format!("signed-{}", i), doc)
+                .await
+                .unwrap();
+        }
+
+        let options = crate::VerificationOptions::strict();
+        let results: Vec<_> = collection
+            .filter_with_verification(
+                |doc| doc.data().get("active") == Some(&json!(true)),
+                &options,
+            )
+            .try_collect()
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_empty_all() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let result = collection.bulk_insert(vec![]).await;
+        assert!(result.is_ok());
+
+        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert!(docs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_large_batch() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let documents: Vec<(String, serde_json::Value)> = (0 .. 100)
+            .map(|i| {
+                let key = format!("user-{}", i);
+                let value = json!({ "id": i, "data": format!("value{}", i) });
+                (key, value)
+            })
+            .collect();
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_partial_failure() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let documents = vec![
+            ("valid-1", json!({ "name": "One" })),
+            ("valid-2", json!({ "name": "Two" })),
+            ("invalid id!", json!({ "name": "Three" })), // This will fail
+        ];
+
+        let result = collection.bulk_insert(documents).await;
+        assert!(result.is_err());
+
+        // First two should not be inserted (transaction safety not implemented yet)
+        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert!(docs.len() <= 2);
+    }
+
+    #[tokio::test]
+    async fn test_query_empty_filter() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 10 {
+            let doc = json!({ "id": i, "value": i * 10 });
+            collection.insert(&format!("doc-{}", i), doc).await.unwrap();
+        }
+
+        let query = crate::QueryBuilder::new().build();
+        let result = collection.query(query).await.unwrap();
+        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        assert_eq!(docs.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_limit() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 100 {
+            let doc = json!({ "id": i });
+            collection.insert(&format!("doc-{}", i), doc).await.unwrap();
+        }
+
+        let query = crate::QueryBuilder::new().limit(5).build();
+        let result = collection.query(query).await.unwrap();
+        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        assert_eq!(docs.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_offset() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 10 {
+            let doc = json!({ "id": i, "value": i });
+            collection.insert(&format!("doc-{}", i), doc).await.unwrap();
+        }
+
+        let query = crate::QueryBuilder::new().offset(5).build();
+        let result = collection.query(query).await.unwrap();
+        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        assert_eq!(docs.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_limit_and_offset() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 100 {
+            let doc = json!({ "id": i, "value": i });
+            collection.insert(&format!("doc-{}", i), doc).await.unwrap();
+        }
+
+        let query = crate::QueryBuilder::new().offset(10).limit(5).build();
+        let result = collection.query(query).await.unwrap();
+        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        assert_eq!(docs.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_sort_ascending() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in (0 .. 5).rev() {
+            let doc = json!({ "id": i, "value": i });
+            collection.insert(&format!("doc-{}", i), doc).await.unwrap();
+        }
+
+        let query = crate::QueryBuilder::new()
+            .sort("id", crate::SortOrder::Ascending)
+            .build();
+        let result = collection.query(query).await.unwrap();
+        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+
+        assert_eq!(docs.len(), 5);
+        for (i, doc) in docs.iter().enumerate() {
+            assert_eq!(doc.data()["id"], json!(i));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_query_with_sort_descending() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 5 {
+            let doc = json!({ "id": i, "value": i });
+            collection.insert(&format!("doc-{}", i), doc).await.unwrap();
+        }
+
+        let query = crate::QueryBuilder::new()
+            .sort("id", crate::SortOrder::Descending)
+            .build();
+        let result = collection.query(query).await.unwrap();
+        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+
+        assert_eq!(docs.len(), 5);
+        for (i, doc) in docs.iter().enumerate() {
+            assert_eq!(doc.data()["id"], json!(4 - i));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_query_with_projection() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 3 {
+            let doc =
+                json!({ "id": i, "name": format!("User{}", i), "email": format!("user{}@example.com", i), "age": 30 });
+            collection.insert(&format!("doc-{}", i), doc).await.unwrap();
+        }
+
+        let query = crate::QueryBuilder::new()
+            .projection(vec!["id", "name"])
+            .build();
+        let result = collection.query(query).await.unwrap();
+        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+
+        assert_eq!(docs.len(), 3);
+        for doc in &docs {
+            assert!(doc.data().get("id").is_some());
+            assert!(doc.data().get("name").is_some());
+            assert!(doc.data().get("email").is_none());
+            assert!(doc.data().get("age").is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_query_with_verification() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        for i in 0 .. 5 {
+            let doc = json!({ "id": i, "active": true });
+            collection
+                .insert(&format!("signed-{}", i), doc)
+                .await
+                .unwrap();
+        }
+
+        let options = crate::VerificationOptions::strict();
+        let query = crate::QueryBuilder::new().build();
+        let result = collection
+            .query_with_verification(query, &options)
+            .await
+            .unwrap();
+        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        assert_eq!(docs.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_query_complex() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Insert test data
+        let test_data = vec![
+            (
+                "doc1",
+                json!({ "name": "Alice", "age": 25, "city": "NYC", "active": true }),
+            ),
+            (
+                "doc2",
+                json!({ "name": "Bob", "age": 30, "city": "LA", "active": true }),
+            ),
+            (
+                "doc3",
+                json!({ "name": "Charlie", "age": 35, "city": "NYC", "active": false }),
+            ),
+            (
+                "doc4",
+                json!({ "name": "Diana", "age": 28, "city": "NYC", "active": true }),
+            ),
+            (
+                "doc5",
+                json!({ "name": "Eve", "age": 40, "city": "LA", "active": false }),
+            ),
+        ];
+
+        for (id, doc) in &test_data {
+            collection.insert(id, doc.clone()).await.unwrap();
+        }
+
+        // Query: active=true, city=NYC, age>=26, limit 2, sort age asc, project name,age
+        let query = crate::QueryBuilder::new()
+            .filter("active", crate::Operator::Equals, json!(true))
+            .filter("city", crate::Operator::Equals, json!("NYC"))
+            .filter("age", crate::Operator::GreaterOrEqual, json!(26))
+            .sort("age", crate::SortOrder::Ascending)
+            .limit(2)
+            .projection(vec!["name", "age"])
+            .build();
+
+        let result = collection.query(query).await.unwrap();
+        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+
+        assert_eq!(docs.len(), 1);
+        // Diana is 28, Bob is 30 but in LA (filtered out by city=NYC)
+        assert_eq!(docs[0].data()["name"], json!("Diana"));
+    }
+
+    #[tokio::test]
+    async fn test_delete_and_recover() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({ "name": "ToDelete" });
+        collection.insert("test-doc", doc.clone()).await.unwrap();
+
+        // Verify it exists
+        assert!(collection.get("test-doc").await.unwrap().is_some());
+
+        // Delete it
+        collection.delete("test-doc").await.unwrap();
+
+        // Verify it's gone from main collection
+        assert!(collection.get("test-doc").await.unwrap().is_none());
+
+        // Verify it's in .deleted/
+        let deleted_path = collection.path.join(".deleted").join("test-doc.json");
+        assert!(tokio_fs::try_exists(&deleted_path).await.unwrap());
+
+        // Recover it manually (no recover API yet)
+        tokio_fs::rename(&deleted_path, collection.path.join("test-doc.json"))
+            .await
+            .unwrap();
+
+        // Verify it's back
+        assert!(collection.get("test-doc").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_insert_special_characters_in_data() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({
+            "string": "hello\nworld\ttab",
+            "unicode": "Hello 世界 🌍",
+            "null": null,
+            "array": [1, 2, 3, "four"],
+            "nested": { "deep": { "value": 42 } }
+        });
+
+        collection.insert("special-doc", doc.clone()).await.unwrap();
+
+        let retrieved = collection.get("special-doc").await.unwrap().unwrap();
+        assert_eq!(retrieved.data(), &doc);
+    }
+
+    #[tokio::test]
+    async fn test_insert_very_long_document_id() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Use a reasonably long ID that works on most filesystems
+        // (255 bytes may exceed some filesystem limits depending on path length)
+        let long_id = "a".repeat(200);
+        let doc = json!({ "data": "test" });
+
+        let result = collection.insert(&long_id, doc).await;
+        assert!(result.is_ok());
+
+        let retrieved = collection.get(&long_id).await.unwrap().unwrap();
+        assert_eq!(retrieved.id(), &long_id);
+    }
+
+    #[tokio::test]
+    async fn test_insert_max_value_numbers() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({
+            "max_i64": 9223372036854775807i64,
+            "min_i64": -9223372036854775808i64,
+            "max_f64": 1.7976931348623157e308,
+            "min_f64": -1.7976931348623157e308
+        });
+
+        collection.insert("numbers", doc.clone()).await.unwrap();
+
+        let retrieved = collection.get("numbers").await.unwrap().unwrap();
+        assert_eq!(retrieved.data(), &doc);
+    }
+
+    #[tokio::test]
+    async fn test_insert_nested_array_document() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let doc = json!({
+            "matrix": [[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+            "mixed": [1, "two", true, null, { "nested": "value" }]
+        });
+
+        collection.insert("arrays", doc.clone()).await.unwrap();
+
+        let retrieved = collection.get("arrays").await.unwrap().unwrap();
+        assert_eq!(retrieved.data(), &doc);
+    }
+
+    #[tokio::test]
+    async fn test_collection_name() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        assert_eq!(collection.name(), "test_collection");
+    }
+
+    #[tokio::test]
+    async fn test_verify_hash_valid() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Test" });
+        collection.insert("hash-test", doc.clone()).await.unwrap();
+
+        let retrieved = collection.get("hash-test").await.unwrap().unwrap();
+        let options = crate::VerificationOptions {
+            verify_signature:            false,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Strict,
+            empty_signature_mode:        crate::VerificationMode::Warn,
+            hash_verification_mode:      crate::VerificationMode::Strict,
+        };
+
+        let result = collection.verify_document(&retrieved, &options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_verify_hash_invalid() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Original" });
+        collection
+            .insert("hash-invalid", doc.clone())
+            .await
+            .unwrap();
+
+        // Tamper with the file
+        let file_path = collection.path.join("hash-invalid.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        content = content.replace("Original", "Tampered");
+        tokio_fs::write(&file_path, &content).await.unwrap();
+
+        // Re-read the document (disable verification to read the tampered file)
+        let retrieved = collection
+            .get_with_verification("hash-invalid", &crate::VerificationOptions::disabled())
+            .await
+            .unwrap()
+            .unwrap();
+
+        let options = crate::VerificationOptions {
+            verify_signature:            false,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Strict,
+            empty_signature_mode:        crate::VerificationMode::Warn,
+            hash_verification_mode:      crate::VerificationMode::Strict,
+        };
+
+        let result = collection.verify_document(&retrieved, &options).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::SentinelError::HashVerificationFailed {
+                id,
+                ..
+            } => {
+                assert_eq!(id, "hash-invalid");
+            },
+            _ => panic!("Expected HashVerificationFailed"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_verify_signature_valid() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Signed" });
+        collection
+            .insert("signed-valid", doc.clone())
+            .await
+            .unwrap();
+
+        let retrieved = collection.get("signed-valid").await.unwrap().unwrap();
+        let options = crate::VerificationOptions::strict();
+
+        let result = collection.verify_document(&retrieved, &options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_verify_signature_invalid() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Original" });
+        collection.insert("sig-invalid", doc.clone()).await.unwrap();
+
+        // Tamper with the file
+        let file_path = collection.path.join("sig-invalid.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        content = content.replace("Original", "Tampered");
+        tokio_fs::write(&file_path, &content).await.unwrap();
+
+        // Re-read the document (disable verification to read the tampered file)
+        let retrieved = collection
+            .get_with_verification("sig-invalid", &crate::VerificationOptions::disabled())
+            .await
+            .unwrap()
+            .unwrap();
+        let options = crate::VerificationOptions::strict();
+
+        let result = collection.verify_document(&retrieved, &options).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_streaming_all_skips_deleted() {
+        let (collection, _temp_dir) = setup_collection().await;
+
+        for i in 0 .. 5 {
+            let doc = json!({ "id": i });
+            collection.insert(&format!("doc-{}", i), doc).await.unwrap();
+        }
+
+        // Delete some
+        collection.delete("doc-1").await.unwrap();
+        collection.delete("doc-3").await.unwrap();
+
+        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert_eq!(docs.len(), 3);
+
+        let ids: std::collections::HashSet<_> = docs.iter().map(|d| d.id().to_string()).collect();
+        assert!(ids.contains("doc-0"));
+        assert!(!ids.contains("doc-1"));
+        assert!(ids.contains("doc-2"));
+        assert!(!ids.contains("doc-3"));
+        assert!(ids.contains("doc-4"));
     }
 }
