@@ -47,9 +47,13 @@ impl std::ops::DerefMut for FixedBytes32 {
 
 impl From<&[u8]> for FixedBytes32 {
     fn from(bytes: &[u8]) -> Self {
+        let mut temp = bytes.to_vec();
+        let len = temp.len();
+        let padded_len = ((len + 15) / 16) * 16;
+        temp.resize(padded_len, 0);
         let mut arr = [0u8; 32];
-        let len = bytes.len().min(32);
-        arr[.. len].copy_from_slice(&bytes[.. len]);
+        let copy_len = temp.len().min(32);
+        arr[.. copy_len].copy_from_slice(&temp[.. copy_len]);
         FixedBytes32(arr)
     }
 }
@@ -94,9 +98,13 @@ impl std::ops::DerefMut for FixedBytes256 {
 
 impl From<&[u8]> for FixedBytes256 {
     fn from(bytes: &[u8]) -> Self {
+        let mut temp = bytes.to_vec();
+        let len = temp.len();
+        let padded_len = ((len + 15) / 16) * 16;
+        temp.resize(padded_len, 0);
         let mut arr = [0u8; 256];
-        let len = bytes.len().min(256);
-        arr[.. len].copy_from_slice(&bytes[.. len]);
+        let copy_len = temp.len().min(256);
+        arr[.. copy_len].copy_from_slice(&temp[.. copy_len]);
         FixedBytes256(arr)
     }
 }
