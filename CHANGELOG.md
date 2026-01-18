@@ -1,3 +1,11 @@
+## [2.0.1](https://github.com/cyberpath-HQ/sentinel/compare/v2.0.0...v2.0.1) (2026-01-18)
+
+
+### Bug Fixes
+
+* correct regex for updating path dependencies in update-deps.js ([1c6efee](https://github.com/cyberpath-HQ/sentinel/commit/1c6efeed0441b816b34501d703af84e457d8a100))
+* update version numbers for sentinel packages to 2.0.0 ([e7f0139](https://github.com/cyberpath-HQ/sentinel/commit/e7f01392218d1c0136388f23587c582ad01a5023))
+
 # [2.0.0](https://github.com/cyberpath-HQ/sentinel/compare/v1.2.0...v2.0.0) (2026-01-18)
 
 
