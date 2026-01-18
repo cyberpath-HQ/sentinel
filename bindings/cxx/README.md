@@ -9,6 +9,7 @@ Complete C and C++ bindings for Cyberpath Sentinel, providing full access to all
 - **Collection Operations**: Full CRUD operations on collections
 - **Document Operations**: Insert, update, delete, upsert, and query documents
 - **Query System**: Complex filtering, sorting, pagination, and aggregation
+- **Asynchronous Operations**: True non-blocking async operations with callbacks
 - **Error Handling**: Comprehensive error reporting with detailed messages
 - **Memory Management**: Automatic cleanup with RAII in C++ and manual management in C
 
@@ -43,12 +44,19 @@ cargo build --release
 # Build C/C++ bindings
 cd bindings
 ./build-cxx.sh
+
+# Alternative: Build with CMake
+cd bindings/cxx
+mkdir build && cd build
+cmake ..
+make
 ```
 
 This creates:
 - `bindings/cxx/lib/libsentinel_cxx.so` - C shared library
 - `bindings/cxx/include/sentinel/sentinel-cxx.h` - C header
 - `bindings/cxx/include/sentinel/sentinel.hpp` - C++ header
+- `bindings/cxx/build/libsentinel-cxx.a` - Static C++ library
 
 ## C API Reference
 
@@ -203,6 +211,57 @@ try {
     std::cerr << "Error: " << e.what() << std::endl;
 }
 ```
+
+## Asynchronous Operations
+
+The bindings provide true asynchronous operations using callback-based APIs. Unlike synchronous operations that block the calling thread, async operations return immediately and deliver results via callbacks.
+
+### C Async API
+
+```c
+#include <sentinel-cxx.h>
+
+// Callback functions
+void on_store_created(uint64_t task_id, sentinel_store_t* store, char* user_data) {
+    if (store) {
+        printf("Store created successfully!\n");
+        // Use store...
+        sentinel_store_free(store);
+    } else {
+        printf("Store creation failed\n");
+    }
+    free(user_data);
+}
+
+void on_error(uint64_t task_id, const char* error, char* user_data) {
+    printf("Error: %s\n", error);
+    free(user_data);
+}
+
+int main() {
+    // Create store asynchronously
+    char* user_data = strdup("example context");
+    uint64_t task_id = sentinel_store_new_async(
+        "./async_db",
+        NULL,
+        on_store_created,
+        on_error,
+        user_data
+    );
+
+    // Task runs in background, main thread can continue...
+    sleep(1); // Wait for completion
+
+    return 0;
+}
+```
+
+### Key Features
+
+- **Non-blocking**: Operations return immediately, results delivered via callbacks
+- **Thread-safe**: Safe to call from any thread
+- **Resource efficient**: Minimal thread overhead
+- **Error handling**: Separate error callbacks for robust error reporting
 
 ## Error Handling
 
