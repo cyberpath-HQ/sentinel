@@ -3,6 +3,10 @@
 use serde_json::Value;
 
 /// Compares two JSON values for sorting purposes.
+#[allow(
+    unexpected_cfgs,
+    reason = "tarpaulin_include is set by code coverage tool"
+)]
 pub fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
     const fn type_order(v: &Value) -> u8 {
         match *v {
