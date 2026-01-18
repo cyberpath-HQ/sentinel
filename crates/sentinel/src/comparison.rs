@@ -73,7 +73,7 @@ pub fn compare_json_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (&Value::Array(ref aa), &Value::Array(ref ab)) => aa.len().cmp(&ab.len()),
         (&Value::Object(ref oa), &Value::Object(ref ob)) => oa.len().cmp(&ob.len()),
         #[cfg(not(tarpaulin_include))]
-_ => std::cmp::Ordering::Equal,
+        _ => std::cmp::Ordering::Equal,
     }
 }
 
