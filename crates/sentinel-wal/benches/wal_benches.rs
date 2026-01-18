@@ -2,13 +2,13 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use sentinel_wal::{EntryType, LogEntry, WalManager};
 use serde_json::json;
 use tempfile::tempdir;
-use uuid::Uuid;
+use cuid2;
 
 /// Benchmark WAL entry serialization
 fn bench_log_entry_serialization(c: &mut Criterion) {
     let entry = LogEntry::new(
         EntryType::Insert,
-        Uuid::new_v4(),
+        cuid2::create_id(),
         "users".to_string(),
         "user-123".to_string(),
         Some(json!({"name": "Alice", "email": "alice@example.com"})),
@@ -25,7 +25,7 @@ fn bench_log_entry_serialization(c: &mut Criterion) {
 fn bench_log_entry_deserialization(c: &mut Criterion) {
     let entry = LogEntry::new(
         EntryType::Insert,
-        Uuid::new_v4(),
+        cuid2::create_id(),
         "users".to_string(),
         "user-123".to_string(),
         Some(json!({"name": "Alice", "email": "alice@example.com"})),
@@ -43,13 +43,13 @@ fn bench_log_entry_deserialization(c: &mut Criterion) {
 fn bench_wal_write(c: &mut Criterion) {
     let temp_dir = tempdir().unwrap();
     let wal_path = temp_dir.path().join("bench.wal");
-    let wal = tokio::runtime::Runtime::new().unwrap().block_on(async {
-        WalManager::new(wal_path).await.unwrap()
-    });
+    let wal = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async { WalManager::new(wal_path).await.unwrap() });
 
     let entry = LogEntry::new(
         EntryType::Insert,
-        Uuid::new_v4(),
+        cuid2::create_id(),
         "users".to_string(),
         "user-123".to_string(),
         Some(json!({"name": "Alice", "email": "alice@example.com"})),
@@ -72,10 +72,10 @@ fn bench_wal_read(c: &mut Criterion) {
         let wal = WalManager::new(wal_path).await.unwrap();
 
         // Write some entries
-        for i in 0..100 {
+        for i in 0 .. 100 {
             let entry = LogEntry::new(
                 EntryType::Insert,
-                Uuid::new_v4(),
+                cuid2::create_id(),
                 "users".to_string(),
                 format!("user-{}", i),
                 Some(json!({"name": format!("User {}", i), "id": i})),
