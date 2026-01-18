@@ -566,10 +566,10 @@ mod tests {
 
 #### 2.1 Write-Ahead Logging (WAL)
 
-- [ ] Transaction log implementation
-- [ ] Checkpoint mechanism
-- [ ] Crash recovery
-- [ ] Log compaction
+- [x] Transaction log implementation
+- [x] Checkpoint mechanism
+- [x] Crash recovery
+- [x] Log compaction
 
 **Technical Details:**
 
@@ -767,14 +767,12 @@ mod tests {
 **Solutions:**
 
 1. **File Locking (Short-term)**
-
    - Use `fs2::FileExt` for cross-platform file locking
    - Exclusive lock for writes, shared for reads
    - Lock timeout to prevent deadlocks
    - Trade-off: Serialized writes, simple implementation
 
 2. **Write-Ahead Logging (Mid-term)**
-
    - Log all writes before applying to filesystem
    - Checkpoint mechanism for log compaction
    - Crash recovery via replay
@@ -797,14 +795,12 @@ mod tests {
 **Solutions:**
 
 1. **Lazy Indexing (Quick Win)**
-
    - First query on a field triggers index creation
    - Indices stored in `.index/` folder
    - Automatic index maintenance on writes
    - Trade-off: First query slow, subsequent fast
 
 2. **Hash-Based Sharding (Scalability)**
-
    - Distribute documents across 256 shards based on doc ID hash
    - Reduces per-folder scan from 4M to ~16K files
    - Query routing to relevant shards
@@ -840,14 +836,12 @@ pub async fn query(&self, field: &str, value: Value) -> io::Result<Vec<String>> 
 **Solutions:**
 
 1. **Compaction Strategy**
-
    - Periodic cleanup of old versions
    - Merge multiple small writes
    - Archive old documents
    - Trade-off: Requires downtime or careful scheduling
 
 2. **Deduplication**
-
    - Content-addressable storage (like Git)
    - Share identical documents
    - Reduces duplicate data storage
@@ -873,20 +867,17 @@ pub async fn query(&self, field: &str, value: Value) -> io::Result<Vec<String>> 
 **Solutions:**
 
 1. **Checksums (Fast)**
-
    - SHA-256 hash of document
    - Verify on read
    - Trade-off: Detects but doesn't fix corruption
 
 2. **Digital Signatures (Secure)**
-
    - RSA-2048 signature of each document
    - Tamper detection
    - Audit trail of who changed what
    - Trade-off: Slower writes, key management needed
 
 3. **Merkle Trees (Verification)**
-
    - Hash tree of all documents in collection
    - Verify collection integrity
    - Detect missing or corrupted documents
@@ -908,14 +899,12 @@ pub async fn query(&self, field: &str, value: Value) -> io::Result<Vec<String>> 
 **Solutions:**
 
 1. **Immutable Audit Logs (Foundation)**
-
    - Separate audit collection
    - Append-only writes
    - No deletes (soft-delete only)
    - Trade-off: Storage overhead
 
 2. **Automated Compliance Reports (Automation)**
-
    - Scan audit logs for GDPR compliance
    - Generate PCI-DSS reports
    - Verify HIPAA requirements
@@ -955,21 +944,18 @@ data/
 **Solutions:**
 
 1. **Delta Sync (Bandwidth Optimization)**
-
    - Only sync changed documents
    - Use file modification times
    - Rsync-style algorithms
    - Trade-off: Requires state tracking
 
 2. **Git-Based Replication (Elegant)**
-
    - Leverage Git's efficient pack format
    - Automatic conflict resolution
    - Version history built-in
    - Trade-off: Git overhead, potential conflicts
 
 3. **Distributed Consensus (Correctness)**
-
    - Raft protocol for multi-node consistency
    - Leader election
    - Log replication
