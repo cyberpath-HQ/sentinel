@@ -18,20 +18,23 @@ pub enum VerificationMode {
     Silent,
 }
 
-impl VerificationMode {
-    /// Parse verification mode from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for VerificationMode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "strict" => Some(Self::Strict),
-            "warn" => Some(Self::Warn),
-            "silent" => Some(Self::Silent),
-            _ => None,
+            "strict" => Ok(Self::Strict),
+            "warn" => Ok(Self::Warn),
+            "silent" => Ok(Self::Silent),
+            _ => Err(()),
         }
     }
+}
 
-    /// Convert verification mode to string.
-    pub fn as_str(&self) -> &str {
-        match self {
+impl VerificationMode {
+    /// Get the string representation of the verification mode.
+    pub const fn as_str(&self) -> &str {
+        match *self {
             Self::Strict => "strict",
             Self::Warn => "warn",
             Self::Silent => "silent",
@@ -75,7 +78,7 @@ impl Default for VerificationOptions {
 
 impl VerificationOptions {
     /// Create new verification options with all verifications enabled and strict mode.
-    pub fn strict() -> Self {
+    pub const fn strict() -> Self {
         Self {
             verify_signature:            true,
             verify_hash:                 true,
@@ -86,7 +89,7 @@ impl VerificationOptions {
     }
 
     /// Create new verification options with all verifications disabled.
-    pub fn disabled() -> Self {
+    pub const fn disabled() -> Self {
         Self {
             verify_signature:            false,
             verify_hash:                 false,
@@ -97,7 +100,7 @@ impl VerificationOptions {
     }
 
     /// Create new verification options with warnings instead of errors.
-    pub fn warn() -> Self {
+    pub const fn warn() -> Self {
         Self {
             verify_signature:            true,
             verify_hash:                 true,
@@ -110,27 +113,29 @@ impl VerificationOptions {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]
     fn test_verification_mode_from_str() {
         assert_eq!(
             VerificationMode::from_str("strict"),
-            Some(VerificationMode::Strict)
+            Ok(VerificationMode::Strict)
         );
         assert_eq!(
             VerificationMode::from_str("warn"),
-            Some(VerificationMode::Warn)
+            Ok(VerificationMode::Warn)
         );
         assert_eq!(
             VerificationMode::from_str("silent"),
-            Some(VerificationMode::Silent)
+            Ok(VerificationMode::Silent)
         );
         assert_eq!(
-            VerificationMode::from_str("STRICT"),
-            Some(VerificationMode::Strict)
+            "STRICT".parse::<VerificationMode>(),
+            Ok(VerificationMode::Strict)
         );
-        assert_eq!(VerificationMode::from_str("invalid"), None);
+        assert!("invalid".parse::<VerificationMode>().is_err());
     }
 
     #[test]
