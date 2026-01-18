@@ -1,0 +1,63 @@
+name: Release C/C++
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-cxx:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform: linux
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            platform: macos
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: macos
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build C/C++ bindings
+        run: python bindings/cbuild.py
+
+      - name: Upload libraries
+        uses: actions/upload-artifact@v4
+        with:
+          name: cxx-libs-${{ matrix.platform }}-${{ matrix.target }}
+          path: bindings/cxx/dist/
+
+  create-release:
+    needs: release-cxx
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: bindings/cxx/dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bindings/cxx/dist/**/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
