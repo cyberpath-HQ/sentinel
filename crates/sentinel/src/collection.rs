@@ -1798,18 +1798,18 @@ impl Collection {
                     EntryType::Insert => {
                         if let Some(data) = entry.data_as_value()? {
                             // Replay insert
-                            self.insert(&entry.document_id, data).await?;
+                            self.insert(entry.document_id_str(), data).await?;
                         }
                     },
                     EntryType::Update => {
                         if let Some(data) = entry.data_as_value()? {
                             // For recovery, we can treat update as insert since WAL is append-only
-                            self.insert(&entry.document_id, data).await?;
+                            self.insert(entry.document_id_str(), data).await?;
                         }
                     },
                     EntryType::Delete => {
                         // Replay delete
-                        self.delete(&entry.document_id).await?;
+                        self.delete(entry.document_id_str()).await?;
                     },
                     EntryType::Begin | EntryType::Commit | EntryType::Rollback => {
                         // Transaction operations - not implemented yet
