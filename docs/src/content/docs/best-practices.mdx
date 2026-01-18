@@ -182,7 +182,7 @@ let store = Store::new("./data", Some(&passphrase)).await?;
 Avoid collecting all documents into memory:
 
 ```rust
-use futures::StreamExt;
+use futures::stream::TryStreamExt;
 
 // Bad: Loads all into memory
 let all_docs: Vec<_> = collection.all().try_collect().await?;
