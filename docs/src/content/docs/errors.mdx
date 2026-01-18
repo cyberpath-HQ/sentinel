@@ -7,8 +7,9 @@ keywords: ["errors", "error handling", "Result", "SentinelError"]
 related: ["store", "collection", "document"]
 ---
 
-Sentinel uses Rust's `Result` type for error handling, with a custom `SentinelError` enum that categorizes all possible
-failure modes. This guide explains the error types, how to handle them, and best practices for robust error management.
+Sentinel uses Rust's `Result` type for error handling, with a custom `SentinelError` enum that categorizes all
+possible failure modes. This guide explains error types, how to handle them, and best practices for robust error
+management.
 
 ## The SentinelError Type
 
@@ -16,18 +17,49 @@ All Sentinel operations return `Result<T, SentinelError>`. The error enum covers
 
 ```rust
 pub enum SentinelError {
+    // I/O operations failed (file system, network, etc.)
     Io { source: std::io::Error },
+
+    // JSON serialization/deserialization failed
     Json { source: serde_json::Error },
+
+    // Document not found in collection
     DocumentNotFound { id: String, collection: String },
+
+    // Collection not found in store
     CollectionNotFound { name: String },
+
+    // Document already exists (for operations that require uniqueness)
     DocumentAlreadyExists { id: String, collection: String },
+
+    // Invalid document ID format
     InvalidDocumentId { id: String },
+
+    // Invalid collection name format
     InvalidCollectionName { name: String },
+
+    // Store is corrupted or in an invalid state
     StoreCorruption { reason: String },
+
+    // Transaction failed
     TransactionFailed { reason: String },
+
+    // Lock acquisition failed
     LockFailed { reason: String },
+
+    // Encryption/decryption operation failed
     CryptoFailed { operation: String },
+
+    // Configuration error
     ConfigError { message: String },
+
+    // Document hash verification failed
+    HashVerificationFailed { id: String, reason: String },
+
+    // Document signature verification failed
+    SignatureVerificationFailed { id: String, reason: String },
+
+    // Generic error for unexpected conditions
     Internal { message: String },
 }
 ```
@@ -43,6 +75,7 @@ File system operations can fail for various reasons:
 ```rust
 use sentinel_dbms::{Store, SentinelError};
 
+#[tokio::main]
 async fn handle_io_errors() {
     match Store::new("/root/protected", None).await {
         Ok(_) => println!("Store created"),
@@ -74,6 +107,7 @@ Serialization and deserialization can fail with malformed data:
 ```rust
 use sentinel_dbms::{Store, SentinelError};
 
+#[tokio::main]
 async fn handle_json_errors() {
     let store = Store::new("./data", None).await.unwrap();
     let collection = store.collection("test").await.unwrap();
@@ -99,6 +133,7 @@ Invalid document IDs or collection names produce validation errors:
 use sentinel_dbms::{Store, SentinelError};
 use serde_json::json;
 
+#[tokio::main]
 async fn handle_validation_errors() {
     let store = Store::new("./data", None).await.unwrap();
     let collection = store.collection("users").await.unwrap();
@@ -128,6 +163,7 @@ Crypto operations can fail for several reasons:
 ```rust
 use sentinel_dbms::{Store, SentinelError};
 
+#[tokio::main]
 async fn handle_crypto_errors() {
     // Wrong passphrase for existing store
     match Store::new("./encrypted-data", Some("wrong-password")).await {
@@ -141,6 +177,70 @@ async fn handle_crypto_errors() {
 }
 ```
 
+### Hash Verification Errors
+
+Hash verification occurs when the computed hash doesn't match the stored hash:
+
+```rust
+use sentinel_dbms::{Store, SentinelError, VerificationOptions};
+
+#[tokio::main]
+async fn handle_hash_errors() {
+    let store = Store::new("./data", None).await.unwrap();
+    let collection = store.collection("users").await.unwrap();
+
+    let options = VerificationOptions::strict();
+    match collection.get_with_verification("alice", &options).await {
+        Ok(Some(doc)) => println!("Found: {:?}", doc),
+        Ok(None) => println!("Not found"),
+        Err(SentinelError::HashVerificationFailed { id, reason }) => {
+            eprintln!("Hash verification failed for document '{}': {}", id, reason);
+            // Document data may be corrupted or modified
+        }
+        Err(e) => eprintln!("Other error: {}", e),
+    }
+}
+```
+
+This error can occur when:
+
+- Document file is corrupted or modified externally
+- Storage media has errors
+- Document was tampered with
+- Bug in hash computation (shouldn't occur in practice)
+
+### Signature Verification Errors
+
+Signature verification fails when the digital signature can't be verified with the public key:
+
+```rust
+use sentinel_dbms::{Store, SentinelError, VerificationOptions};
+
+#[tokio::main]
+async fn handle_signature_errors() {
+    let store = Store::new("./data", Some("passphrase")).await.unwrap();
+    let collection = store.collection("users").await.unwrap();
+
+    let options = VerificationOptions::strict();
+    match collection.get_with_verification("alice", &options).await {
+        Ok(Some(doc)) => println!("Found: {:?}", doc),
+        Ok(None) => println!("Not found"),
+        Err(SentinelError::SignatureVerificationFailed { id, reason }) => {
+            eprintln!("Signature verification failed for document '{}': {}", id, reason);
+            // Document may be tampered with or signing key changed
+        }
+        Err(e) => eprintln!("Other error: {}", e),
+    }
+}
+```
+
+This error can occur when:
+
+- Document data was modified after signing
+- Different signing key was used
+- Signing key file is corrupted or missing
+- Store passphrase was changed between signing and verification
+
 ### Store Corruption
 
 Detected when internal data structures are invalid:
@@ -148,6 +248,7 @@ Detected when internal data structures are invalid:
 ```rust
 use sentinel_dbms::{Store, SentinelError};
 
+#[tokio::main]
 async fn handle_corruption() {
     match Store::new("./data", Some("passphrase")).await {
         Ok(_) => println!("Store opened"),
@@ -159,6 +260,13 @@ async fn handle_corruption() {
     }
 }
 ```
+
+This error typically indicates:
+
+- Missing required fields in encrypted key file
+- Invalid hex encoding for encrypted data
+- Inconsistent key file structure
+- File system corruption affecting critical data
 
 ## Using the Result Type Alias
 
@@ -179,6 +287,42 @@ async fn my_function() -> Result<Document> {
     })
 }
 ```
+
+## Verification Error Handling
+
+Verification errors (hash and signature verification failures) are controlled by verification modes:
+
+```rust
+use sentinel_dbms::{Store, VerificationOptions, VerificationMode};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", None).await?;
+    let collection = store.collection("users").await?;
+
+    // Strict mode: fail on verification errors (production default)
+    let strict_options = VerificationOptions::strict();
+
+    // Warning mode: log warnings but continue (auditing scenarios)
+    let warn_options = VerificationOptions::warn();
+
+    // Silent mode: skip verification entirely (performance-critical scenarios)
+    let silent_options = VerificationOptions::disabled();
+
+    // Custom configuration
+    let custom_options = VerificationOptions {
+        verify_signature: true,
+        verify_hash: false,  // Only verify signature
+        signature_verification_mode: VerificationMode::Strict,
+        empty_signature_mode: VerificationMode::Warn,
+        hash_verification_mode: VerificationMode::Silent,
+    };
+
+    Ok(())
+}
+```
+
+See the [Cryptography](/docs/cryptography) guide for more details on verification options and modes.
 
 ## Pattern: Propagating Errors
 
@@ -235,6 +379,15 @@ impl From<SentinelError> for AppError {
             }
             SentinelError::InvalidCollectionName { name } => {
                 AppError::InvalidInput(format!("Invalid collection: {}", name))
+            }
+            SentinelError::HashVerificationFailed { id, reason } => {
+                AppError::Database(format!("Hash verification failed for document '{}': {}", id, reason))
+            }
+            SentinelError::SignatureVerificationFailed { id, reason } => {
+                AppError::Database(format!("Signature verification failed for document '{}': {}", id, reason))
+            }
+            SentinelError::StoreCorruption { reason } => {
+                AppError::Database(format!("Store corrupted: {}", reason))
             }
             other => AppError::Database(other.to_string()),
         }
@@ -302,6 +455,123 @@ fn format_error(error: SentinelError) -> String {
 // "Invalid document ID: user/admin"
 // "Store corruption detected: stored signing key has an invalid length"
 // "Cryptographic operation failed: decryption error"
+// "Document 'alice' hash verification failed: Expected hash: abc..., Computed hash: xyz..."
+// "Document 'alice' signature verification failed: Signature verification using public key failed"
+```
+
+## Best Practices for Error Handling
+
+When working with errors in Sentinel, consider these practices:
+
+### Use Appropriate Verification Modes
+
+Choose verification mode based on your use case:
+
+- **Production**: Use `VerificationMode::Strict` for security
+- **Auditing**: Use `VerificationMode::Warn` to detect issues without blocking
+- **Performance**: Use `VerificationMode::Silent` when documents are known to be trustworthy
+- **Mixed Collections**: Use `VerificationMode::Warn` for empty signatures when some documents are signed
+
+### Provide Meaningful Error Context
+
+When wrapping Sentinel errors, provide useful context:
+
+```rust
+async fn get_user_for_transaction(
+    store: &Store,
+    user_id: &str,
+    transaction_id: &str,
+) -> Result<User, AppError> {
+    let collection = store.collection("users").await?;
+    let doc = collection.get(user_id).await?.ok_or_else(|| {
+        AppError::NotFound(format!(
+            "User '{}' not found for transaction '{}'",
+            user_id,
+            transaction_id
+        ))
+    })?;
+
+    // Parse user data
+    Ok(serde_json::from_value(doc.data().clone()).map_err(|e| {
+        AppError::InvalidInput(format!(
+            "Invalid user data for transaction '{}': {}",
+            transaction_id,
+            e
+        ))
+    })?)
+}
+```
+
+### Handle Verification Errors Gracefully
+
+For verification errors, consider whether to fail fast or continue processing:
+
+```rust
+use sentinel_dbms::{Store, VerificationOptions, VerificationMode};
+
+async fn audit_collection(store: &Store) -> Result<(), AppError> {
+    let collection = store.collection("users").await?;
+
+    let options = VerificationOptions {
+        verify_signature: true,
+        verify_hash: true,
+        signature_verification_mode: VerificationMode::Warn,
+        empty_signature_mode: VerificationMode::Silent,  // Allow unsigned documents
+        hash_verification_mode: VerificationMode::Warn,
+    };
+
+    // Stream all documents with warning mode
+    let mut stream = collection.all_with_verification(&options);
+
+    while let Some(doc_result) = stream.next().await {
+        match doc_result {
+            Ok(doc) => {
+                // Process document
+                println!("Audited: {}", doc.id());
+            }
+            Err(sentinel_dbms::SentinelError::HashVerificationFailed { id, reason })
+            | sentinel_dbms::SentinelError::SignatureVerificationFailed { id, reason }) => {
+                // Log but continue auditing
+                eprintln!("Verification failed for '{}': {}", id, reason);
+                // Don't fail the entire audit
+            }
+            Err(e) => {
+                // Other errors should fail the audit
+                return Err(AppError::Database(e.to_string()));
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+### Log Errors Appropriately
+
+Use appropriate log levels for different error types:
+
+```rust
+use tracing::{error, warn, info};
+
+async fn safe_operation(store: &Store) {
+    match store.collection("users").await {
+        Ok(collection) => {
+            info!("Collection accessed successfully");
+        }
+        Err(SentinelError::PermissionDenied { .. }) => {
+            error!("Permission denied accessing collection");
+            // Critical: user intervention needed
+        }
+        Err(SentinelError::HashVerificationFailed { id, reason }) => {
+            warn!("Hash verification failed for document '{}': {}", id, reason);
+            // Warning: data integrity issue detected
+        }
+        Err(e) => {
+            error!("Unexpected error: {}", e);
+            // Critical: unknown error occurred
+        }
+    }
+}
 ```
 
 ## Next Steps
@@ -309,5 +579,6 @@ fn format_error(error: SentinelError) -> String {
 Now that you understand error handling, explore:
 
 - **[Store](/docs/store)**: Store creation and configuration
-- **[Collection](/docs/collection)**: Collection operations
-- **[Document](/docs/document)**: Working with documents
+- **[Collection](/docs/collection)**: Collection operations and error scenarios
+- **[Document](/docs/document)**: Working with documents and verification errors
+- **[Cryptography](/docs/cryptography)**: Configuring verification modes

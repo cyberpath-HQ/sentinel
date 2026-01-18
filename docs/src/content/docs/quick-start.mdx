@@ -7,8 +7,9 @@ keywords: ["quick start", "tutorial", "getting started", "example"]
 related: ["installation", "store", "collection", "document"]
 ---
 
-This guide walks you through creating your first Sentinel database in just a few minutes. By the end, you'll understand
-how to create stores, manage collections, and work with documents.
+This guide walks you through creating your first Sentinel database in just a few minutes. By the end, you'll
+understand how to create stores, manage collections, work with documents, and use advanced features like
+querying and verification.
 
 ## Your First Store
 
@@ -29,12 +30,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 The second parameter (`None`) indicates we're not using a passphrase for signing. We'll cover signed documents later.
-
 After running this code, you'll see a new directory:
 
 ```text
 my-database/
 ```
+
+The store is now ready to use. Let's add some collections and documents.
 
 ## Creating a Collection
 
@@ -62,6 +64,8 @@ my-database/
 └── data/
     └── users/
 ```
+
+The collection is ready for storing documents.
 
 ## Inserting Documents
 
@@ -95,9 +99,9 @@ This creates a file at `my-database/data/users/alice.json` containing:
 {
   "id": "alice",
   "version": 1,
-  "created_at": "2026-01-15T12:00:00Z",
-  "updated_at": "2026-01-15T12:00:00Z",
-  "hash": "a1b2c3d4e5f6789...",
+  "created_at": "2026-01-15T12:00:00.000000Z",
+  "updated_at": "2026-01-15T12:00:00.000000Z",
+  "hash": "a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789a",
   "signature": "",
   "data": {
     "name": "Alice Johnson",
@@ -108,7 +112,7 @@ This creates a file at `my-database/data/users/alice.json` containing:
 }
 ```
 
-Notice how Sentinel automatically adds metadata: the document ID, version number, timestamps, and a BLAKE3 hash for
+Notice how Sentinel automatically adds metadata: document ID, version number, timestamps, and a BLAKE3 hash for
 integrity verification.
 
 ## Retrieving Documents
@@ -128,6 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(doc) = users.get("alice").await? {
         println!("Found user: {}", doc.data()["name"]);
         println!("Email: {}", doc.data()["email"]);
+        println!("Role: {}", doc.data()["role"]);
         println!("Created at: {}", doc.created_at());
         println!("Hash: {}", doc.hash());
     } else {
@@ -188,7 +193,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The `delete` operation is idempotent, deleting a non-existent document succeeds without error.
+The `delete` operation is idempotent, deleting a non-existent document succeeds without error. Documents are moved to a
+`.deleted/` subdirectory for recovery purposes.
+
+## Bulk Inserting Documents
+
+For inserting multiple documents efficiently, use the `bulk_insert` method:
+
+```rust {13-20}
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Prepare multiple documents
+    let documents = vec![
+        ("bob", json!({"name": "Bob", "role": "user"})),
+        ("charlie", json!({"name": "Charlie", "role": "user"})),
+        ("david", json!({"name": "David", "role": "admin"})),
+    ];
+
+    // Insert all at once
+    users.bulk_insert(documents).await?;
+
+    println!("{} documents inserted", documents.len());
+    Ok(())
+}
+```
+
+## Listing Documents
+
+List all documents in a collection using the `list` or `count` methods:
+
+```rust
+use sentinel_dbms::Store;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Count documents
+    let count = users.count().await?;
+    println!("Total documents: {}", count);
+
+    // List all document IDs
+    let ids: Vec<_> = users.list().try_collect().await?;
+    println!("Document IDs:");
+    for id in ids {
+        println!("  - {}", id);
+    }
+
+    Ok(())
+}
+```
 
 ## Adding Signatures
 
@@ -201,43 +263,145 @@ use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a store with signing enabled
+    // Create store with passphrase for signing
     let store = Store::new("./secure-database", Some("my-secret-passphrase")).await?;
-    let secrets = store.collection("secrets").await?;
 
-    // This document will be signed automatically
-    secrets.insert("api-key", json!({
-        "service": "payment-gateway",
-        "key": "sk_live_abc123",
-        "created_by": "alice"
+    let users = store.collection("users").await?;
+
+    // Insert a document (will be signed automatically)
+    users.insert("alice", json!({
+        "name": "Alice",
+        "email": "alice@example.com"
     })).await?;
 
-    println!("Signed document created!");
+    // Retrieve and check signature
+    if let Some(doc) = users.get("alice").await? {
+        println!("Document ID: {}", doc.id());
+        println!("Signature: {}", doc.signature());
+        // Will show: "ed25519:..." (not empty)
+    }
+
     Ok(())
 }
 ```
 
-The document now includes an Ed25519 signature:
+When you create a store with a passphrase:
 
-```json {7}
-{
-  "id": "api-key",
-  "version": 1,
-  "created_at": "2026-01-15T12:00:00Z",
-  "updated_at": "2026-01-15T12:00:00Z",
-  "hash": "a1b2c3d4e5f6789...",
-  "signature": "xyz789abc...",
-  "data": {
-    "service": "payment-gateway",
-    "key": "sk_live_abc123",
-    "created_by": "alice"
-  }
+1. Sentinel generates a random 32-byte salt
+2. An Ed25519 signing key is derived using the configured key derivation function (Argon2id by default)
+3. The signing key is encrypted using the configured encryption algorithm (XChaCha20-Poly1305 by default)
+4. The encrypted key and salt are stored in `.keys/signing_key.json`
+
+On subsequent opens, you must provide the same passphrase to recover the signing key.
+
+## Querying Documents
+
+Find documents matching specific criteria using the `QueryBuilder` API:
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator, SortOrder};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Insert some test data
+    users.insert("user1", json!({"name": "Alice", "age": 30})).await?;
+    users.insert("user2", json!({"name": "Bob", "age": 25})).await?;
+    users.insert("user3", json!({"name": "Charlie", "age": 35})).await?;
+
+    // Find users older than 25
+    let query = QueryBuilder::new()
+        .filter("age", Operator::GreaterThan, json!(25))
+        .sort("age", SortOrder::Ascending)
+        .build();
+
+    let result = users.query(query).await?;
+    let documents: Vec<_> = result.documents.try_collect().await?;
+
+    println!("Found {} users older than 25:", documents.len());
+    for doc in documents {
+        println!("  - {}, age: {}", doc.data()["name"], doc.data()["age"]);
+    }
+
+    Ok(())
 }
 ```
 
-## Complete Example
+## Streaming All Documents
 
-Here's a complete example combining everything we've learned:
+Process all documents without loading them all into memory:
+
+```rust
+use sentinel_dbms::Store;
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Stream all documents
+    let mut all_docs = users.all();
+
+    let mut count = 0;
+    while let Some(doc_result) = all_docs.next().await {
+        match doc_result {
+            Ok(doc) => {
+                println!("Document: {}", doc.id());
+                count += 1;
+            }
+            Err(e) => {
+                eprintln!("Error reading document: {}", e);
+            }
+        }
+    }
+
+    println!("Total documents processed: {}", count);
+    Ok(())
+}
+```
+
+## Using Filters with Closures
+
+For simple filtering, use closures with the `filter` method:
+
+```rust
+use sentinel_dbms::Store;
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-database", None).await?;
+    let users = store.collection("users").await?;
+
+    // Insert test data
+    users.insert("user1", json!({"name": "Alice", "role": "admin"})).await?;
+    users.insert("user2", json!({"name": "Bob", "role": "user"})).await?;
+    users.insert("user3", json!({"name": "Charlie", "role": "admin"})).await?;
+
+    // Find all admins
+    let mut admins = users.filter(|doc| {
+        doc.data().get("role")
+            .and_then(|v| v.as_str())
+            .map_or(false, |role| role == "admin")
+    });
+
+    while let Some(doc) = admins.next().await {
+        let doc = doc?;
+        println!("Admin: {}", doc.data()["name"]);
+    }
+
+    Ok(())
+}
+```
+
+## Managing Multiple Collections
+
+A store can contain multiple collections:
 
 ```rust
 use sentinel_dbms::Store;
@@ -245,63 +409,107 @@ use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a store with signing
-    let store = Store::new("./company-data", Some("secret123")).await?;
+    let store = Store::new("./my-database", None).await?;
 
-    // Create collections for different data types
-    let employees = store.collection("employees").await?;
-    let audit_logs = store.collection("audit_logs").await?;
+    // Create multiple collections
+    let users = store.collection("users").await?;
+    let products = store.collection("products").await?;
+    let orders = store.collection("orders").await?;
 
-    // Add some employees
-    employees.insert("emp-001", json!({
-        "name": "Alice Johnson",
-        "title": "Software Engineer",
-        "department": "Engineering",
-        "start_date": "2024-01-15"
-    })).await?;
+    // Work with each collection
+    users.insert("alice", json!({"name": "Alice"})).await?;
+    products.insert("widget", json!({"name": "Widget", "price": 9.99})).await?;
+    orders.insert("order-123", json!({"user_id": "alice", "total": 29.97})).await?;
 
-    employees.insert("emp-002", json!({
-        "name": "Bob Smith",
-        "title": "Product Manager",
-        "department": "Product",
-        "start_date": "2023-06-01"
-    })).await?;
-
-    // Log an audit event
-    audit_logs.insert("2026-01-15-001", json!({
-        "timestamp": "2026-01-15T14:30:00Z",
-        "action": "employee_created",
-        "actor": "admin@company.com",
-        "target": "emp-001",
-        "details": "New employee onboarding"
-    })).await?;
-
-    // Read back an employee
-    if let Some(alice) = employees.get("emp-001").await? {
-        println!("Employee: {}", alice.data()["name"]);
-        println!("Hash: {}", alice.hash());
-        println!("Signature: {}", alice.signature());
-    }
-
-    println!("\n✓ Database created successfully!");
-    println!("  Check ./company-data to see your files!");
+    // List all collections in the store
+    let collections = store.list_collections().await?;
+    println!("Collections: {:?}", collections);
 
     Ok(())
 }
 ```
 
-After running this, explore your filesystem:
+## Deleting Collections
 
-```bash
-ls -la ./company-data/data/
-cat ./company-data/data/employees/emp-001.json
+Remove an entire collection and all its documents:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-database", None).await?;
+
+    // Create a temporary collection
+    let temp = store.collection("temp").await?;
+    temp.insert("doc1", json!({})).await?;
+
+    // Delete the entire collection
+    store.delete_collection("temp").await?;
+
+    println!("Collection deleted!");
+
+    Ok(())
+}
 ```
 
-## Next Steps
+## What's Next?
 
-Now that you understand the basics, dive deeper into:
+Congratulations! You've completed the quick start guide. Now that you understand the basics, explore:
 
-- **[Store](/docs/store)**: Learn about store configuration and management
-- **[Collection](/docs/collection)**: Master collection operations and validation
-- **[Document](/docs/document)**: Understand document structure and metadata
-- **[Cryptography](/docs/cryptography)**: Explore hashing, signing, and encryption options
+- **[Store](/docs/store)**: Advanced store features like listing and deleting collections
+- **[Collection](/docs/collection)**: Bulk operations, streaming, and verification options
+- **[Document](/docs/document)**: Understanding document structure and metadata
+- **[Cryptography](/docs/cryptography)**: Configuring algorithms and verification modes
+- **[Querying and Filtering](/docs/querying)**: Advanced query building and operators
+- **[Error Handling](/docs/errors)**: Understanding and handling errors properly
+
+## Common Patterns
+
+### Setting Up a Project
+
+For a new Rust project with Sentinel, add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+sentinel_dbms = "0.1.0"
+tokio = { version = "1.0", features = ["full"] }
+serde_json = "1.0"
+```
+
+### Error Handling Best Practices
+
+Always handle errors appropriately:
+
+```rust
+use sentinel_dbms::{Store, Result};
+
+async fn robust_main() -> Result<()> {
+    let store = Store::new("./data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Handle errors at each step
+    users.insert("alice", json!({"name": "Alice"})).await?;
+
+    Ok(())
+}
+```
+
+### Using in Production
+
+For production use, consider:
+
+- Using environment variables for passphrases
+- Setting appropriate verification modes
+- Implementing proper logging
+- Adding monitoring and metrics
+- Creating backup strategies
+
+## Need Help?
+
+If you encounter issues:
+
+- Check the [troubleshooting guide](/docs/troubleshooting)
+- Review [error handling](/docs/errors) documentation
+- Explore [examples](/docs/examples)
+- Check the [GitHub repository](https://github.com/cyberpath-HQ/sentinel) for issues
