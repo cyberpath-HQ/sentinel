@@ -28,7 +28,7 @@ pub use futures;
 pub use collection::Collection;
 pub use document::Document;
 pub use error::{Result, SentinelError};
-pub use query::{Filter, Operator, Query, QueryBuilder, QueryResult, SortOrder};
+pub use query::{Aggregation, Filter, Operator, Query, QueryBuilder, QueryResult, SortOrder};
 pub use sentinel_crypto::crypto_config::*;
 pub use store::Store;
 pub use verification::{VerificationMode, VerificationOptions};
