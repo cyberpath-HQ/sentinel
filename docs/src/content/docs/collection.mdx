@@ -635,7 +635,7 @@ use serde_json::json;
 
 #[tokio::main]
 async fn main() {
-    let store = Store::new("./my-data", None).unwrap();
+    let store = Store::new("./my-data", None).await.unwrap();
     let users = store.collection("users").await.unwrap();
 
     match users.insert("test", json!({})).await {
