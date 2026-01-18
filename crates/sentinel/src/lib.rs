@@ -18,6 +18,8 @@ mod store;
 mod streaming;
 /// Validation utilities module.
 mod validation;
+/// Verification utilities module.
+mod verification;
 
 // Re-export commonly used external crates for convenience
 pub use async_stream;
@@ -29,6 +31,7 @@ pub use error::{Result, SentinelError};
 pub use query::{Filter, Operator, Query, QueryBuilder, QueryResult, SortOrder};
 pub use sentinel_crypto::crypto_config::*;
 pub use store::Store;
+pub use verification::{VerificationMode, VerificationOptions};
 
 /// The current version of the Sentinel metadata format.
 pub const META_SENTINEL_VERSION: u32 = 1;

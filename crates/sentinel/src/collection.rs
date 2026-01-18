@@ -162,6 +162,9 @@ impl Collection {
     /// Reads the JSON file corresponding to the given ID and deserializes it into
     /// a `Document` struct. If the document doesn't exist, returns `None`.
     ///
+    /// By default, this method verifies both hash and signature with strict mode.
+    /// Use `get_with_verification()` to customize verification behavior.
+    ///
     /// # Arguments
     ///
     /// * `id` - The unique identifier of the document to retrieve.
@@ -186,7 +189,7 @@ impl Collection {
     /// // Insert a document first
     /// collection.insert("user-123", json!({"name": "Alice"})).await?;
     ///
-    /// // Retrieve the document
+    /// // Retrieve the document (with verification enabled by default)
     /// let doc = collection.get("user-123").await?;
     /// assert!(doc.is_some());
     /// assert_eq!(doc.unwrap().id(), "user-123");
@@ -198,7 +201,62 @@ impl Collection {
     /// # }
     /// ```
     pub async fn get(&self, id: &str) -> Result<Option<Document>> {
-        trace!("Retrieving document with id: {}", id);
+        self.get_with_verification(id, &crate::VerificationOptions::default())
+            .await
+    }
+
+    /// Retrieves a document from the collection by its ID with custom verification options.
+    ///
+    /// Reads the JSON file corresponding to the given ID and deserializes it into
+    /// a `Document` struct. If the document doesn't exist, returns `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The unique identifier of the document to retrieve.
+    /// * `options` - Verification options controlling hash and signature verification.
+    ///
+    /// # Returns
+    ///
+    /// Returns:
+    /// - `Ok(Some(Document))` if the document exists and was successfully read
+    /// - `Ok(None)` if the document doesn't exist (file not found)
+    /// - `Err(SentinelError)` if there was an error reading, parsing, or verifying the document
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection, VerificationMode, VerificationOptions};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert a document first
+    /// collection.insert("user-123", json!({"name": "Alice"})).await?;
+    ///
+    /// // Retrieve with warning mode instead of strict
+    /// let options = VerificationOptions {
+    ///     verify_signature: true,
+    ///     verify_hash: true,
+    ///     signature_verification_mode: VerificationMode::Warn,
+    ///     hash_verification_mode: VerificationMode::Warn,
+    /// };
+    /// let doc = collection.get_with_verification("user-123", &options).await?;
+    /// assert!(doc.is_some());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn get_with_verification(
+        &self,
+        id: &str,
+        options: &crate::VerificationOptions,
+    ) -> Result<Option<Document>> {
+        trace!(
+            "Retrieving document with id: {} (verification enabled: {})",
+            id,
+            options.verify_signature || options.verify_hash
+        );
         validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
         match tokio_fs::read_to_string(&file_path).await {
@@ -210,6 +268,9 @@ impl Collection {
                 })?;
                 // Ensure the id matches the filename
                 doc.id = id.to_owned();
+
+                self.verify_document(&doc, options).await?;
+
                 trace!("Document {} retrieved successfully", id);
                 Ok(Some(doc))
             },
@@ -457,6 +518,9 @@ impl Collection {
     /// one by one, keeping only matching documents in memory. This approach
     /// minimizes memory usage while maintaining good performance for most use cases.
     ///
+    /// By default, this method verifies both hash and signature with strict mode.
+    /// Use `filter_with_verification()` to customize verification behavior.
+    ///
     /// # Arguments
     ///
     /// * `predicate` - A function that takes a `&Document` and returns `true` if the document
@@ -502,10 +566,79 @@ impl Collection {
     where
         F: Fn(&Document) -> bool + Send + Sync + 'static,
     {
+        self.filter_with_verification(predicate, &crate::VerificationOptions::default())
+    }
+
+    /// Filters documents in the collection using a predicate function with custom verification
+    /// options.
+    ///
+    /// This method performs streaming filtering by loading and checking documents
+    /// one by one, keeping only matching documents in memory. This approach
+    /// minimizes memory usage while maintaining good performance for most use cases.
+    ///
+    /// # Arguments
+    ///
+    /// * `predicate` - A function that takes a `&Document` and returns `true` if the document
+    ///   should be included in the results.
+    /// * `options` - Verification options controlling hash and signature verification.
+    ///
+    /// # Returns
+    ///
+    /// Returns a stream of documents that match the predicate.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection, VerificationOptions};
+    /// use serde_json::json;
+    /// use futures::stream::StreamExt;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert some test data
+    /// collection.insert("user-1", json!({"name": "Alice", "age": 25})).await?;
+    /// collection.insert("user-2", json!({"name": "Bob", "age": 30})).await?;
+    ///
+    /// // Filter with warnings enabled
+    /// let options = VerificationOptions::warn();
+    /// let mut adults = collection.filter_with_verification(
+    ///     |doc| {
+    ///         doc.data().get("age")
+    ///             .and_then(|v| v.as_i64())
+    ///             .map_or(false, |age| age > 26)
+    ///     },
+    ///     &options
+    /// );
+    ///
+    /// let mut count = 0;
+    /// while let Some(doc) = adults.next().await {
+    ///     let doc = doc?;
+    ///     assert_eq!(doc.id(), "user-2");
+    ///     count += 1;
+    /// }
+    /// assert_eq!(count, 1);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn filter_with_verification<F>(
+        &self,
+        predicate: F,
+        options: &crate::VerificationOptions,
+    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>
+    where
+        F: Fn(&Document) -> bool + Send + Sync + 'static,
+    {
         let collection_path = self.path.clone();
+        let signing_key = self.signing_key.clone();
+        let options = *options;
 
         Box::pin(stream! {
-            trace!("Streaming filter on collection");
+            trace!(
+                "Streaming filter on collection (verification enabled: {})",
+                options.verify_signature || options.verify_hash
+            );
             let mut entries = match tokio_fs::read_dir(&collection_path).await {
                 Ok(entries) => entries,
                 Err(e) => {
@@ -529,13 +662,32 @@ impl Collection {
                     && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
                         && file_name.ends_with(".json") && !file_name.starts_with('.') {
                             let id = file_name.strip_suffix(".json").unwrap();
-                            // Load document
                             let file_path = collection_path.join(format!("{}.json", id));
                             match tokio_fs::read_to_string(&file_path).await {
                                 Ok(content) => {
                                     match serde_json::from_str::<Document>(&content) {
                                         Ok(mut doc) => {
                                             doc.id = id.to_owned();
+
+                                            let collection_ref = Collection {
+                                                path: collection_path.clone(),
+                                                signing_key: signing_key.clone(),
+                                            };
+
+                                            if let Err(e) = collection_ref.verify_document(&doc, &options).await {
+                                                if matches!(e, SentinelError::HashVerificationFailed { .. } | SentinelError::SignatureVerificationFailed { .. }) {
+                                                    if options.hash_verification_mode == crate::VerificationMode::Strict
+                                                        || options.signature_verification_mode == crate::VerificationMode::Strict
+                                                    {
+                                                        yield Err(e);
+                                                        continue;
+                                                    }
+                                                } else {
+                                                    yield Err(e);
+                                                    continue;
+                                                }
+                                            }
+
                                             if predicate(&doc) {
                                                 yield Ok(doc);
                                             }
@@ -555,6 +707,9 @@ impl Collection {
     ///
     /// This method performs streaming by loading documents one by one,
     /// minimizing memory usage.
+    ///
+    /// By default, this method verifies both hash and signature with strict mode.
+    /// Use `all_with_verification()` to customize verification behavior.
     ///
     /// # Returns
     ///
@@ -580,10 +735,55 @@ impl Collection {
     /// # }
     /// ```
     pub fn all(&self) -> std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>> {
+        self.all_with_verification(&crate::VerificationOptions::default())
+    }
+
+    /// Streams all documents in the collection with custom verification options.
+    ///
+    /// This method performs streaming by loading documents one by one,
+    /// minimizing memory usage.
+    ///
+    /// # Arguments
+    ///
+    /// * `options` - Verification options controlling hash and signature verification.
+    ///
+    /// # Returns
+    ///
+    /// Returns a stream of all documents in the collection.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Collection, Store, VerificationOptions};
+    /// use futures::stream::StreamExt;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Stream all documents with warnings instead of errors
+    /// let options = VerificationOptions::warn();
+    /// let mut all_docs = collection.all_with_verification(&options);
+    /// while let Some(doc) = all_docs.next().await {
+    ///     let doc = doc?;
+    ///     println!("Document: {}", doc.id());
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn all_with_verification(
+        &self,
+        options: &crate::VerificationOptions,
+    ) -> std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>> {
         let collection_path = self.path.clone();
+        let signing_key = self.signing_key.clone();
+        let options = *options;
 
         Box::pin(stream! {
-            trace!("Streaming all documents on collection");
+            trace!(
+                "Streaming all documents on collection (verification enabled: {})",
+                options.verify_signature || options.verify_hash
+            );
             let mut entries = match tokio_fs::read_dir(&collection_path).await {
                 Ok(entries) => entries,
                 Err(e) => {
@@ -607,13 +807,32 @@ impl Collection {
                     && let Some(file_name) = path.file_name().and_then(|n| n.to_str())
                         && file_name.ends_with(".json") && !file_name.starts_with('.') {
                             let id = file_name.strip_suffix(".json").unwrap();
-                            // Load document
                             let file_path = collection_path.join(format!("{}.json", id));
                             match tokio_fs::read_to_string(&file_path).await {
                                 Ok(content) => {
                                     match serde_json::from_str::<Document>(&content) {
                                         Ok(mut doc) => {
                                             doc.id = id.to_owned();
+
+                                            let collection_ref = Collection {
+                                                path: collection_path.clone(),
+                                                signing_key: signing_key.clone(),
+                                            };
+
+                                            if let Err(e) = collection_ref.verify_document(&doc, &options).await {
+                                                if matches!(e, SentinelError::HashVerificationFailed { .. } | SentinelError::SignatureVerificationFailed { .. }) {
+                                                    if options.hash_verification_mode == crate::VerificationMode::Strict
+                                                        || options.signature_verification_mode == crate::VerificationMode::Strict
+                                                    {
+                                                        yield Err(e);
+                                                        continue;
+                                                    }
+                                                } else {
+                                                    yield Err(e);
+                                                    continue;
+                                                }
+                                            }
+
                                             yield Ok(doc);
                                         }
                                         Err(e) => yield Err(e.into()),
@@ -634,6 +853,9 @@ impl Collection {
     /// - Queries without sorting use streaming processing with early limit application
     /// - Queries with sorting collect filtered documents in memory for sorting
     /// - Projection is applied only to final results to minimize memory usage
+    ///
+    /// By default, this method verifies both hash and signature with strict mode.
+    /// Use `query_with_verification()` to customize verification behavior.
     ///
     /// # Arguments
     ///
@@ -673,10 +895,70 @@ impl Collection {
     /// # }
     /// ```
     pub async fn query(&self, query: crate::Query) -> Result<crate::QueryResult> {
+        self.query_with_verification(query, &crate::VerificationOptions::default())
+            .await
+    }
+
+    /// Executes a structured query against the collection with custom verification options.
+    ///
+    /// This method supports complex filtering, sorting, pagination, and field projection.
+    /// For optimal performance and memory usage:
+    /// - Queries without sorting use streaming processing with early limit application
+    /// - Queries with sorting collect filtered documents in memory for sorting
+    /// - Projection is applied only to final results to minimize memory usage
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query to execute
+    /// * `options` - Verification options controlling hash and signature verification.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `QueryResult` containing the matching documents and metadata.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection, QueryBuilder, Operator, SortOrder, VerificationOptions, VerificationMode};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert test data
+    /// collection.insert("user-1", json!({"name": "Alice", "age": 25, "city": "NYC"})).await?;
+    /// collection.insert("user-2", json!({"name": "Bob", "age": 30, "city": "LA"})).await?;
+    /// collection.insert("user-3", json!({"name": "Charlie", "age": 35, "city": "NYC"})).await?;
+    ///
+    /// // Query with warning mode
+    /// let options = VerificationOptions::warn();
+    /// let query = QueryBuilder::new()
+    ///     .filter("city", Operator::Equals, json!("NYC"))
+    ///     .sort("age", SortOrder::Ascending)
+    ///     .limit(2)
+    ///     .projection(vec!["name", "age"])
+    ///     .build();
+    ///
+    /// let result = collection.query_with_verification(query, &options).await?;
+    /// let documents: Vec<_> = futures::TryStreamExt::try_collect(result.documents).await?;
+    /// assert_eq!(documents.len(), 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn query_with_verification(
+        &self,
+        query: crate::Query,
+        options: &crate::VerificationOptions,
+    ) -> Result<crate::QueryResult> {
         use std::time::Instant;
         let start_time = Instant::now();
 
-        trace!("Executing query on collection: {}", self.name());
+        trace!(
+            "Executing query on collection: {} (verification enabled: {})",
+            self.name(),
+            options.verify_signature || options.verify_hash
+        );
 
         // Get all document IDs - but for full streaming, we should avoid this
         // However, for sorted queries, we need to know all IDs to collect
@@ -684,13 +966,16 @@ impl Collection {
         let documents_stream = if query.sort.is_some() {
             // For sorted queries, we need to collect all matching documents
             let all_ids: Vec<String> = self.list().try_collect().await?;
-            let docs = self.execute_sorted_query(&all_ids, &query).await?;
+            let docs = self
+                .execute_sorted_query_with_verification(&all_ids, &query, options)
+                .await?;
             let stream = tokio_stream::iter(docs.into_iter().map(Ok));
             Box::pin(stream) as std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>
         }
         else {
             // For non-sorted queries, use streaming
-            self.execute_streaming_query(&query).await?
+            self.execute_streaming_query_with_verification(&query, options)
+                .await?
         };
 
         let execution_time = start_time.elapsed();
@@ -705,6 +990,18 @@ impl Collection {
 
     /// Executes a query that requires sorting by collecting all matching documents first.
     async fn execute_sorted_query(&self, all_ids: &[String], query: &crate::Query) -> Result<Vec<Document>> {
+        self.execute_sorted_query_with_verification(all_ids, query, &crate::VerificationOptions::default())
+            .await
+    }
+
+    /// Executes a query that requires sorting by collecting all matching documents first with
+    /// verification.
+    async fn execute_sorted_query_with_verification(
+        &self,
+        all_ids: &[String],
+        query: &crate::Query,
+        options: &crate::VerificationOptions,
+    ) -> Result<Vec<Document>> {
         // For sorted queries, we need to collect all matching documents to sort them
         // But we can optimize by only keeping document IDs and sort values during filtering
         let mut matching_docs = Vec::new();
@@ -713,7 +1010,7 @@ impl Collection {
         let filter_refs: Vec<_> = query.filters.iter().collect();
 
         for id in all_ids {
-            if let Some(doc) = self.get(id).await? &&
+            if let Some(doc) = self.get_with_verification(id, options).await? &&
                 matches_filters(&doc, &filter_refs)
             {
                 matching_docs.push(doc);
@@ -766,11 +1063,24 @@ impl Collection {
         &self,
         query: &crate::Query,
     ) -> Result<std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>> {
+        self.execute_streaming_query_with_verification(query, &crate::VerificationOptions::default())
+            .await
+    }
+
+    /// Executes a query without sorting, allowing streaming with early limit application and
+    /// verification.
+    async fn execute_streaming_query_with_verification(
+        &self,
+        query: &crate::Query,
+        options: &crate::VerificationOptions,
+    ) -> Result<std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>> {
         let collection_path = self.path.clone();
+        let signing_key = self.signing_key.clone();
         let filters = query.filters.clone();
         let projection_fields = query.projection.clone();
         let limit = query.limit.unwrap_or(usize::MAX);
         let offset = query.offset.unwrap_or(0);
+        let options = *options;
 
         Ok(Box::pin(stream! {
             let mut id_stream = stream_document_ids(collection_path.clone());
@@ -802,7 +1112,29 @@ impl Collection {
                 let doc = match serde_json::from_str::<Document>(&content) {
                     Ok(doc) => {
                         // Create a new document with the correct ID
-                        Document::new_without_signature(id, doc.data().clone()).await.unwrap_or(doc)
+                        let mut doc_with_id = doc;
+                        doc_with_id.id = id.clone();
+
+                        let collection_ref = Collection {
+                            path: collection_path.clone(),
+                            signing_key: signing_key.clone(),
+                        };
+
+                        if let Err(e) = collection_ref.verify_document(&doc_with_id, &options).await {
+                            if matches!(e, SentinelError::HashVerificationFailed { .. } | SentinelError::SignatureVerificationFailed { .. }) {
+                                if options.hash_verification_mode == crate::VerificationMode::Strict
+                                    || options.signature_verification_mode == crate::VerificationMode::Strict
+                                {
+                                    yield Err(e);
+                                    continue;
+                                }
+                            } else {
+                                yield Err(e);
+                                continue;
+                            }
+                        }
+
+                        doc_with_id
                     }
                     Err(e) => {
                         yield Err(e.into());
@@ -836,6 +1168,163 @@ impl Collection {
     /// Projects a document to include only specified fields.
     async fn project_document(&self, doc: &Document, fields: &[String]) -> Result<Document> {
         project_document(doc, fields).await
+    }
+
+    /// Verifies document hash according to the specified verification mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document to verify
+    /// * `mode` - The verification mode (Strict, Warn, or Silent)
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if verification passes or is in Warn/Silent mode,
+    /// or `Err(SentinelError::HashVerificationFailed)` if verification fails in Strict mode.
+    async fn verify_hash(&self, doc: &Document, mode: crate::VerificationMode) -> Result<()> {
+        if mode == crate::VerificationMode::Silent {
+            return Ok(());
+        }
+
+        trace!("Verifying hash for document: {}", doc.id());
+        let computed_hash = sentinel_crypto::hash_data(doc.data()).await?;
+
+        if computed_hash != doc.hash() {
+            let reason = format!(
+                "Expected hash: {}, Computed hash: {}",
+                doc.hash(),
+                computed_hash
+            );
+
+            match mode {
+                crate::VerificationMode::Strict => {
+                    error!("Document {} hash verification failed: {}", doc.id(), reason);
+                    return Err(SentinelError::HashVerificationFailed {
+                        id: doc.id().to_string(),
+                        reason,
+                    });
+                },
+                crate::VerificationMode::Warn => {
+                    warn!("Document {} hash verification failed: {}", doc.id(), reason);
+                },
+                crate::VerificationMode::Silent => {},
+            }
+        }
+        else {
+            trace!("Document {} hash verified successfully", doc.id());
+        }
+
+        Ok(())
+    }
+
+    /// Verifies document signature according to the specified verification mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document to verify
+    /// * `mode` - The verification mode (Strict, Warn, or Silent)
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if verification passes or is in Warn/Silent mode,
+    /// or `Err(SentinelError::SignatureVerificationFailed)` if verification fails in Strict mode.
+    async fn verify_signature(&self, doc: &Document, mode: crate::VerificationMode) -> Result<()> {
+        if mode == crate::VerificationMode::Silent {
+            return Ok(());
+        }
+
+        trace!("Verifying signature for document: {}", doc.id());
+
+        if doc.signature().is_empty() {
+            let reason = "Document has no signature".to_string();
+
+            match mode {
+                crate::VerificationMode::Strict => {
+                    error!(
+                        "Document {} signature verification failed: {}",
+                        doc.id(),
+                        reason
+                    );
+                    return Err(SentinelError::SignatureVerificationFailed {
+                        id: doc.id().to_string(),
+                        reason,
+                    });
+                },
+                crate::VerificationMode::Warn => {
+                    warn!(
+                        "Document {} signature verification failed: {}",
+                        doc.id(),
+                        reason
+                    );
+                },
+                crate::VerificationMode::Silent => {},
+            }
+            return Ok(());
+        }
+
+        if let Some(ref signing_key) = self.signing_key {
+            let public_key = signing_key.verifying_key();
+            let is_valid = sentinel_crypto::verify_signature(doc.hash(), doc.signature(), &public_key).await?;
+
+            if !is_valid {
+                let reason = "Signature verification using public key failed".to_string();
+
+                match mode {
+                    crate::VerificationMode::Strict => {
+                        error!(
+                            "Document {} signature verification failed: {}",
+                            doc.id(),
+                            reason
+                        );
+                        return Err(SentinelError::SignatureVerificationFailed {
+                            id: doc.id().to_string(),
+                            reason,
+                        });
+                    },
+                    crate::VerificationMode::Warn => {
+                        warn!(
+                            "Document {} signature verification failed: {}",
+                            doc.id(),
+                            reason
+                        );
+                    },
+                    crate::VerificationMode::Silent => {},
+                }
+            }
+            else {
+                trace!("Document {} signature verified successfully", doc.id());
+            }
+        }
+        else {
+            trace!("No signing key available for verification, skipping signature check");
+        }
+
+        Ok(())
+    }
+
+    /// Verifies both hash and signature of a document according to the specified options.
+    ///
+    /// # Arguments
+    ///
+    /// * `doc` - The document to verify
+    /// * `options` - The verification options
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if verifications pass or are in Warn/Silent mode,
+    /// or an error if verification fails in Strict mode.
+    async fn verify_document(&self, doc: &Document, options: &crate::VerificationOptions) -> Result<()> {
+        if options.verify_hash {
+            self.verify_hash(doc, options.hash_verification_mode)
+                .await?;
+        }
+
+        if options.verify_signature {
+            self.verify_signature(doc, options.signature_verification_mode)
+                .await?;
+        }
+
+        Ok(())
     }
 }
 
@@ -1413,6 +1902,237 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_get_with_verification_strict_mode_valid_signature() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Alice", "signed": true });
+        collection
+            .insert("valid_signed", doc.clone())
+            .await
+            .unwrap();
+
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Strict,
+            hash_verification_mode:      crate::VerificationMode::Strict,
+        };
+
+        let result = collection
+            .get_with_verification("valid_signed", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_strict_mode_invalid_signature() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Alice", "data": "original" });
+        collection.insert("original_doc", doc).await.unwrap();
+
+        let file_path = collection.path.join("original_doc.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        let mut json_value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        json_value["data"] = json!("tampered");
+        let tampered_content = serde_json::to_string(&json_value).unwrap();
+        tokio_fs::write(&file_path, tampered_content).await.unwrap();
+
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Strict,
+            hash_verification_mode:      crate::VerificationMode::Strict,
+        };
+
+        let result = collection
+            .get_with_verification("original_doc", &options)
+            .await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::SentinelError::HashVerificationFailed {
+                ..
+            } => {},
+            crate::SentinelError::SignatureVerificationFailed {
+                ..
+            } => {},
+            _ => panic!("Expected hash or signature verification failure"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_warn_mode_invalid_signature() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Bob" });
+        collection.insert("warn_test_doc", doc).await.unwrap();
+
+        let file_path = collection.path.join("warn_test_doc.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        let mut json_value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        json_value["name"] = json!("tampered");
+        let tampered_content = serde_json::to_string(&json_value).unwrap();
+        tokio_fs::write(&file_path, tampered_content).await.unwrap();
+
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Warn,
+            hash_verification_mode:      crate::VerificationMode::Warn,
+        };
+
+        let result = collection
+            .get_with_verification("warn_test_doc", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_silent_mode() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Charlie" });
+        collection.insert("silent_test_doc", doc).await.unwrap();
+
+        let file_path = collection.path.join("silent_test_doc.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        let mut json_value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        json_value["name"] = json!("silently_tampered");
+        let tampered_content = serde_json::to_string(&json_value).unwrap();
+        tokio_fs::write(&file_path, tampered_content).await.unwrap();
+
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Silent,
+            hash_verification_mode:      crate::VerificationMode::Silent,
+        };
+
+        let result = collection
+            .get_with_verification("silent_test_doc", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_disabled() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Dave" });
+        collection.insert("disabled_test_doc", doc).await.unwrap();
+
+        let file_path = collection.path.join("disabled_test_doc.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        let mut json_value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        json_value["name"] = json!("tampered");
+        let tampered_content = serde_json::to_string(&json_value).unwrap();
+        tokio_fs::write(&file_path, tampered_content).await.unwrap();
+
+        let options = crate::VerificationOptions::disabled();
+
+        let result = collection
+            .get_with_verification("disabled_test_doc", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_all_with_verification_strict_mode() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        collection
+            .insert("doc1", json!({ "name": "Alice" }))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({ "name": "Bob" }))
+            .await
+            .unwrap();
+
+        let options = crate::VerificationOptions::strict();
+        let mut stream = collection.all_with_verification(&options);
+        let mut count = 0;
+
+        use futures::StreamExt;
+        while let Some(result) = stream.next().await {
+            assert!(result.is_ok());
+            count += 1;
+        }
+
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_filter_with_verification_strict_mode() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        collection
+            .insert("doc1", json!({ "name": "Alice", "age": 25 }))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({ "name": "Bob", "age": 30 }))
+            .await
+            .unwrap();
+
+        let options = crate::VerificationOptions::strict();
+        let mut stream = collection.filter_with_verification(
+            |doc| {
+                doc.data()
+                    .get("age")
+                    .and_then(|v| v.as_i64())
+                    .map_or(false, |age| age >= 25)
+            },
+            &options,
+        );
+
+        use futures::StreamExt;
+        let mut count = 0;
+        while let Some(result) = stream.next().await {
+            assert!(result.is_ok());
+            count += 1;
+        }
+
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_verification_strict_mode() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        collection
+            .insert("doc1", json!({ "name": "Alice", "age": 25 }))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({ "name": "Bob", "age": 30 }))
+            .await
+            .unwrap();
+
+        let options = crate::VerificationOptions::strict();
+        let query = crate::QueryBuilder::new()
+            .filter("age", crate::Operator::GreaterOrEqual, json!(25))
+            .build();
+
+        let result = collection.query_with_verification(query, &options).await;
+        assert!(result.is_ok());
+
+        use futures::StreamExt;
+        let mut stream = result.unwrap().documents;
+        let mut count = 0;
+        while let Some(doc_result) = stream.next().await {
+            assert!(doc_result.is_ok());
+            count += 1;
+        }
+
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
     async fn test_filter_empty_collection() {
         let (collection, _temp_dir) = setup_collection().await;
 
@@ -1766,5 +2486,236 @@ mod tests {
         let ids: std::collections::HashSet<_> = all_docs.iter().map(|d| d.id()).collect();
         assert!(ids.contains("doc1"));
         assert!(ids.contains("doc2"));
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_strict_mode_valid_signature() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Alice", "signed": true });
+        collection
+            .insert("valid_signed", doc.clone())
+            .await
+            .unwrap();
+
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Strict,
+            hash_verification_mode:      crate::VerificationMode::Strict,
+        };
+
+        let result = collection
+            .get_with_verification("valid_signed", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_strict_mode_invalid_signature() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Alice", "data": "original" });
+        collection.insert("original_doc", doc).await.unwrap();
+
+        let file_path = collection.path.join("original_doc.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        let mut json_value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        json_value["data"] = json!("tampered");
+        let tampered_content = serde_json::to_string(&json_value).unwrap();
+        tokio_fs::write(&file_path, tampered_content).await.unwrap();
+
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Strict,
+            hash_verification_mode:      crate::VerificationMode::Strict,
+        };
+
+        let result = collection
+            .get_with_verification("original_doc", &options)
+            .await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::SentinelError::HashVerificationFailed {
+                ..
+            } => {},
+            crate::SentinelError::SignatureVerificationFailed {
+                ..
+            } => {},
+            _ => panic!("Expected hash or signature verification failure"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_warn_mode_invalid_signature() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Bob" });
+        collection.insert("warn_test_doc", doc).await.unwrap();
+
+        let file_path = collection.path.join("warn_test_doc.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        let mut json_value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        json_value["name"] = json!("tampered");
+        let tampered_content = serde_json::to_string(&json_value).unwrap();
+        tokio_fs::write(&file_path, tampered_content).await.unwrap();
+
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Warn,
+            hash_verification_mode:      crate::VerificationMode::Warn,
+        };
+
+        let result = collection
+            .get_with_verification("warn_test_doc", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_silent_mode() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Charlie" });
+        collection.insert("silent_test_doc", doc).await.unwrap();
+
+        let file_path = collection.path.join("silent_test_doc.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        let mut json_value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        json_value["name"] = json!("silently_tampered");
+        let tampered_content = serde_json::to_string(&json_value).unwrap();
+        tokio_fs::write(&file_path, tampered_content).await.unwrap();
+
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Silent,
+            hash_verification_mode:      crate::VerificationMode::Silent,
+        };
+
+        let result = collection
+            .get_with_verification("silent_test_doc", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_with_verification_disabled() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        let doc = json!({ "name": "Dave" });
+        collection.insert("disabled_test_doc", doc).await.unwrap();
+
+        let file_path = collection.path.join("disabled_test_doc.json");
+        let mut content = tokio_fs::read_to_string(&file_path).await.unwrap();
+        let mut json_value: serde_json::Value = serde_json::from_str(&content).unwrap();
+        json_value["name"] = json!("tampered");
+        let tampered_content = serde_json::to_string(&json_value).unwrap();
+        tokio_fs::write(&file_path, tampered_content).await.unwrap();
+
+        let options = crate::VerificationOptions::disabled();
+
+        let result = collection
+            .get_with_verification("disabled_test_doc", &options)
+            .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_all_with_verification_strict_mode() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        collection
+            .insert("doc1", json!({ "name": "Alice" }))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({ "name": "Bob" }))
+            .await
+            .unwrap();
+
+        let options = crate::VerificationOptions::strict();
+        let mut stream = collection.all_with_verification(&options);
+        let mut count = 0;
+
+        use futures::StreamExt;
+        while let Some(result) = stream.next().await {
+            assert!(result.is_ok());
+            count = count.saturating_add(1);
+        }
+
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_filter_with_verification_strict_mode() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        collection
+            .insert("doc1", json!({ "name": "Alice", "age": 25 }))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({ "name": "Bob", "age": 30 }))
+            .await
+            .unwrap();
+
+        let options = crate::VerificationOptions::strict();
+        let mut stream = collection.filter_with_verification(
+            |doc| {
+                doc.data()
+                    .get("age")
+                    .and_then(|v| v.as_i64())
+                    .map_or(false, |age| age >= 25)
+            },
+            &options,
+        );
+
+        use futures::StreamExt;
+        let mut count = 0;
+        while let Some(result) = stream.next().await {
+            assert!(result.is_ok());
+            count = count.saturating_add(1);
+        }
+
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_verification_strict_mode() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+
+        collection
+            .insert("doc1", json!({ "name": "Alice", "age": 25 }))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({ "name": "Bob", "age": 30 }))
+            .await
+            .unwrap();
+
+        let options = crate::VerificationOptions::strict();
+        let query = crate::QueryBuilder::new()
+            .filter("age", crate::Operator::GreaterOrEqual, json!(25))
+            .build();
+
+        let result = collection.query_with_verification(query, &options).await;
+        assert!(result.is_ok());
+
+        use futures::StreamExt;
+        let mut stream = result.unwrap().documents;
+        let mut count = 0;
+        while let Some(doc_result) = stream.next().await {
+            assert!(doc_result.is_ok());
+            count = count.saturating_add(1);
+        }
+
+        assert_eq!(count, 2);
     }
 }
