@@ -10,7 +10,7 @@ include(GNUInstallDirs)
 option(SENTINEL_CXX_BUILD_SHARED "Build shared library" ON)
 option(SENTINEL_CXX_BUILD_STATIC "Build static library" ON)
 option(SENTINEL_CXX_BUILD_TESTS "Build tests" ON)
-option(SENTINEL_CXX_BUILD_EXAMPLES "Build examples" OFF)
+option(SENTINEL_CXX_BUILD_EXAMPLES "Build examples" ON)
 option(SENTINEL_CXX_ENABLE_ASYNC "Enable async operations" ON)
 
 # Find Sentinel library
@@ -128,11 +128,6 @@ install(FILES
 
 # Build examples
 if(SENTINEL_CXX_BUILD_EXAMPLES)
-    # C example
-    add_executable(c_example examples/c_example.c)
-    target_include_directories(c_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
-    target_link_libraries(c_example PRIVATE sentinel-cxx)
-
     # C++ example
     add_executable(cpp_example examples/cpp_example.cpp)
     target_link_libraries(cpp_example PRIVATE sentinel-cxx)
@@ -147,6 +142,18 @@ if(SENTINEL_CXX_BUILD_EXAMPLES)
         add_executable(c_async_example examples/c_async_example.c)
         target_include_directories(c_async_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
         target_link_libraries(c_async_example PRIVATE sentinel-cxx)
+    endif()
+
+    # C query example
+    add_executable(c_query_example examples/c_query_example.c)
+    target_include_directories(c_query_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
+    target_link_libraries(c_query_example PRIVATE sentinel-cxx)
+
+    # C async query example
+    if(SENTINEL_CXX_ENABLE_ASYNC)
+        add_executable(c_async_query_example examples/c_async_query_example.c)
+        target_include_directories(c_async_query_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
+        target_link_libraries(c_async_query_example PRIVATE sentinel-cxx)
     endif()
 endif()
 
