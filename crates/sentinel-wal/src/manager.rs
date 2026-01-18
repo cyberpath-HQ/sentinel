@@ -5,13 +5,23 @@ use std::{fs, path::PathBuf, sync::Arc};
 use crc32fast::Hasher as Crc32Hasher;
 use tokio::{
     fs::{File, OpenOptions},
-    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     sync::Mutex,
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 use async_stream::stream;
 
 use crate::{LogEntry, Result};
+
+/// WAL file format options
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum WalFormat {
+    /// Binary format (compact, default)
+    #[default]
+    Binary,
+    /// JSON Lines format (human-readable, extended)
+    JsonLines,
+}
 
 /// Configuration for WAL manager
 #[derive(Debug, Clone)]
@@ -22,6 +32,8 @@ pub struct WalConfig {
     pub compression_algorithm: Option<crate::CompressionAlgorithm>,
     /// Optional maximum number of records per file
     pub max_records_per_file:  Option<usize>,
+    /// WAL file format
+    pub format:                WalFormat,
 }
 
 impl Default for WalConfig {
@@ -30,6 +42,7 @@ impl Default for WalConfig {
             max_file_size:         Some(10 * 1024 * 1024), // 10MB
             compression_algorithm: Some(crate::CompressionAlgorithm::Zstd),
             max_records_per_file:  Some(1000),
+            format:                WalFormat::default(),
         }
     }
 }
@@ -50,10 +63,12 @@ pub struct WalManager {
 impl WalManager {
     /// Create a new WAL manager
     pub async fn new(path: PathBuf, config: WalConfig) -> Result<Self> {
-        info!("Initializing WAL manager at {:?}", path);
+        debug!("Creating WAL manager at {:?} with config: max_file_size={:?}, compression={:?}, max_records={:?}, format={:?}",
+               path, config.max_file_size, config.compression_algorithm, config.max_records_per_file, config.format);
 
         // Ensure the directory exists
         if let Some(parent) = path.parent() {
+            trace!("Ensuring parent directory exists: {:?}", parent);
             tokio::fs::create_dir_all(parent).await?;
         }
 
@@ -64,25 +79,42 @@ impl WalManager {
             .open(&path)
             .await?;
 
-        Ok(Self {
-            path,
+        let manager = Self {
+            path: path.clone(),
             config,
             file: Arc::new(tokio::sync::RwLock::new(BufWriter::new(file))),
             entries_count: Arc::new(Mutex::new(0)),
-        })
+        };
+
+        info!("WAL manager initialized successfully at {:?}", path);
+        Ok(manager)
     }
 
     /// Write a log entry to the WAL
     pub async fn write_entry(&self, entry: LogEntry) -> Result<()> {
-        debug!("Writing WAL entry: {:?}", entry.entry_type);
+        debug!("Writing WAL entry: {:?} in format {:?}", entry.entry_type, self.config.format);
 
-        let bytes = entry.to_bytes()?;
+        let bytes = match self.config.format {
+            WalFormat::Binary => {
+                trace!("Serializing entry to binary format");
+                entry.to_bytes()?
+            },
+            WalFormat::JsonLines => {
+                trace!("Serializing entry to JSON format");
+                let json = entry.to_json()?;
+                let mut bytes = json.into_bytes();
+                bytes.push(b'\n'); // Add newline for JSON Lines format
+                bytes
+            },
+        };
+
         let entry_size = bytes.len() as u64;
 
         // Check file size limit and rotate if needed
         if let Some(max_size) = self.config.max_file_size {
             let current_size = tokio::fs::metadata(&self.path).await?.len();
             if current_size + entry_size > max_size {
+                debug!("File size limit reached ({} + {} > {}), rotating", current_size, entry_size, max_size);
                 self.rotate().await?;
             }
         }
@@ -91,6 +123,7 @@ impl WalManager {
         if let Some(max_records) = self.config.max_records_per_file {
             let count = *self.entries_count.lock().await;
             if count >= max_records {
+                debug!("Record limit reached ({} >= {}), rotating", count, max_records);
                 self.rotate().await?;
             }
         }
@@ -107,6 +140,8 @@ impl WalManager {
 
     /// Compress a WAL file using the specified algorithm
     async fn compress_file(path: &PathBuf, alg: crate::CompressionAlgorithm) -> Result<()> {
+        debug!("Starting compression of WAL file {:?} with algorithm {:?}", path, alg);
+
         let input = tokio::fs::File::open(&path).await?;
         let compressed_path = match alg {
             crate::CompressionAlgorithm::Zstd => path.with_extension("wal.zst"),
@@ -115,34 +150,41 @@ impl WalManager {
             crate::CompressionAlgorithm::Deflate => path.with_extension("wal.deflate"),
             crate::CompressionAlgorithm::Gzip => path.with_extension("wal.gz"),
         };
+
+        trace!("Compressed file will be saved as {:?}", compressed_path);
         let output = tokio::fs::File::create(&compressed_path).await?;
 
         match alg {
             crate::CompressionAlgorithm::Zstd => {
+                trace!("Using Zstd compression");
                 use async_compression::tokio::bufread::ZstdEncoder;
                 let reader = tokio::io::BufReader::new(input);
                 let mut encoder = ZstdEncoder::new(reader);
                 tokio::io::copy(&mut encoder, &mut tokio::io::BufWriter::new(output)).await?;
             },
             crate::CompressionAlgorithm::Lz4 => {
+                trace!("Using LZ4 compression");
                 use async_compression::tokio::bufread::Lz4Encoder;
                 let reader = tokio::io::BufReader::new(input);
                 let mut encoder = Lz4Encoder::new(reader);
                 tokio::io::copy(&mut encoder, &mut tokio::io::BufWriter::new(output)).await?;
             },
             crate::CompressionAlgorithm::Brotli => {
+                trace!("Using Brotli compression");
                 use async_compression::tokio::bufread::BrotliEncoder;
                 let reader = tokio::io::BufReader::new(input);
                 let mut encoder = BrotliEncoder::new(reader);
                 tokio::io::copy(&mut encoder, &mut tokio::io::BufWriter::new(output)).await?;
             },
             crate::CompressionAlgorithm::Deflate => {
+                trace!("Using DEFLATE compression");
                 use async_compression::tokio::bufread::DeflateEncoder;
                 let reader = tokio::io::BufReader::new(input);
                 let mut encoder = DeflateEncoder::new(reader);
                 tokio::io::copy(&mut encoder, &mut tokio::io::BufWriter::new(output)).await?;
             },
             crate::CompressionAlgorithm::Gzip => {
+                trace!("Using GZIP compression");
                 use async_compression::tokio::bufread::GzipEncoder;
                 let reader = tokio::io::BufReader::new(input);
                 let mut encoder = GzipEncoder::new(reader);
@@ -151,6 +193,7 @@ impl WalManager {
         }
 
         // Remove the original file after successful compression
+        trace!("Removing original uncompressed file {:?}", path);
         tokio::fs::remove_file(&path).await?;
         tracing::info!(
             "Compressed WAL file {} to {}",
@@ -162,7 +205,7 @@ impl WalManager {
 
     /// Rotate the WAL file if limits are reached
     async fn rotate(&self) -> Result<()> {
-        info!("Rotating WAL file");
+        info!("Rotating WAL file at {:?}", self.path);
 
         // Close current file
         drop(self.file.write().await);
@@ -173,19 +216,24 @@ impl WalManager {
             .unwrap()
             .as_secs();
         let new_path = self.path.with_extension(format!("{}.wal", timestamp));
+        debug!("Renaming WAL file from {:?} to {:?}", self.path, new_path);
         tokio::fs::rename(&self.path, &new_path).await?;
 
         // If compression is enabled, compress asynchronously
         if let Some(alg) = self.config.compression_algorithm {
+            debug!("Compression enabled with algorithm {:?}, starting async compression", alg);
             let path = new_path.clone();
             tokio::spawn(async move {
                 if let Err(e) = Self::compress_file(&path, alg).await {
                     tracing::error!("Failed to compress WAL file {}: {}", path.display(), e);
                 }
             });
+        } else {
+            trace!("Compression disabled, skipping compression step");
         }
 
         // Create new file
+        debug!("Creating new WAL file at {:?}", self.path);
         let file = OpenOptions::new()
             .create(true)
             .read(true)
@@ -200,7 +248,23 @@ impl WalManager {
     }
 
     /// Parse entries from a buffer
-    fn parse_entries_from_buffer(buffer: &[u8]) -> Result<Vec<LogEntry>> {
+    fn parse_entries_from_buffer(&self, buffer: &[u8]) -> Result<Vec<LogEntry>> {
+        debug!("Parsing {} bytes of WAL data in format {:?}", buffer.len(), self.config.format);
+
+        match self.config.format {
+            WalFormat::Binary => {
+                trace!("Parsing binary format entries");
+                self.parse_binary_entries(buffer)
+            },
+            WalFormat::JsonLines => {
+                trace!("Parsing JSON Lines format entries");
+                self.parse_json_lines_entries(buffer)
+            },
+        }
+    }
+
+    /// Parse binary format entries
+    fn parse_binary_entries(&self, buffer: &[u8]) -> Result<Vec<LogEntry>> {
         let mut entries = Vec::new();
         let mut offset = 0;
         while offset < buffer.len() {
@@ -223,7 +287,10 @@ impl WalManager {
                 if actual_checksum == expected_checksum {
                     // Found a valid entry
                     match LogEntry::from_bytes(&buffer[offset .. entry_end + 4]) {
-                        Ok(entry) => entries.push(entry),
+                        Ok(entry) => {
+                            trace!("Parsed binary entry: {:?}", entry.entry_type);
+                            entries.push(entry);
+                        },
                         Err(e) => {
                             warn!("Skipping invalid WAL entry: {}", e);
                         },
@@ -240,11 +307,39 @@ impl WalManager {
                 break;
             }
         }
+        debug!("Parsed {} binary entries", entries.len());
+        Ok(entries)
+    }
+
+    /// Parse JSON Lines format entries
+    fn parse_json_lines_entries(&self, buffer: &[u8]) -> Result<Vec<LogEntry>> {
+        let content = std::str::from_utf8(buffer)
+            .map_err(|e| crate::WalError::Serialization(format!("Invalid UTF-8 in JSON Lines: {}", e)))?;
+
+        let mut entries = Vec::new();
+        for (line_num, line) in content.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            match LogEntry::from_json(line) {
+                Ok(entry) => {
+                    trace!("Parsed JSON entry {}: {:?}", line_num + 1, entry.entry_type);
+                    entries.push(entry);
+                },
+                Err(e) => {
+                    warn!("Skipping invalid JSON line {}: {}", line_num + 1, e);
+                },
+            }
+        }
+        debug!("Parsed {} JSON Lines entries", entries.len());
         Ok(entries)
     }
 
     /// Get all WAL files in the directory
     fn get_wal_files(&self) -> Result<Vec<PathBuf>> {
+        trace!("Scanning for WAL files in directory of {:?}", self.path);
         let mut files = Vec::new();
         if self.path.exists() {
             files.push(self.path.clone());
@@ -259,6 +354,7 @@ impl WalManager {
                         file_name.starts_with("wal") &&
                         file_name.ends_with(".wal")
                     {
+                        trace!("Found WAL file: {:?}", path);
                         files.push(path);
                     }
                 }
@@ -275,54 +371,98 @@ impl WalManager {
                 a.file_name().cmp(&b.file_name())
             }
         });
+        debug!("Found {} WAL files total", files.len());
         Ok(files)
     }
 
     /// Read all entries from the WAL (for recovery)
     pub async fn read_all_entries(&self) -> Result<Vec<LogEntry>> {
-        info!("Reading all WAL entries for recovery");
+        info!("Reading all WAL entries for recovery from {:?}", self.path);
 
         let files = self.get_wal_files()?;
+        debug!("Found {} WAL files to read", files.len());
         let mut all_entries = Vec::new();
         for file_path in files {
+            trace!("Reading entries from file {:?}", file_path);
             let file = File::open(&file_path).await?;
             let mut reader = BufReader::new(file);
             let mut buffer = Vec::new();
             reader.read_to_end(&mut buffer).await?;
-            all_entries.extend(Self::parse_entries_from_buffer(&buffer)?);
+            let entries = self.parse_entries_from_buffer(&buffer)?;
+            debug!("Read {} entries from {:?}", entries.len(), file_path);
+            all_entries.extend(entries);
         }
         *self.entries_count.lock().await = all_entries.len();
+        info!("Recovery complete: loaded {} total entries", all_entries.len());
         Ok(all_entries)
     }
 
     /// Stream all entries from the WAL file
     pub fn stream_entries(&self) -> impl futures::Stream<Item = Result<LogEntry>> + '_ {
         let path = self.path.clone();
+        let format = self.config.format;
         stream! {
+            debug!("Streaming WAL entries from {:?} in format {:?}", path, format);
             match File::open(&path).await {
                 Ok(file) => {
                     let mut reader = BufReader::new(file);
-                    let mut buffer = [0u8; 4];
-                    loop {
-                        // Read length
-                        match reader.read_exact(&mut buffer).await {
-                            Ok(_) => {
-                                let len = u32::from_le_bytes(buffer) as usize;
-                                let mut data = vec![0u8; len];
-                                match reader.read_exact(&mut data).await {
+                    match format {
+                        WalFormat::Binary => {
+                            trace!("Streaming binary format entries");
+                            let mut buffer = [0u8; 4];
+                            loop {
+                                // Read length
+                                match reader.read_exact(&mut buffer).await {
                                     Ok(_) => {
-                                        match LogEntry::from_bytes(&data) {
-                                            Ok(entry) => yield Ok(entry),
-                                            Err(e) => {
-                                                warn!("Skipping invalid WAL entry: {}", e);
-                                                // Try to continue, but since length is wrong, may fail
+                                        let len = u32::from_le_bytes(buffer) as usize;
+                                        let mut data = vec![0u8; len];
+                                        match reader.read_exact(&mut data).await {
+                                            Ok(_) => {
+                                                match LogEntry::from_bytes(&data) {
+                                                    Ok(entry) => {
+                                                        trace!("Streamed binary entry: {:?}", entry.entry_type);
+                                                        yield Ok(entry);
+                                                    },
+                                                    Err(e) => {
+                                                        warn!("Skipping invalid WAL entry: {}", e);
+                                                        // Try to continue, but since length is wrong, may fail
+                                                    }
+                                                }
                                             }
+                                            Err(_) => break, // EOF or error
                                         }
                                     }
-                                    Err(_) => break, // EOF or error
+                                    Err(_) => break, // EOF
                                 }
                             }
-                            Err(_) => break, // EOF
+                        },
+                        WalFormat::JsonLines => {
+                            trace!("Streaming JSON Lines format entries");
+                            let mut line_buffer = String::new();
+                            loop {
+                                line_buffer.clear();
+                                match reader.read_line(&mut line_buffer).await {
+                                    Ok(0) => break, // EOF
+                                    Ok(_) => {
+                                        let line = line_buffer.trim();
+                                        if !line.is_empty() {
+                                            match LogEntry::from_json(line) {
+                                                Ok(entry) => {
+                                                    trace!("Streamed JSON entry: {:?}", entry.entry_type);
+                                                    yield Ok(entry);
+                                                },
+                                                Err(e) => {
+                                                    warn!("Skipping invalid JSON line: {}", e);
+                                                }
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        yield Err(crate::WalError::Io(e).into());
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -333,15 +473,17 @@ impl WalManager {
 
     /// Perform a checkpoint (truncate the log)
     pub async fn checkpoint(&self) -> Result<()> {
-        info!("Performing WAL checkpoint");
+        info!("Performing WAL checkpoint at {:?}", self.path);
 
         // Close current file
         drop(self.file.write().await);
 
         // Truncate the file
+        debug!("Truncating WAL file");
         tokio::fs::File::create(&self.path).await?;
 
         // Reopen
+        debug!("Reopening WAL file for writing");
         let file = OpenOptions::new()
             .create(true)
             .read(true)
@@ -352,13 +494,15 @@ impl WalManager {
         *self.file.write().await = BufWriter::new(file);
         *self.entries_count.lock().await = 0;
 
-        info!("WAL checkpoint completed");
+        info!("WAL checkpoint completed successfully");
         Ok(())
     }
 
     /// Get the current size of the WAL file
     pub async fn size(&self) -> Result<u64> {
         let metadata = tokio::fs::metadata(&self.path).await?;
-        Ok(metadata.len())
+        let size = metadata.len();
+        trace!("WAL file size: {} bytes", size);
+        Ok(size)
     }
 }
