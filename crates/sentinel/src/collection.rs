@@ -3014,4 +3014,341 @@ mod tests {
         assert!(!ids.contains("doc-3"));
         assert!(ids.contains("doc-4"));
     }
+
+    #[tokio::test]
+    async fn test_count_method() {
+        // Test line 449-452: count() method trace logs
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"data": 1}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", json!({"data": 2}))
+            .await
+            .unwrap();
+
+        let count = collection.count().await.unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_many() {
+        // Test lines 1467-1468, 1470, 1472, 1476: get_many batch retrieval
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection.insert("doc-1", json!({"id": 1})).await.unwrap();
+        collection.insert("doc-2", json!({"id": 2})).await.unwrap();
+
+        let ids = vec!["doc-1", "doc-2", "non-existent"];
+        let results = collection.get_many(&ids).await.unwrap();
+
+        assert_eq!(results.len(), 3);
+        assert!(results[0].is_some());
+        assert!(results[1].is_some());
+        assert!(results[2].is_none());
+    }
+
+    #[tokio::test]
+    async fn test_upsert_insert() {
+        // Test lines 1531-1533: upsert creates new document
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let is_new = collection
+            .upsert("new-doc", json!({"value": 100}))
+            .await
+            .unwrap();
+        assert!(is_new);
+
+        let doc = collection.get("new-doc").await.unwrap().unwrap();
+        assert_eq!(doc.data().get("value").unwrap(), &json!(100));
+    }
+
+    #[tokio::test]
+    async fn test_upsert_update() {
+        // Test lines 1523, 1525-1527: upsert updates existing document
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("existing", json!({"value": 1}))
+            .await
+            .unwrap();
+        let is_new = collection
+            .upsert("existing", json!({"value": 2}))
+            .await
+            .unwrap();
+
+        assert!(!is_new);
+        let doc = collection.get("existing").await.unwrap().unwrap();
+        assert_eq!(doc.data().get("value").unwrap(), &json!(2));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_count() {
+        // Test line 1601: aggregate count
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"value": 1}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", json!({"value": 2}))
+            .await
+            .unwrap();
+
+        let result = collection
+            .aggregate(vec![], crate::Aggregation::Count)
+            .await
+            .unwrap();
+        assert_eq!(result, json!(2));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_sum() {
+        // Test lines 1594-1596: aggregate sum
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"amount": 10}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", json!({"amount": 20}))
+            .await
+            .unwrap();
+
+        let result = collection
+            .aggregate(vec![], crate::Aggregation::Sum("amount".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result, json!(30.0));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_avg() {
+        // Test lines 1609-1612: aggregate average
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"score": 10}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", json!({"score": 20}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-3", json!({"score": 30}))
+            .await
+            .unwrap();
+
+        let result = collection
+            .aggregate(vec![], crate::Aggregation::Avg("score".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result, json!(20.0));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_avg_no_docs() {
+        // Test lines 1604-1606: average with no documents
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let result = collection
+            .aggregate(vec![], crate::Aggregation::Avg("score".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result, json!(null));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_min() {
+        // Test lines 1621-1622: aggregate min
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"value": 15}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", json!({"value": 5}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-3", json!({"value": 10}))
+            .await
+            .unwrap();
+
+        let result = collection
+            .aggregate(vec![], crate::Aggregation::Min("value".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result, json!(5.0));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_min_no_values() {
+        // Test lines 1617-1619: min with no numeric values
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"name": "test"}))
+            .await
+            .unwrap();
+
+        let result = collection
+            .aggregate(vec![], crate::Aggregation::Min("value".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result, json!(null));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_max() {
+        // Test line 1633: aggregate max
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"value": 15}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", json!({"value": 25}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-3", json!({"value": 10}))
+            .await
+            .unwrap();
+
+        let result = collection
+            .aggregate(vec![], crate::Aggregation::Max("value".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result, json!(25.0));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_max_no_values() {
+        // Test lines 1629-1630: max with no numeric values
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let result = collection
+            .aggregate(vec![], crate::Aggregation::Max("value".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result, json!(null));
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_with_filters() {
+        // Test lines 1587-1590, 1592: aggregation with filters
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"category": "A", "value": 10}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", json!({"category": "B", "value": 20}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-3", json!({"category": "A", "value": 15}))
+            .await
+            .unwrap();
+
+        let filters = vec![crate::Filter::Equals("category".to_string(), json!("A"))];
+        let result = collection
+            .aggregate(filters, crate::Aggregation::Sum("value".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result, json!(25.0));
+    }
+
+    #[tokio::test]
+    async fn test_update_not_found() {
+        // Test line 1396: update non-existent document
+        let (collection, _temp_dir) = setup_collection().await;
+
+        let result = collection
+            .update("non-existent", json!({"data": "value"}))
+            .await;
+        assert!(matches!(
+            result,
+            Err(crate::SentinelError::DocumentNotFound { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_update_merge_json_non_object() {
+        // Test line 1364: merge when new value is not an object
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"name": "old"}))
+            .await
+            .unwrap();
+        collection
+            .update("doc-1", json!("simple string"))
+            .await
+            .unwrap();
+
+        let doc = collection.get("doc-1").await.unwrap().unwrap();
+        assert_eq!(doc.data(), &json!("simple string"));
+    }
+
+    #[tokio::test]
+    async fn test_extract_numeric_value() {
+        // Test lines 1369-1373: extract numeric value helper
+        let (collection, _temp_dir) = setup_collection().await;
+
+        collection
+            .insert("doc-1", json!({"price": 99.99, "name": "Product"}))
+            .await
+            .unwrap();
+        let doc = collection.get("doc-1").await.unwrap().unwrap();
+
+        let price = Collection::extract_numeric_value(&doc, "price");
+        assert_eq!(price, Some(99.99));
+
+        let name = Collection::extract_numeric_value(&doc, "name");
+        assert_eq!(name, None);
+
+        let missing = Collection::extract_numeric_value(&doc, "missing_field");
+        assert_eq!(missing, None);
+    }
+
+    #[tokio::test]
+    async fn test_delete_non_existent() {
+        // Test lines 371-374: delete non-existent document
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Should succeed (idempotent)
+        let result = collection.delete("does-not-exist").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_update_unsigned_document() {
+        // Test lines 1409-1410, 1413, 1417: update document without signing key
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let collection = store.collection("test").await.unwrap();
+
+        collection
+            .insert("doc-1", json!({"count": 1}))
+            .await
+            .unwrap();
+        collection
+            .update("doc-1", json!({"count": 2}))
+            .await
+            .unwrap();
+
+        let doc = collection.get("doc-1").await.unwrap().unwrap();
+        assert_eq!(doc.data().get("count").unwrap(), &json!(2));
+        assert_eq!(doc.signature(), ""); // No signature for unsigned docs
+    }
 }
