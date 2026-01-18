@@ -81,7 +81,8 @@ Configure cryptography at application startup:
 ```rust
 use sentinel_dbms::{CryptoConfig, set_global_crypto_config};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Set once, before any crypto operations
     let config = CryptoConfig {
         hash_algorithm: HashAlgorithmChoice::Blake3,
@@ -91,10 +92,11 @@ fn main() {
     };
 
     set_global_crypto_config(config)
+        .await
         .expect("Failed to set crypto config");
 
     // Now start your application
-    tokio::runtime::Runtime::new().unwrap().block_on(async_main());
+    async_main().await;
 }
 ```
 
