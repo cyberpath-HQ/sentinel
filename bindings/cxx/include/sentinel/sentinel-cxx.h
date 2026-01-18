@@ -21,6 +21,8 @@ typedef enum sentinel_error_t {
     SENTINEL_ERROR_RUNTIME_ERROR = 4,
     SENTINEL_ERROR_JSON_PARSE_ERROR = 5,
     SENTINEL_ERROR_NOT_FOUND = 6,
+    SENTINEL_ERROR_TASK_NOT_FOUND = 7,
+    SENTINEL_ERROR_TASK_PENDING = 8,
 } sentinel_error_t;
 
 /**
@@ -43,6 +45,25 @@ typedef struct sentinel_collection_t {
 typedef struct sentinel_query_t {
     uint8_t _private[0];
 } sentinel_query_t;
+
+/**
+ * Callback function types for async operations
+ */
+typedef void (*StoreCallback)(uint64_t task_id, struct sentinel_store_t *result, char *user_data);
+
+typedef void (*ErrorCallback)(uint64_t task_id, const char *error, char *user_data);
+
+typedef void (*CollectionCallback)(uint64_t task_id,
+                                   struct sentinel_collection_t *result,
+                                   char *user_data);
+
+typedef void (*VoidCallback)(uint64_t task_id, char *user_data);
+
+typedef void (*DocumentCallback)(uint64_t task_id, char *result, char *user_data);
+
+typedef void (*BoolCallback)(uint64_t task_id, bool result, char *user_data);
+
+typedef void (*CountCallback)(uint64_t task_id, uint32_t result, char *user_data);
 
 /**
  * Opaque handle to a Sentinel Document
@@ -157,5 +178,89 @@ char *sentinel_get_last_error(void);
  * Free a string returned by Sentinel functions
  */
 void sentinel_string_free(char *s);
+
+/**
+ * Create a new Sentinel store asynchronously (non-blocking)
+ * Returns a task ID immediately. Result delivered via callback when complete.
+ */
+uint64_t sentinel_store_new_async(const char *path,
+                                  const char *passphrase,
+                                  StoreCallback callback,
+                                  ErrorCallback error_callback,
+                                  char *user_data);
+
+/**
+ * Create a new collection asynchronously (alias for store_collection_async)
+ */
+uint64_t sentinel_collection_new_async(struct sentinel_store_t *store,
+                                       const char *name,
+                                       CollectionCallback callback,
+                                       ErrorCallback error_callback,
+                                       char *user_data);
+
+/**
+ * Get a collection from a store asynchronously
+ */
+uint64_t sentinel_store_collection_async(struct sentinel_store_t *store,
+                                         const char *name,
+                                         CollectionCallback callback,
+                                         ErrorCallback error_callback,
+                                         char *user_data);
+
+/**
+ * Insert a document asynchronously
+ */
+uint64_t sentinel_collection_insert_async(struct sentinel_collection_t *collection,
+                                          const char *id,
+                                          const char *json_data,
+                                          VoidCallback callback,
+                                          ErrorCallback error_callback,
+                                          char *user_data);
+
+/**
+ * Get a document asynchronously
+ */
+uint64_t sentinel_collection_get_async(struct sentinel_collection_t *collection,
+                                       const char *id,
+                                       DocumentCallback callback,
+                                       ErrorCallback error_callback,
+                                       char *user_data);
+
+/**
+ * Update a document asynchronously
+ */
+uint64_t sentinel_collection_update_async(struct sentinel_collection_t *collection,
+                                          const char *id,
+                                          const char *json_data,
+                                          VoidCallback callback,
+                                          ErrorCallback error_callback,
+                                          char *user_data);
+
+/**
+ * Upsert a document asynchronously (insert or update)
+ */
+uint64_t sentinel_collection_upsert_async(struct sentinel_collection_t *collection,
+                                          const char *id,
+                                          const char *json_data,
+                                          BoolCallback callback,
+                                          ErrorCallback error_callback,
+                                          char *user_data);
+
+/**
+ * Delete a document asynchronously
+ */
+uint64_t sentinel_collection_delete_async(struct sentinel_collection_t *collection,
+                                          const char *id,
+                                          VoidCallback callback,
+                                          ErrorCallback error_callback,
+                                          char *user_data);
+
+/**
+ * Get the count of documents asynchronously
+ */
+uint64_t sentinel_collection_count_async(struct sentinel_collection_t *collection,
+                                         CountCallback callback,
+                                         ErrorCallback error_callback,
+                                         char *user_data);
 
 #endif  /* SENTINEL_CXX_H */
