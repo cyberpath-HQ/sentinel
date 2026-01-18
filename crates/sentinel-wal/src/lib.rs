@@ -30,7 +30,7 @@ pub mod manager;
 
 // Re-exports
 pub use error::WalError;
-pub use entry::{EntryType, LogEntry, FixedBytes32, FixedBytes256};
+pub use entry::{EntryType, FixedBytes256, FixedBytes32, LogEntry};
 pub use manager::WalManager;
 pub use postcard;
 pub use cuid2;
@@ -105,8 +105,8 @@ mod tests {
 
         let entries = wal.read_all_entries().await.unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(&entries[0].collection[..5], b"users");
-        assert_eq!(&entries[0].document_id[..8], b"user-123");
+        assert_eq!(&entries[0].collection[.. 5], b"users");
+        assert_eq!(&entries[0].document_id[.. 8], b"user-123");
     }
 
     /// Test WAL checkpoint functionality.
