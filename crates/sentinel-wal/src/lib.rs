@@ -32,7 +32,7 @@ pub mod manager;
 // Re-exports
 pub use error::WalError;
 pub use entry::{EntryType, FixedBytes256, FixedBytes32, LogEntry};
-pub use manager::{WalConfig, WalManager};
+pub use manager::{WalConfig, WalFormat, WalManager};
 pub use compression::*;
 pub use postcard;
 pub use cuid2;
@@ -190,5 +190,69 @@ mod tests {
         // Verify we can read back the entries
         let read_entries = wal.read_all_entries().await.unwrap();
         assert_eq!(read_entries.len(), 2);
+    }
+
+    /// Test JSON Lines format serialization and deserialization.
+    #[tokio::test]
+    async fn test_json_lines_format() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let wal_path = temp_dir.path().join("test_json.wal");
+
+        let config = WalConfig {
+            format: crate::WalFormat::JsonLines,
+            ..Default::default()
+        };
+
+        let wal = WalManager::new(wal_path.clone(), config).await.unwrap();
+
+        // Create test entries
+        let entries = vec![
+            LogEntry::new(
+                EntryType::Insert,
+                "users".to_string(),
+                "user-1".to_string(),
+                Some(json!({"name": "Alice", "age": 30})),
+            ),
+            LogEntry::new(
+                EntryType::Update,
+                "products".to_string(),
+                "prod-2".to_string(),
+                Some(json!({"price": 29.99, "category": "electronics"})),
+            ),
+            LogEntry::new(
+                EntryType::Delete,
+                "users".to_string(),
+                "user-old".to_string(),
+                None,
+            ),
+        ];
+
+        // Write entries
+        for entry in &entries {
+            wal.write_entry(entry.clone()).await.unwrap();
+        }
+
+        // Read file content as text
+        let file_content = tokio::fs::read_to_string(&wal_path).await.unwrap();
+        println!("JSON Lines format content:");
+        println!("{}", file_content);
+
+        // Verify each line is valid JSON
+        for line in file_content.lines() {
+            let _: serde_json::Value = serde_json::from_str(line).unwrap();
+        }
+
+        // Read back entries and verify
+        let read_entries = wal.read_all_entries().await.unwrap();
+        assert_eq!(read_entries.len(), 3);
+
+        for (original, read) in entries.iter().zip(read_entries.iter()) {
+            assert_eq!(original.entry_type, read.entry_type);
+            assert_eq!(original.transaction_id_str(), read.transaction_id_str());
+            assert_eq!(original.collection_str(), read.collection_str());
+            assert_eq!(original.document_id_str(), read.document_id_str());
+            assert_eq!(original.timestamp, read.timestamp);
+            assert_eq!(original.data, read.data);
+        }
     }
 }
