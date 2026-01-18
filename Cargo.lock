@@ -1320,7 +1320,7 @@ checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
 
 [[package]]
 name = "sentinel-cli"
-version = "1.2.0"
+version = "2.0.0"
 dependencies = [
  "clap",
  "hex",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "sentinel-crypto"
-version = "1.2.0"
+version = "2.0.0"
 dependencies = [
  "aes-gcm",
  "aes-gcm-siv",
@@ -1363,7 +1363,7 @@ dependencies = [
 
 [[package]]
 name = "sentinel-dbms"
-version = "1.2.0"
+version = "2.0.0"
 dependencies = [
  "async-stream",
  "async-trait",
