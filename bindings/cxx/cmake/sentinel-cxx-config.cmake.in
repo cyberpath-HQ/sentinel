@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+set(SENTINEL_CXX_VERSION "@PROJECT_VERSION@")
+
+# Provide legacy variables
+set(SENTINEL_CXX_LIBRARIES sentinel::sentinel-cxx)
+set(SENTINEL_CXX_INCLUDE_DIRS "@CMAKE_INSTALL_FULL_INCLUDEDIR@")
+
+# Modern target-based interface
+include("${CMAKE_CURRENT_LIST_DIR}/sentinel-cxx-targets.cmake")
+
+check_required_components(sentinel-cxx)
