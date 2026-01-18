@@ -1,0 +1,598 @@
+---
+title: Querying and Filtering
+description: Advanced querying, filtering, sorting, and streaming documents in Sentinel.
+section: Core Concepts
+order: 12
+keywords: ["query", "filter", "sort", "streaming", "pagination", "projection"]
+related: ["collection", "document", "quick-start"]
+---
+
+Sentinel provides powerful querying capabilities for filtering, sorting, and processing documents. This guide covers
+both simple predicate-based filtering and advanced query building with `QueryBuilder` API, including streaming
+operations and verification options.
+
+## Simple Filtering with Predicates
+
+The simplest way to filter documents is using the `filter` method with a closure:
+
+```rust
+use sentinel_dbms::Store;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Filter documents with a predicate
+    let admins = users.filter(|doc| {
+        doc.data().get("role")
+            .and_then(|v| v.as_str())
+            .map_or(false, |role| role == "admin")
+    });
+
+    // Collect results into a vector
+    let admin_docs: Vec<_> = admins.try_collect().await?;
+    println!("Found {} admins", admin_docs.len());
+
+    Ok(())
+}
+```
+
+The `filter` method returns a stream that lazily evaluates each document, making it memory-efficient for large
+collections. By default, this method verifies both hash and signature with strict mode.
+
+### Custom Verification for Filtering
+
+For scenarios where you need custom verification behavior during filtering:
+
+```rust
+use sentinel_dbms::{Store, VerificationOptions, VerificationMode};
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Create verification options with warning mode
+    let options = VerificationOptions::warn();
+
+    // Filter with custom verification
+    let admins = users.filter_with_verification(
+        |doc| {
+            doc.data().get("role")
+                .and_then(|v| v.as_str())
+                .map_or(false, |role| role == "admin")
+        },
+        &options
+    );
+
+    let admin_docs: Vec<_> = admins.try_collect().await?;
+    println!("Found {} admins", admin_docs.len());
+
+    Ok(())
+}
+```
+
+## Advanced Querying with QueryBuilder
+
+For complex queries requiring multiple filters, sorting, pagination, and field projection, use the `QueryBuilder`
+API:
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator, SortOrder};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Build a complex query
+    let query = QueryBuilder::new()
+        .filter("age", Operator::GreaterThan, json!(25))
+        .filter("department", Operator::Equals, json!("Engineering"))
+        .filter("status", Operator::In, json!(["active", "on_leave"]))
+        .sort("name", SortOrder::Ascending)
+        .limit(10)
+        .offset(0)
+        .projection(vec!["name", "email", "age"])
+        .build();
+
+    // Execute query
+    let result = users.query(query).await?;
+
+    println!("Query executed in {:?}", result.execution_time);
+    if let Some(count) = result.total_count {
+        println!("Total matching documents: {}", count);
+    }
+
+    // Process results as a stream
+    let stream = result.documents;
+    futures::pin_mut!(stream);
+
+    while let Some(doc) = stream.try_next().await? {
+        println!("Name: {}", doc.data()["name"]);
+        println!("Email: {}", doc.data()["email"]);
+    }
+
+    Ok(())
+}
+```
+
+### Custom Verification for Querying
+
+Queries also support custom verification options:
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator, VerificationOptions, VerificationMode};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    let options = VerificationOptions {
+        verify_signature: true,
+        verify_hash: true,
+        signature_verification_mode: VerificationMode::Warn,
+        empty_signature_mode: VerificationMode::Warn,
+        hash_verification_mode: VerificationMode::Warn,
+    };
+
+    let query = QueryBuilder::new()
+        .filter("role", Operator::Equals, json!("admin"))
+        .build();
+
+    let result = users.query_with_verification(query, &options).await?;
+    let documents: Vec<_> = result.documents.try_collect().await?;
+
+    println!("Found {} admins", documents.len());
+
+    Ok(())
+}
+```
+
+## Filter Operators
+
+Sentinel supports a rich set of filter operators for building queries.
+
+### Comparison Operators
+
+```rust
+use sentinel_dbms::{QueryBuilder, Operator};
+use serde_json::json;
+
+let query = QueryBuilder::new()
+    // Equality
+    .filter("status", Operator::Equals, json!("active"))
+
+    // Greater than
+    .filter("age", Operator::GreaterThan, json!(18))
+
+    // Less than
+    .filter("score", Operator::LessThan, json!(100))
+
+    // Greater than or equal
+    .filter("salary", Operator::GreaterOrEqual, json!(50000))
+
+    // Less than or equal
+    .filter("experience", Operator::LessOrEqual, json!(10))
+    .build();
+```
+
+### String Operators
+
+```rust
+use sentinel_dbms::{QueryBuilder, Operator};
+use serde_json::json;
+
+let query = QueryBuilder::new()
+    // Contains substring
+    .filter("name", Operator::Contains, json!("John"))
+
+    // Starts with prefix
+    .filter("email", Operator::StartsWith, json!("admin@"))
+
+    // Ends with suffix
+    .filter("domain", Operator::EndsWith, json!(".com"))
+    .build();
+```
+
+### Set Operators
+
+```rust
+use sentinel_dbms::{QueryBuilder, Operator};
+use serde_json::json;
+
+let query = QueryBuilder::new()
+    // Value in list
+    .filter("department", Operator::In, json!(["Engineering", "Sales", "Marketing"]))
+
+    // Field exists (or doesn't exist)
+    .filter("phone", Operator::Exists, json!(true))
+    .filter("deleted_at", Operator::Exists, json!(false))
+    .build();
+```
+
+## Sorting
+
+Sort results by any field in ascending or descending order:
+
+```rust
+use sentinel_dbms::{QueryBuilder, SortOrder};
+
+let query = QueryBuilder::new()
+    // Sort by name ascending
+    .sort("name", SortOrder::Ascending)
+    .build();
+
+let query = QueryBuilder::new()
+    // Sort by created_at descending (newest first)
+    .sort("created_at", SortOrder::Descending)
+    .build();
+```
+
+Currently, Sentinel supports sorting by a single field. Multi-field sorting is planned for a future release.
+
+> **ALERT**
+>
+> Sorting large result sets may impact performance since sorting requires loading all matching data into memory after
+> filtering.
+
+## Pagination
+
+Control the number of results and skip results for pagination:
+
+```rust
+use sentinel_dbms::QueryBuilder;
+
+// Get first 10 results
+let page1 = QueryBuilder::new()
+    .limit(10)
+    .offset(0)
+    .build();
+
+// Get next 10 results (page 2)
+let page2 = QueryBuilder::new()
+    .limit(10)
+    .offset(10)
+    .build();
+
+// Get results 20-30 (page 3)
+let page3 = QueryBuilder::new()
+    .limit(10)
+    .offset(20)
+    .build();
+```
+
+## Field Projection
+
+Reduce data transfer by selecting only the fields you need:
+
+```rust
+use sentinel_dbms::QueryBuilder;
+
+let query = QueryBuilder::new()
+    // Only return name, email, and department fields
+    .projection(vec!["name", "email", "department"])
+    .build();
+```
+
+Projection is applied to the document's data field. Metadata fields (`id`, `version`, `created_at`,
+`updated_at`, `hash`, `signature`) are always included.
+
+> **NOTE**
+>
+> Currently, projecting fields results in the removal of the `signature` metadata field and recomputation of the
+> `hash` field based on the projected data. This behavior may change in future releases.
+
+## Streaming Results
+
+All query operations return async streams for memory-efficient processing:
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator};
+use serde_json::json;
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    let query = QueryBuilder::new()
+        .filter("department", Operator::Equals, json!("Engineering"))
+        .build();
+
+    let result = users.query(query).await?;
+    let mut stream = result.documents;
+
+    // Process documents one at a time without loading all into memory
+    while let Some(doc_result) = stream.next().await {
+        match doc_result {
+            Ok(doc) => {
+                // Process document
+                println!("Processing: {}", doc.id());
+            }
+            Err(e) => {
+                eprintln!("Error reading document: {}", e);
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+Streaming is particularly useful for:
+
+- Large collections that don't fit in memory
+- Long-running processing operations
+- Real-time data pipelines
+- Export operations
+
+## Streaming All Documents
+
+Retrieve all documents in a collection as a stream:
+
+```rust
+use sentinel_dbms::Store;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Stream all documents
+    let all_docs = users.all();
+
+    // Process as stream
+    let docs: Vec<_> = all_docs.try_collect().await?;
+    println!("Total documents: {}", docs.len());
+
+    Ok(())
+}
+```
+
+For custom verification options when streaming all documents:
+
+```rust
+use sentinel_dbms::{Store, VerificationOptions};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    let options = VerificationOptions::warn();
+    let all_docs = users.all_with_verification(&options);
+
+    let docs: Vec<_> = all_docs.try_collect().await?;
+    println!("Total documents: {}", docs.len());
+
+    Ok(())
+}
+```
+
+## Query Performance
+
+Sentinel's query engine currently performs in-memory filtering, with the following characteristics:
+
+- **Insert**: O(1) - Direct file write
+- **Get**: O(1) - Direct file read by ID
+- **Filter**: O(n) - Scans all documents with streaming
+- **Query**: O(n) - Scans all documents with filters applied
+- **Sort**: O(n log n) - In-memory sorting after filtering
+
+### Streaming vs. Collecting
+
+Sentinel uses different execution strategies based on query parameters:
+
+| Query Type  | Execution Strategy | Memory Usage |
+| ------------ | ------------------- | -------------- |
+| No Sort      | Streaming with early limit | Constant |
+| With Sort    | Collect all, sort, then limit | O(n) |
+
+### Performance Tips
+
+1. **Use Specific Filters**: More specific filters reduce the result set faster
+2. **Limit Results**: Use `.limit()` to avoid processing unnecessary documents
+3. **Stream Processing**: Use streaming instead of collecting all results
+4. **Field Projection**: Use `.project()` to reduce data transfer
+5. **Avoid Large Sorts**: Sorting can be memory-intensive; it's generally not suggested for very large result
+   sets or constrained environments
+
+### Future Optimizations
+
+Planned optimizations include:
+
+- Lazy-built indices for frequently queried fields
+- Hash-based indices for equality lookups
+- Range indices for comparison operators
+- Full-text search indices
+- Query plan optimization
+- Parallel query execution
+
+## Combining Multiple Filters
+
+All filters in a query are combined with AND logic by default:
+
+```rust
+use sentinel_dbms::{QueryBuilder, Operator};
+use serde_json::json;
+
+// Find users where:
+// - age > 25 AND
+// - department = "Engineering" AND
+// - status = "active"
+let query = QueryBuilder::new()
+    .filter("age", Operator::GreaterThan, json!(25))
+    .filter("department", Operator::Equals, json!("Engineering"))
+    .filter("status", Operator::Equals, json!("active"))
+    .build();
+```
+
+For OR logic, use the predicate-based `filter` method with closure logic, or combine multiple queries.
+
+## Logical Operators
+
+QueryBuilder supports combining filters with AND and OR logic:
+
+```rust
+use sentinel_dbms::{QueryBuilder, Operator, Filter};
+use serde_json::json;
+
+// AND: age > 25 AND status = "active"
+let and_query = QueryBuilder::new()
+    .filter("age", Operator::GreaterThan, json!(25))
+    .and(Filter::Equals("status".to_string(), json!("active")))
+    .build();
+
+// OR: status = "active" OR status = "pending"
+let or_query = QueryBuilder::new()
+    .filter("status", Operator::Equals, json!("active"))
+    .or(Filter::Equals("status".to_string(), json!("pending")))
+    .build();
+```
+
+## Examples
+
+### Example 1: Finding Active Admins
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    let query = QueryBuilder::new()
+        .filter("role", Operator::Equals, json!("admin"))
+        .filter("status", Operator::Equals, json!("active"))
+        .build();
+
+    let result = users.query(query).await?;
+    let admins: Vec<_> = result.documents.try_collect().await?;
+
+    println!("Found {} active admins", admins.len());
+    Ok(())
+}
+```
+
+### Example 2: Recent Documents
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, SortOrder};
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let logs = store.collection("audit_logs").await?;
+
+    let query = QueryBuilder::new()
+        .sort("created_at", SortOrder::Descending)
+        .limit(100)
+        .build();
+
+    let result = logs.query(query).await?;
+    let recent: Vec<_> = result.documents.try_collect().await?;
+
+    println!("Retrieved {} most recent logs", recent.len());
+    Ok(())
+}
+```
+
+### Example 3: Email Search
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    let query = QueryBuilder::new()
+        .filter("email", Operator::EndsWith, json!("@example.com"))
+        .projection(vec!["name", "email"])
+        .build();
+
+    let result = users.query(query).await?;
+    let example_users: Vec<_> = result.documents.try_collect().await?;
+
+    for user in example_users {
+        println!("{}: {}", user.data()["name"], user.data()["email"]);
+    }
+
+    Ok(())
+}
+```
+
+### Example 4: Range Query with Sorting
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator, SortOrder};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let products = store.collection("products").await?;
+
+    let query = QueryBuilder::new()
+        .filter("price", Operator::GreaterOrEqual, json!(100))
+        .filter("price", Operator::LessOrEqual, json!(500))
+        .sort("price", SortOrder::Ascending)
+        .limit(20)
+        .build();
+
+    let result = products.query(query).await?;
+    let products: Vec<_> = result.documents.try_collect().await?;
+
+    for product in products {
+        println!("{}: ${}", product.data()["name"], product.data()["price"]);
+    }
+
+    Ok(())
+}
+```
+
+## Query Result Structure
+
+The `query` method returns a `QueryResult` containing:
+
+```rust
+pub struct QueryResult {
+    /// The matching documents as a stream
+    pub documents: std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>,
+
+    /// Total number of documents that matched (before limit/offset), None if not known
+    pub total_count: Option<usize>,
+
+    /// Time taken to execute the query
+    pub execution_time: std::time::Duration,
+}
+```
+
+The `total_count` field is currently `None` for streaming queries (non-sorted queries) since the total
+count is not known in advance. For sorted queries, `total_count` may be populated in future versions.
+
+## Next Steps
+
+- Learn about [Document structure and metadata](/docs/document)
+- Explore [Cryptographic operations](/docs/cryptography)
+- See [CLI querying commands](/docs/cli-commands#query-documents)
+- Read about [Error handling](/docs/errors) for verification errors

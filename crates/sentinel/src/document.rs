@@ -31,11 +31,11 @@ pub struct Document {
 impl Document {
     /// Creates a new document with the given id, version, and data.
     /// Computes the hash and signature using the provided private key.
-    pub fn new(id: String, data: Value, private_key: &SigningKey) -> Result<Self> {
+    pub async fn new(id: String, data: Value, private_key: &SigningKey) -> Result<Self> {
         trace!("Creating new signed document with id: {}", id);
         let now = Utc::now();
-        let hash = hash_data(&data)?;
-        let signature = sign_hash(&hash, private_key)?;
+        let hash = hash_data(&data).await?;
+        let signature = sign_hash(&hash, private_key).await?;
         debug!("Document {} created with hash: {}", id, hash);
         Ok(Self {
             id,
@@ -50,10 +50,10 @@ impl Document {
 
     /// Creates a new document with the given id and data.
     /// Computes the hash but not the signature.
-    pub fn new_without_signature(id: String, data: Value) -> Result<Self> {
+    pub async fn new_without_signature(id: String, data: Value) -> Result<Self> {
         trace!("Creating new unsigned document with id: {}", id);
         let now = Utc::now();
-        let hash = hash_data(&data)?;
+        let hash = hash_data(&data).await?;
         debug!("Document {} created without signature, hash: {}", id, hash);
         Ok(Self {
             id,
@@ -89,12 +89,12 @@ impl Document {
 
     /// Sets the document data, updates the hash and signature, and refreshes the updated_at
     /// timestamp.
-    pub fn set_data(&mut self, data: Value, private_key: &SigningKey) -> Result<()> {
+    pub async fn set_data(&mut self, data: Value, private_key: &SigningKey) -> Result<()> {
         trace!("Updating data for document: {}", self.id);
         self.data = data;
         self.updated_at = Utc::now();
-        self.hash = hash_data(&self.data)?;
-        self.signature = sign_hash(&self.hash, private_key)?;
+        self.hash = hash_data(&self.data).await?;
+        self.signature = sign_hash(&self.hash, private_key).await?;
         debug!("Document {} data updated, new hash: {}", self.id, self.hash);
         Ok(())
     }
@@ -107,14 +107,16 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_document_creation() {
+    #[tokio::test]
+    async fn test_document_creation() {
         let mut rng = OsRng;
         let mut key_bytes = [0u8; 32];
         rng.fill_bytes(&mut key_bytes);
         let private_key = SigningKey::from_bytes(&key_bytes);
         let data = serde_json::json!({"name": "Test", "value": 42});
-        let doc = Document::new("test-id".to_string(), data.clone(), &private_key).unwrap();
+        let doc = Document::new("test-id".to_string(), data.clone(), &private_key)
+            .await
+            .unwrap();
 
         assert_eq!(doc.id(), "test-id");
         assert_eq!(doc.version(), crate::META_SENTINEL_VERSION);
@@ -124,22 +126,24 @@ mod tests {
         assert_eq!(doc.created_at(), doc.updated_at());
     }
 
-    #[test]
-    fn test_document_with_empty_data() {
+    #[tokio::test]
+    async fn test_document_with_empty_data() {
         let mut rng = OsRng;
         let mut key_bytes = [0u8; 32];
         rng.fill_bytes(&mut key_bytes);
         let private_key = SigningKey::from_bytes(&key_bytes);
         let data = serde_json::json!({});
-        let doc = Document::new("empty".to_string(), data.clone(), &private_key).unwrap();
+        let doc = Document::new("empty".to_string(), data.clone(), &private_key)
+            .await
+            .unwrap();
 
         assert_eq!(doc.id(), "empty");
         assert_eq!(doc.version(), crate::META_SENTINEL_VERSION);
         assert!(doc.data().as_object().unwrap().is_empty());
     }
 
-    #[test]
-    fn test_document_with_complex_data() {
+    #[tokio::test]
+    async fn test_document_with_complex_data() {
         let mut rng = OsRng;
         let mut key_bytes = [0u8; 32];
         rng.fill_bytes(&mut key_bytes);
@@ -151,7 +155,9 @@ mod tests {
             "array": [1, 2, 3],
             "object": {"nested": "value"}
         });
-        let doc = Document::new("complex".to_string(), data.clone(), &private_key).unwrap();
+        let doc = Document::new("complex".to_string(), data.clone(), &private_key)
+            .await
+            .unwrap();
 
         assert_eq!(doc.data()["string"], "value");
         assert_eq!(doc.data()["number"], 123);
@@ -160,8 +166,8 @@ mod tests {
         assert_eq!(doc.data()["object"]["nested"], "value");
     }
 
-    #[test]
-    fn test_document_with_valid_filename_safe_ids() {
+    #[tokio::test]
+    async fn test_document_with_valid_filename_safe_ids() {
         let mut rng = OsRng;
         let mut key_bytes = [0u8; 32];
         rng.fill_bytes(&mut key_bytes);
@@ -179,27 +185,31 @@ mod tests {
 
         for id in valid_ids {
             let data = serde_json::json!({"data": "test"});
-            let doc = Document::new(id.to_owned(), data.clone(), &private_key).unwrap();
+            let doc = Document::new(id.to_owned(), data.clone(), &private_key)
+                .await
+                .unwrap();
 
             assert_eq!(doc.id(), id);
             assert_eq!(doc.data(), &data);
         }
     }
 
-    #[test]
-    fn test_set_data_updates_hash_and_signature() {
+    #[tokio::test]
+    async fn test_set_data_updates_hash_and_signature() {
         let mut rng = OsRng;
         let mut key_bytes = [0u8; 32];
         rng.fill_bytes(&mut key_bytes);
         let private_key = SigningKey::from_bytes(&key_bytes);
         let initial_data = serde_json::json!({"initial": "data"});
-        let mut doc = Document::new("test".to_string(), initial_data, &private_key).unwrap();
+        let mut doc = Document::new("test".to_string(), initial_data, &private_key)
+            .await
+            .unwrap();
         let initial_hash = doc.hash().to_string();
         let initial_signature = doc.signature().to_string();
         let initial_updated_at = doc.updated_at();
 
         let new_data = serde_json::json!({"new": "data"});
-        doc.set_data(new_data.clone(), &private_key).unwrap();
+        doc.set_data(new_data.clone(), &private_key).await.unwrap();
 
         assert_eq!(doc.data(), &new_data);
         assert_ne!(doc.hash(), initial_hash);

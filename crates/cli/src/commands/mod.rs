@@ -18,6 +18,8 @@ mod init;
 mod insert;
 /// List command module.
 mod list;
+/// Query command module.
+mod query;
 /// Update command module.
 mod update;
 
@@ -146,6 +148,10 @@ pub enum Commands {
     ///
     /// Prints the IDs of all documents in the specified collection.
     List(list::ListArgs),
+    /// Query documents in a collection with filters and sorting.
+    ///
+    /// Allows complex querying with filters, sorting, pagination, and projection.
+    Query(query::QueryArgs),
 }
 
 /// Execute the specified CLI command.
@@ -198,24 +204,15 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         key_derivation_algorithm: kd_alg,
     };
 
-    sentinel_crypto::set_global_crypto_config(config.clone())
-        .map_err(|err| {
-            sentinel_dbms::SentinelError::ConfigError {
-                message: err.to_string(),
-            }
-        })
-        .or_else(|_| {
-            // If already set, check if it's the same config
-            let current = sentinel_crypto::get_global_crypto_config();
-            if *current == config {
-                Ok(())
-            }
-            else {
-                Err(sentinel_dbms::SentinelError::ConfigError {
-                    message: "Crypto config already set with different values".to_owned(),
-                })
-            }
-        })?;
+    if let Err(err) = sentinel_crypto::set_global_crypto_config(config.clone()).await {
+        // If already set, check if it's the same config
+        let current = sentinel_crypto::get_global_crypto_config().await?;
+        if current != config {
+            return Err(sentinel_dbms::SentinelError::ConfigError {
+                message: format!("Crypto config already set with different values: {}", err),
+            });
+        }
+    }
 
     match cli.command {
         Commands::Init(args) => init::run(args).await,
@@ -226,6 +223,7 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         Commands::Update(args) => update::run(args).await,
         Commands::Delete(args) => delete::run(args).await,
         Commands::List(args) => list::run(args).await,
+        Commands::Query(args) => query::run(args).await,
     }
 }
 
@@ -544,10 +542,15 @@ mod tests {
         run_command(create_cli).await.unwrap();
 
         let args = super::get::GetArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            ..Default::default()
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            id:               "doc1".to_string(),
+            passphrase:       None,
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
         };
         let cli = Cli {
             command:                  Commands::Get(args),
@@ -623,7 +626,10 @@ mod tests {
         };
 
         let result = run_command(cli).await;
-        assert!(result.is_ok(), "run_command should succeed for Update");
+        assert!(
+            result.is_err(),
+            "run_command should fail for Update on non-existent document"
+        );
     }
 
     /// Test run_command with Delete command.
@@ -734,5 +740,69 @@ mod tests {
             result.is_err(),
             "run_command should fail for invalid hash algorithm"
         );
+    }
+
+    #[test]
+    fn test_parse_hash_algorithm_valid() {
+        assert_eq!(
+            parse_hash_algorithm("blake3"),
+            Ok(sentinel_crypto::HashAlgorithmChoice::Blake3)
+        );
+    }
+
+    #[test]
+    fn test_parse_hash_algorithm_invalid() {
+        assert!(parse_hash_algorithm("invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_signature_algorithm_valid() {
+        assert_eq!(
+            parse_signature_algorithm("ed25519"),
+            Ok(sentinel_crypto::SignatureAlgorithmChoice::Ed25519)
+        );
+    }
+
+    #[test]
+    fn test_parse_signature_algorithm_invalid() {
+        assert!(parse_signature_algorithm("invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_encryption_algorithm_valid() {
+        assert_eq!(
+            parse_encryption_algorithm("xchacha20poly1305"),
+            Ok(sentinel_crypto::EncryptionAlgorithmChoice::XChaCha20Poly1305)
+        );
+        assert_eq!(
+            parse_encryption_algorithm("aes256gcmsiv"),
+            Ok(sentinel_crypto::EncryptionAlgorithmChoice::Aes256GcmSiv)
+        );
+        assert_eq!(
+            parse_encryption_algorithm("ascon128"),
+            Ok(sentinel_crypto::EncryptionAlgorithmChoice::Ascon128)
+        );
+    }
+
+    #[test]
+    fn test_parse_encryption_algorithm_invalid() {
+        assert!(parse_encryption_algorithm("invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_key_derivation_algorithm_valid() {
+        assert_eq!(
+            parse_key_derivation_algorithm("argon2id"),
+            Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Argon2id)
+        );
+        assert_eq!(
+            parse_key_derivation_algorithm("pbkdf2"),
+            Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Pbkdf2)
+        );
+    }
+
+    #[test]
+    fn test_parse_key_derivation_algorithm_invalid() {
+        assert!(parse_key_derivation_algorithm("invalid").is_err());
     }
 }

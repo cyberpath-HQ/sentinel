@@ -1,26 +1,70 @@
+use std::str::FromStr as _;
+
 use clap::Args;
+use sentinel_dbms::{VerificationMode, VerificationOptions};
 use tracing::{error, info, warn};
 
-/// Arguments for the get command.
+/// Arguments for get command.
 #[derive(Args, Clone, Default)]
 pub struct GetArgs {
     /// Store path
     #[arg(short, long)]
-    pub store_path: String,
+    pub store_path:       String,
     /// Collection name
     #[arg(short, long)]
-    pub collection: String,
+    pub collection:       String,
     /// Document ID
     #[arg(short, long)]
-    pub id:         String,
-    /// Passphrase for decrypting the signing key
+    pub id:               String,
+    /// Passphrase for decrypting signing key
     #[arg(long)]
-    pub passphrase: Option<String>,
+    pub passphrase:       Option<String>,
+    /// Verify document signature (default: true)
+    #[arg(long, default_value = "true")]
+    pub verify_signature: bool,
+    /// Verify document hash (default: true)
+    #[arg(long, default_value = "true")]
+    pub verify_hash:      bool,
+    /// Signature verification mode: strict, warn, or silent (default: strict)
+    #[arg(long, default_value = "strict")]
+    pub signature_mode:   String,
+    /// How to handle documents with no signature: strict, warn, or silent (default: warn)
+    #[arg(long, default_value = "warn")]
+    pub empty_sig_mode:   String,
+    /// Hash verification mode: strict, warn, or silent (default: strict)
+    #[arg(long, default_value = "strict")]
+    pub hash_mode:        String,
+}
+
+impl GetArgs {
+    /// Convert CLI arguments to verification options.
+    fn to_verification_options(&self) -> Result<VerificationOptions, String> {
+        let signature_verification_mode = VerificationMode::from_str(&self.signature_mode).map_err(|_e| {
+            format!(
+                "Invalid signature verification mode: {}",
+                self.signature_mode
+            )
+        })?;
+
+        let empty_signature_mode = VerificationMode::from_str(&self.empty_sig_mode)
+            .map_err(|_e| format!("Invalid empty signature mode: {}", self.empty_sig_mode))?;
+
+        let hash_verification_mode = VerificationMode::from_str(&self.hash_mode)
+            .map_err(|_e| format!("Invalid hash verification mode: {}", self.hash_mode))?;
+
+        Ok(VerificationOptions {
+            verify_signature: self.verify_signature,
+            verify_hash: self.verify_hash,
+            signature_verification_mode,
+            empty_signature_mode,
+            hash_verification_mode,
+        })
+    }
 }
 
 /// Retrieve a document from a Sentinel collection.
 ///
-/// This function fetches the document with the specified ID from the given collection.
+/// This function fetches document with the specified ID from the given collection.
 /// If the document exists, its JSON data is printed to stdout. If not found,
 /// a warning is logged.
 ///
@@ -35,24 +79,36 @@ pub struct GetArgs {
 /// use sentinel_cli::commands::get::{run, GetArgs};
 ///
 /// let args = GetArgs {
-///     store_path: "/tmp/my_store".to_string(),
-///     collection: "users".to_string(),
-///     id:         "user1".to_string(),
-///     passphrase: None,
+///     store_path:       "/tmp/my_store".to_string(),
+///     collection:       "users".to_string(),
+///     id:               "user1".to_string(),
+///     passphrase:       None,
+///     verify_signature: true,
+///     verify_hash:      true,
+///     signature_mode:   "strict".to_string(),
+///     hash_mode:        "strict".to_string(),
 /// };
 /// run(args).await?;
 /// ```
 pub async fn run(args: GetArgs) -> sentinel_dbms::Result<()> {
-    let store_path = args.store_path;
-    let collection = args.collection;
-    let id = args.id;
+    let store_path = &args.store_path;
+    let collection = &args.collection;
+    let id = &args.id;
     info!(
         "Getting document '{}' from collection '{}' in store {}",
         id, collection, store_path
     );
     let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
-    let coll = store.collection(&collection).await?;
-    match coll.get(&id).await {
+    let coll = store.collection(collection).await?;
+
+    let id = &args.id;
+    let verification_options = args.to_verification_options().map_err(|e| {
+        sentinel_dbms::SentinelError::ConfigError {
+            message: e,
+        }
+    })?;
+
+    match coll.get_with_verification(id, &verification_options).await {
         Ok(Some(doc)) => {
             info!("Document '{}' retrieved successfully", id);
             match serde_json::to_string_pretty(doc.data()) {
@@ -127,10 +183,15 @@ mod tests {
         // Capture stdout for testing
         {
             let args = GetArgs {
-                store_path: store_path.to_string_lossy().to_string(),
-                collection: "test_collection".to_string(),
-                id:         "doc1".to_string(),
-                passphrase: None,
+                store_path:       store_path.to_string_lossy().to_string(),
+                collection:       "test_collection".to_string(),
+                id:               "doc1".to_string(),
+                passphrase:       None,
+                verify_signature: false,
+                verify_hash:      false,
+                signature_mode:   "strict".to_string(),
+                empty_sig_mode:   "warn".to_string(),
+                hash_mode:        "strict".to_string(),
             };
 
             // Since run prints to stdout, we need to capture it
@@ -166,10 +227,15 @@ mod tests {
             .unwrap();
 
         let args = GetArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         "non_existent".to_string(),
-            passphrase: None,
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            id:               "non_existent".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
         };
 
         let result = run(args).await;
@@ -196,10 +262,15 @@ mod tests {
         crate::commands::init::run(init_args).await.unwrap();
 
         let args = GetArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "non_existent".to_string(),
-            id:         "doc1".to_string(),
-            passphrase: None,
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "non_existent".to_string(),
+            id:               "doc1".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
         };
 
         let result = run(args).await;
@@ -231,14 +302,18 @@ mod tests {
             .unwrap();
 
         let args = GetArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         "".to_string(),
-            passphrase: None,
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            id:               "".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
         };
 
         let result = run(args).await;
-        // Empty ID should be rejected
         assert!(result.is_err(), "Get with empty ID should fail validation");
     }
 
@@ -286,10 +361,15 @@ mod tests {
         std::fs::set_permissions(&collection_path, perms).unwrap();
 
         let args = GetArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         "doc1".to_string(),
-            passphrase: None,
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            id:               "doc1".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
         };
 
         let result = run(args).await;
@@ -303,5 +383,29 @@ mod tests {
             perms.set_mode(0o755);
             std::fs::set_permissions(&collection_path, perms).unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_invalid_signature_mode() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        let args = GetArgs {
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            id:               "doc1".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      false,
+            signature_mode:   "invalid".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(
+            result.is_err(),
+            "Get should fail with invalid signature mode"
+        );
     }
 }

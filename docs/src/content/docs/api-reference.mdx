@@ -1,0 +1,783 @@
+---
+title: API Reference
+description: Complete Rust API reference for Sentinel library functions and types.
+section: References
+order: 50
+keywords: ["api", "reference", "rust", "library", "functions", "types"]
+related: ["store", "collection", "document", "querying"]
+---
+
+This page provides a complete API reference for the Sentinel library. For usage examples, see the [Examples](examples)
+page.
+
+## Store API
+
+### `Store::new`
+
+Creates a new Store instance at the specified path.
+
+```rust
+pub async fn new<P: AsRef<Path>>(
+    root_path: P,
+    passphrase: Option<&str>
+) -> Result<Self>
+```
+
+**Parameters:**
+
+- `root_path`: Path to the store directory (created if it doesn't exist)
+- `passphrase`: Optional passphrase for signing key encryption
+
+**Returns:**
+
+- `Result<Store>`: A new Store instance or an error
+
+**Example:**
+
+```rust
+// Without signing
+let store = Store::new("./data", None).await?;
+
+// With signing
+let store = Store::new("./data", Some("my-passphrase")).await?;
+```
+
+### `Store::collection`
+
+Gets or creates a collection within the store.
+
+```rust
+pub async fn collection(&self, name: &str) -> Result<Collection>
+```
+
+**Parameters:**
+
+- `name`: Collection name (becomes directory name)
+
+**Returns:**
+
+- `Result<Collection>`: Collection instance or an error
+
+**Example:**
+
+```rust
+let users = store.collection("users").await?;
+let logs = store.collection("audit_logs").await?;
+```
+
+## Collection API
+
+### `Collection::insert`
+
+Inserts a new document or overwrites an existing one.
+
+```rust
+pub async fn insert(&self, id: &str, data: Value) -> Result<()>
+```
+
+**Parameters:**
+
+- `id`: Document identifier (becomes filename)
+- `data`: JSON data to store
+
+**Returns:**
+
+- `Result<()>`: Success or an error
+
+**Example:**
+
+```rust
+users.insert("alice", json!({
+    "name": "Alice",
+    "email": "alice@example.com"
+})).await?;
+```
+
+### `Collection::get`
+
+Retrieves a document by ID.
+
+```rust
+pub async fn get(&self, id: &str) -> Result<Option<Document>>
+```
+
+**Parameters:**
+
+- `id`: Document identifier
+
+**Returns:**
+
+- `Result<Option<Document>>`: Document if found, None if not found, or an error
+
+**Example:**
+
+```rust
+if let Some(doc) = users.get("alice").await? {
+    println!("Found: {}", doc.id());
+}
+```
+
+### `Collection::update`
+
+Updates an existing document.
+
+```rust
+pub async fn update(&self, id: &str, data: Value) -> Result<()>
+```
+
+**Parameters:**
+
+- `id`: Document identifier
+- `data`: New JSON data
+
+**Returns:**
+
+- `Result<()>`: Success or an error
+
+**Note:** This replaces the entire document. The `updated_at` timestamp, hash, and signature are automatically updated.
+
+**Example:**
+
+```rust
+users.update("alice", json!({
+    "name": "Alice Smith",
+    "email": "alice.smith@example.com"
+})).await?;
+```
+
+### `Collection::delete`
+
+Deletes a document (soft delete to `.deleted/` folder).
+
+```rust
+pub async fn delete(&self, id: &str) -> Result<()>
+```
+
+**Parameters:**
+
+- `id`: Document identifier
+
+**Returns:**
+
+- `Result<()>`: Success or an error
+
+**Example:**
+
+```rust
+users.delete("alice").await?;
+```
+
+### `Collection::exists`
+
+Checks if a document exists.
+
+```rust
+pub async fn exists(&self, id: &str) -> Result<bool>
+```
+
+**Parameters:**
+
+- `id`: Document identifier
+
+**Returns:**
+
+- `Result<bool>`: True if document exists, false otherwise
+
+**Example:**
+
+```rust
+if users.exists("alice").await? {
+    println!("Alice exists");
+}
+```
+
+### `Collection::all`
+
+Returns a stream of all documents in the collection.
+
+```rust
+pub fn all(&self) -> Pin<Box<dyn Stream<Item = Result<Document>> + Send>>
+```
+
+**Returns:**
+
+- `Stream<Item = Result<Document>>`: Async stream of documents
+
+**Example:**
+
+```rust
+use futures::TryStreamExt;
+
+let stream = users.all();
+let docs: Vec<_> = stream.try_collect().await?;
+```
+
+### `Collection::filter`
+
+Returns a stream of documents matching a predicate.
+
+```rust
+pub fn filter<F>(&self, predicate: F) -> Pin<Box<dyn Stream<Item = Result<Document>> + Send>>
+where
+    F: Fn(&Document) -> bool + Send + Sync + 'static,
+```
+
+**Parameters:**
+
+- `predicate`: Function that returns true for matching documents
+
+**Returns:**
+
+- `Stream<Item = Result<Document>>`: Async stream of matching documents
+
+**Example:**
+
+```rust
+let admins = users.filter(|doc| {
+    doc.data().get("role")
+        .and_then(|v| v.as_str())
+        .map_or(false, |r| r == "admin")
+});
+```
+
+### `Collection::query`
+
+Executes a complex query with filtering, sorting, pagination, and projection.
+
+```rust
+pub async fn query(&self, query: Query) -> Result<QueryResult>
+```
+
+**Parameters:**
+
+- `query`: Query object built with `QueryBuilder`
+
+**Returns:**
+
+- `Result<QueryResult>`: Query result with documents stream and metadata
+
+**Example:**
+
+```rust
+let query = QueryBuilder::new()
+    .filter("age", Operator::GreaterThan, json!(25))
+    .sort("name", SortOrder::Ascending)
+    .limit(10)
+    .build();
+
+let result = users.query(query).await?;
+```
+
+### `Collection::name`
+
+Returns the collection name.
+
+```rust
+pub fn name(&self) -> &str
+```
+
+**Returns:**
+
+- `&str`: Collection name
+
+**Example:**
+
+```rust
+println!("Collection: {}", users.name());
+```
+
+## Document API
+
+### Accessor Methods
+
+```rust
+// Get document ID
+pub fn id(&self) -> &str
+
+// Get metadata version
+pub const fn version(&self) -> u32
+
+// Get creation timestamp
+pub const fn created_at(&self) -> DateTime<Utc>
+
+// Get last update timestamp
+pub const fn updated_at(&self) -> DateTime<Utc>
+
+// Get hash
+pub fn hash(&self) -> &str
+
+// Get signature
+pub fn signature(&self) -> &str
+
+// Get data
+pub const fn data(&self) -> &Value
+```
+
+**Example:**
+
+```rust
+let doc = users.get("alice").await?.unwrap();
+println!("ID: {}", doc.id());
+println!("Created: {}", doc.created_at());
+println!("Hash: {}", doc.hash());
+println!("Name: {}", doc.data()["name"]);
+```
+
+## Query API
+
+### `QueryBuilder::new`
+
+Creates a new query builder.
+
+```rust
+pub const fn new() -> Self
+```
+
+**Returns:**
+
+- `QueryBuilder`: New query builder instance
+
+**Example:**
+
+```rust
+let query = QueryBuilder::new();
+```
+
+### `QueryBuilder::filter`
+
+Adds a filter to the query.
+
+```rust
+pub fn filter(self, field: &str, op: Operator, value: Value) -> Self
+```
+
+**Parameters:**
+
+- `field`: Field name to filter on
+- `op`: Comparison operator
+- `value`: Value to compare against
+
+**Returns:**
+
+- `QueryBuilder`: Builder for chaining
+
+**Example:**
+
+```rust
+let query = QueryBuilder::new()
+    .filter("age", Operator::GreaterThan, json!(25))
+    .filter("role", Operator::Equals, json!("admin"));
+```
+
+### `QueryBuilder::sort`
+
+Sets sorting for the query.
+
+```rust
+pub fn sort(self, field: &str, order: SortOrder) -> Self
+```
+
+**Parameters:**
+
+- `field`: Field name to sort by
+- `order`: `SortOrder::Ascending` or `SortOrder::Descending`
+
+**Returns:**
+
+- `QueryBuilder`: Builder for chaining
+
+**Example:**
+
+```rust
+let query = QueryBuilder::new()
+    .sort("name", SortOrder::Ascending);
+```
+
+### `QueryBuilder::limit`
+
+Sets maximum number of results.
+
+```rust
+pub fn limit(self, limit: usize) -> Self
+```
+
+**Parameters:**
+
+- `limit`: Maximum number of results
+
+**Returns:**
+
+- `QueryBuilder`: Builder for chaining
+
+**Example:**
+
+```rust
+let query = QueryBuilder::new()
+    .limit(10);
+```
+
+### `QueryBuilder::offset`
+
+Sets number of results to skip.
+
+```rust
+pub fn offset(self, offset: usize) -> Self
+```
+
+**Parameters:**
+
+- `offset`: Number of results to skip
+
+**Returns:**
+
+- `QueryBuilder`: Builder for chaining
+
+**Example:**
+
+```rust
+let query = QueryBuilder::new()
+    .offset(20);
+```
+
+### `QueryBuilder::project`
+
+Sets fields to include in results.
+
+```rust
+pub fn project(self, fields: Vec<String>) -> Self
+```
+
+**Parameters:**
+
+- `fields`: Vector of field names to include
+
+**Returns:**
+
+- `QueryBuilder`: Builder for chaining
+
+**Example:**
+
+```rust
+let query = QueryBuilder::new()
+    .project(vec!["name".to_string(), "email".to_string()]);
+```
+
+### `QueryBuilder::build`
+
+Builds the final query.
+
+```rust
+pub fn build(self) -> Query
+```
+
+**Returns:**
+
+- `Query`: Constructed query object
+
+**Example:**
+
+```rust
+let query = QueryBuilder::new()
+    .filter("age", Operator::GreaterThan, json!(25))
+    .build();
+```
+
+## Operator Enum
+
+```rust
+pub enum Operator {
+    Equals,          // field == value
+    GreaterThan,     // field > value
+    LessThan,        // field < value
+    GreaterOrEqual,  // field >= value
+    LessOrEqual,     // field <= value
+    Contains,        // field contains substring
+    StartsWith,      // field starts with prefix
+    EndsWith,        // field ends with suffix
+    In,              // field in [values]
+    Exists,          // field exists (or not)
+}
+```
+
+## Filter Enum
+
+```rust
+pub enum Filter {
+    Equals(String, Value),
+    GreaterThan(String, Value),
+    LessThan(String, Value),
+    GreaterOrEqual(String, Value),
+    LessOrEqual(String, Value),
+    Contains(String, String),
+    StartsWith(String, String),
+    EndsWith(String, String),
+    In(String, Vec<Value>),
+    Exists(String, bool),
+    And(Box<Filter>, Box<Filter>),
+    Or(Box<Filter>, Box<Filter>),
+}
+```
+
+## SortOrder Enum
+
+```rust
+pub enum SortOrder {
+    Ascending,
+    Descending,
+}
+```
+
+## QueryResult Struct
+
+```rust
+pub struct QueryResult {
+    pub documents: Pin<Box<dyn Stream<Item = Result<Document>> + Send>>,
+    pub total_count: Option<usize>,
+    pub execution_time: Duration,
+}
+```
+
+**Fields:**
+
+- `documents`: Stream of matching documents
+- `total_count`: Total matches before limit/offset (if known)
+- `execution_time`: Query execution duration
+
+## Error Types
+
+### `SentinelError`
+
+```rust
+pub enum SentinelError {
+    IoError(std::io::Error),
+    SerdeError(serde_json::Error),
+    CryptoError(sentinel_crypto::CryptoError),
+    ValidationError { message: String },
+    ConfigError { message: String },
+    NotFound { message: String },
+}
+```
+
+All Sentinel operations return `Result<T>` where the error type is `SentinelError`.
+
+## Cryptography API
+
+### Hashing
+
+```rust
+pub async fn hash_data(data: &Value) -> Result<String, CryptoError>
+```
+
+Computes BLAKE3 hash of JSON data.
+
+**Example:**
+
+```rust
+use sentinel_dbms::hash_data;
+
+let hash = hash_data(&json!({"key": "value"})).await?;
+```
+
+### Signing
+
+```rust
+pub async fn sign_hash(
+    hash: &str,
+    private_key: &SigningKey
+) -> Result<String, CryptoError>
+```
+
+Signs a hash with Ed25519.
+
+**Example:**
+
+```rust
+use sentinel_dbms::{hash_data, sign_hash};
+
+let hash = hash_data(&data).await?;
+let signature = sign_hash(&hash, &signing_key).await?;
+```
+
+### Signature Verification
+
+```rust
+pub async fn verify_signature(
+    hash: &str,
+    signature: &str,
+    public_key: &VerifyingKey
+) -> Result<bool, CryptoError>
+```
+
+Verifies an Ed25519 signature.
+
+**Example:**
+
+```rust
+use sentinel_dbms::verify_signature;
+
+let valid = verify_signature(&hash, &sig, &public_key).await?;
+```
+
+### Encryption
+
+```rust
+pub async fn encrypt_data(
+    data: &[u8],
+    key: &[u8; 32]
+) -> Result<String, CryptoError>
+```
+
+Encrypts data using the configured algorithm.
+
+### Decryption
+
+```rust
+pub async fn decrypt_data(
+    encrypted_data: &str,
+    key: &[u8; 32]
+) -> Result<Vec<u8>, CryptoError>
+```
+
+Decrypts data using the configured algorithm.
+
+### Key Derivation
+
+```rust
+pub async fn derive_key(
+    passphrase: &str,
+    salt: &[u8]
+) -> Result<[u8; 32], CryptoError>
+```
+
+Derives an encryption key from a passphrase using the configured KDF.
+
+## Configuration
+
+### `CryptoConfig`
+
+```rust
+pub struct CryptoConfig {
+    pub hash_algorithm: HashAlgorithmChoice,
+    pub signature_algorithm: SignatureAlgorithmChoice,
+    pub encryption_algorithm: EncryptionAlgorithmChoice,
+    pub key_derivation_algorithm: KeyDerivationAlgorithmChoice,
+}
+```
+
+### Setting Global Config
+
+```rust
+pub async fn set_global_crypto_config(
+    config: CryptoConfig
+) -> Result<(), CryptoError>
+```
+
+Sets the global cryptographic configuration. Can only be called once per process.
+
+**Example:**
+
+```rust
+use sentinel_dbms::{
+    CryptoConfig,
+    HashAlgorithmChoice,
+    SignatureAlgorithmChoice,
+    EncryptionAlgorithmChoice,
+    KeyDerivationAlgorithmChoice,
+    set_global_crypto_config,
+};
+
+let config = CryptoConfig {
+    hash_algorithm: HashAlgorithmChoice::Blake3,
+    signature_algorithm: SignatureAlgorithmChoice::Ed25519,
+    encryption_algorithm: EncryptionAlgorithmChoice::XChaCha20Poly1305,
+    key_derivation_algorithm: KeyDerivationAlgorithmChoice::Argon2id,
+};
+
+set_global_crypto_config(config).await?;
+```
+
+## Algorithm Choices
+
+```rust
+pub enum HashAlgorithmChoice {
+    Blake3,
+}
+
+pub enum SignatureAlgorithmChoice {
+    Ed25519,
+}
+
+pub enum EncryptionAlgorithmChoice {
+    XChaCha20Poly1305,
+    Aes256GcmSiv,
+    Ascon128,
+}
+
+pub enum KeyDerivationAlgorithmChoice {
+    Argon2id,
+    Pbkdf2,
+}
+```
+
+## Streaming Utilities
+
+All streaming operations return `Pin<Box<dyn Stream<Item = Result<T>> + Send>>`.
+
+### Processing Streams
+
+```rust
+use futures::{StreamExt, TryStreamExt};
+
+// Collect all items
+let items: Vec<_> = stream.try_collect().await?;
+
+// Process one at a time
+while let Some(item) = stream.try_next().await? {
+    // Process item
+}
+
+// Map and filter
+let mapped = stream.map_ok(|doc| doc.data()["name"].clone());
+let filtered = stream.try_filter(|doc| {
+    future::ready(doc.data()["age"].as_i64().unwrap_or(0) > 18)
+});
+```
+
+## Re-exports
+
+Sentinel re-exports commonly used types for convenience:
+
+```rust
+pub use async_stream;
+pub use futures;
+pub use sentinel_crypto::{
+    SigningKey,
+    VerifyingKey,
+    CryptoConfig,
+    HashAlgorithmChoice,
+    SignatureAlgorithmChoice,
+    EncryptionAlgorithmChoice,
+    KeyDerivationAlgorithmChoice,
+};
+```
+
+## Type Aliases
+
+```rust
+pub type Result<T> = std::result::Result<T, SentinelError>;
+```
+
+## Constants
+
+```rust
+pub const META_SENTINEL_VERSION: u32 = 1;
+```
+
+The current version of the Sentinel metadata format.
+
+## Next Steps
+
+- See [Examples](/docs/examples) for practical usage patterns
+- Learn about [Querying](/docs/querying) for advanced queries
+- Understand [Architecture](/docs/architecture) for internals
+- Explore [Cryptography](/docs/cryptography) for security features

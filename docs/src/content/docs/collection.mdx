@@ -1,6 +1,6 @@
 ---
 title: Collection
-description: Learn about Collections, the namespaces for organizing documents in Sentinel.
+description: Learn about Collections, namespaces for organizing documents in Sentinel.
 section: Core Concepts
 order: 11
 keywords: ["collection", "namespace", "directory", "CRUD", "operations"]
@@ -8,7 +8,8 @@ related: ["store", "document", "quick-start"]
 ---
 
 Collections are namespaces for organizing related documents within a Sentinel store. Each collection corresponds to a
-directory on your filesystem, making it easy to manage and browse your data using standard tools.
+directory on your filesystem, making it easy to manage and browse your data using standard tools. Collections provide
+comprehensive CRUD operations, advanced querying capabilities, and flexible verification options.
 
 ## Creating and Accessing Collections
 
@@ -21,7 +22,7 @@ use sentinel_dbms::Store;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = Store::new("./my-data", None).await?;
 
-    // Creates the collection directory if it doesn't exist
+    // Creates into collection directory if it doesn't exist
     let users = store.collection("users").await?;
     let products = store.collection("products").await?;
     let audit_logs = store.collection("audit_logs").await?;
@@ -44,10 +45,13 @@ my-data/
         ├── alice.json      # Document: "alice"
         ├── bob.json        # Document: "bob"
         └── charlie.json    # Document: "charlie"
+        └── .deleted/      # Soft-deleted documents
+            ├── old-user.json
+            └── archived.json
 ```
 
-Document IDs become filenames with a `.json` extension. This means you can browse your data with any file manager or
-command-line tool.
+Document IDs become filenames with a `.json` extension. The `.deleted/` subdirectory stores soft-deleted documents
+for recovery purposes. This means you can browse your data with any file manager or command-line tool.
 
 ## CRUD Operations
 
@@ -73,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "role": "admin"
     })).await?;
 
-    // Overwriting is allowed - same ID replaces the document
+    // Overwriting is allowed - same ID replaces document
     users.insert("alice", json!({
         "name": "Alice Smith",  // Updated name
         "email": "alice.smith@example.com",
@@ -84,14 +88,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-When you insert a document, Sentinel automatically computes a BLAKE3 hash of the data and optionally signs it if the
-store was created with a passphrase.
+When you insert a document, Sentinel automatically:
+
+- Computes a BLAKE3 hash of the data for integrity verification
+- Adds metadata fields (`id`, `version`, `created_at`, `updated_at`, `hash`)
+- Optionally signs the document with Ed25519 if the store was created with a passphrase
+- Writes the document atomically to disk as `{id}.json`
+
+### Bulk Insert
+
+For inserting multiple documents efficiently, use the `bulk_insert` method:
+
+```rust {13-20}
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Prepare documents for bulk insert
+    let documents = vec![
+        ("user-123", json!({"name": "Alice", "role": "admin"})),
+        ("user-456", json!({"name": "Bob", "role": "user"})),
+        ("user-789", json!({"name": "Charlie", "role": "user"})),
+    ];
+
+    // Insert all documents in one operation
+    users.bulk_insert(documents).await?;
+
+    Ok(())
+}
+```
+
+The `bulk_insert` method inserts documents in the order provided. If any document fails to insert, the operation
+stops and returns an error. In case of failure, some documents may have been inserted before the error occurred.
 
 ### Get
 
 The `get` method retrieves a document by its ID:
 
-```rust {13,25-26}
+```rust {13,15-17}
 use sentinel_dbms::Store;
 use serde_json::json;
 
@@ -118,6 +156,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Non-existent documents return None, not an error
     let missing = users.get("nonexistent").await?;
     assert!(missing.is_none());
+
+    Ok(())
+}
+```
+
+By default, `get` verifies both hash and signature with strict mode. Use `get_with_verification()` to customize
+verification behavior:
+
+```rust {7-14}
+use sentinel_dbms::{Store, VerificationOptions, VerificationMode};
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", Some("passphrase")).await?;
+    let users = store.collection("users").await?;
+
+    users.insert("alice", json!({"name": "Alice"})).await?;
+
+    // Get with custom verification options
+    let options = VerificationOptions {
+        verify_signature: true,
+        verify_hash: true,
+        signature_verification_mode: VerificationMode::Warn,
+        empty_signature_mode: VerificationMode::Warn,
+        hash_verification_mode: VerificationMode::Warn,
+    };
+
+    let doc = users.get_with_verification("alice", &options).await?;
+    assert!(doc.is_some());
 
     Ok(())
 }
@@ -184,7 +252,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The delete operation is idempotent, deleting a non-existent document succeeds without error.
+The delete operation performs a **soft delete** by moving the file to a `.deleted/` subdirectory within the collection.
+This makes the operation idempotent and allows for recovery of accidentally deleted documents. If the collection directory
+or the `.deleted/` subdirectory doesn't exist, they are created automatically.
 
 ## Document ID Validation
 
@@ -241,6 +311,224 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## Listing Documents
+
+The `list` method returns a stream of all document IDs in the collection:
+
+```rust
+use sentinel_dbms::Store;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Stream all document IDs
+    let ids: Vec<_> = users.list().try_collect().await?;
+
+    println!("Found {} documents", ids.len());
+    for id in ids {
+        println!("  - {}", id);
+    }
+
+    Ok(())
+}
+```
+
+The `count` method provides the total number of documents:
+
+```rust {9-11}
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    let count = users.count().await?;
+    println!("Total documents: {}", count);
+
+    Ok(())
+}
+```
+
+## Streaming All Documents
+
+Stream all documents in a collection without loading them all into memory:
+
+```rust
+use sentinel_dbms::{Store, VerificationOptions};
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Stream all documents with default verification
+    let mut all_docs = users.all();
+
+    while let Some(doc_result) = all_docs.next().await {
+        match doc_result {
+            Ok(doc) => {
+                println!("Document: {}", doc.id());
+                println!("  Data: {}", doc.data());
+            }
+            Err(e) => {
+                eprintln!("Error reading document: {}", e);
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+Use `all_with_verification()` for custom verification options:
+
+```rust
+use sentinel_dbms::{Store, VerificationOptions};
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Stream with warnings instead of errors
+    let options = VerificationOptions::warn();
+    let mut all_docs = users.all_with_verification(&options);
+
+    while let Some(doc_result) = all_docs.next().await {
+        // Process documents...
+    }
+
+    Ok(())
+}
+```
+
+## Filtering Documents
+
+The `filter` method applies a predicate function to all documents:
+
+```rust {13-20}
+use sentinel_dbms::Store;
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Stream only documents where role is "admin"
+    let mut admins = users.filter(|doc| {
+        doc.data().get("role")
+            .and_then(|v| v.as_str())
+            .map_or(false, |role| role == "admin")
+    });
+
+    while let Some(doc) = admins.next().await {
+        let doc = doc?;
+        println!("Admin: {}", doc.data()["name"]);
+    }
+
+    Ok(())
+}
+```
+
+For custom verification options during filtering, use `filter_with_verification()`:
+
+```rust {13-22}
+use sentinel_dbms::{Store, VerificationOptions};
+use futures::StreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    // Filter with custom verification
+    let options = VerificationOptions::warn();
+    let mut admins = users.filter_with_verification(
+        |doc| {
+            doc.data().get("role")
+                .and_then(|v| v.as_str())
+                .map_or(false, |role| role == "admin")
+        },
+        &options
+    );
+
+    while let Some(doc) = admins.next().await {
+        let doc = doc?;
+        println!("Admin: {}", doc.data()["name"]);
+    }
+
+    Ok(())
+}
+```
+
+## Querying Documents
+
+For complex queries with filters, sorting, pagination, and field projection, use the `query` method with
+`QueryBuilder`:
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator, SortOrder};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    let query = QueryBuilder::new()
+        .filter("role", Operator::Equals, json!("admin"))
+        .sort("name", SortOrder::Ascending)
+        .limit(10)
+        .build();
+
+    let result = users.query(query).await?;
+    let documents: Vec<_> = result.documents.try_collect().await?;
+
+    println!("Found {} admins", documents.len());
+    for doc in documents {
+        println!("  - {}", doc.data()["name"]);
+    }
+
+    Ok(())
+}
+```
+
+Use `query_with_verification()` for custom verification options during queries:
+
+```rust
+use sentinel_dbms::{Store, QueryBuilder, Operator, VerificationOptions};
+use serde_json::json;
+use futures::TryStreamExt;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+    let users = store.collection("users").await?;
+
+    let options = VerificationOptions::warn();
+    let query = QueryBuilder::new()
+        .filter("role", Operator::Equals, json!("admin"))
+        .build();
+
+    let result = users.query_with_verification(query, &options).await?;
+    let documents: Vec<_> = result.documents.try_collect().await?;
+
+    println!("Found {} admins", documents.len());
+
+    Ok(())
+}
+```
+
+See the [Querying and Filtering](/docs/querying) guide for comprehensive details on query building and operators.
 
 ## Working with JSON Data
 
@@ -305,6 +593,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Note that collection names allow dots (for patterns like `config.backup`), while document IDs do not (to avoid confusion
 with the `.json` extension).
 
+## Verification Options
+
+Collection methods that read documents support flexible verification options through `VerificationOptions`:
+
+```rust
+use sentinel_dbms::{VerificationOptions, VerificationMode};
+
+// Default: strict verification of both hash and signature
+let default = VerificationOptions::default();
+
+// Strict mode: fail on any verification error
+let strict = VerificationOptions::strict();
+
+// Disabled: skip all verifications
+let disabled = VerificationOptions::disabled();
+
+// Warning mode: log warnings but continue
+let warn = VerificationOptions::warn();
+
+// Custom configuration
+let custom = VerificationOptions {
+    verify_signature: true,
+    verify_hash: false,  // Only verify signature
+    signature_verification_mode: VerificationMode::Strict,
+    empty_signature_mode: VerificationMode::Warn,
+    hash_verification_mode: VerificationMode::Silent,
+};
+```
+
+See the [Cryptography](/docs/cryptography) and [Error Handling](/docs/errors) guides for more details on verification
+behavior.
+
 ## Error Handling
 
 Collection operations return `Result<T, SentinelError>`. Handle errors appropriately:
@@ -326,8 +646,11 @@ async fn main() {
         Err(SentinelError::Io { source }) => {
             eprintln!("I/O error: {}", source);
         }
-        Err(SentinelError::Json { source }) => {
-            eprintln!("JSON error: {}", source);
+        Err(SentinelError::HashVerificationFailed { id, reason }) => {
+            eprintln!("Hash verification failed for document {}: {}", id, reason);
+        }
+        Err(SentinelError::SignatureVerificationFailed { id, reason }) => {
+            eprintln!("Signature verification failed for document {}: {}", id, reason);
         }
         Err(e) => {
             eprintln!("Other error: {}", e);
@@ -340,18 +663,27 @@ async fn main() {
 
 When working with collections, consider these recommendations:
 
-- **Use meaningful collection names.** Choose names that describe the data: `users`, `audit_logs`, `certificates`,
-`api_keys`.
+- **Use meaningful collection names.** Choose names that describe data: `users`, `audit_logs`, `certificates`,
+  `api_keys`.
 
 - **Keep related documents together.** Group documents by type and access patterns in the same collection.
 
 - **Use consistent ID schemes.** Adopt a naming convention for IDs: `user-{uuid}`, `log-{timestamp}`,
-`cert-{fingerprint}`.
+  `cert-{fingerprint}`.
 
-- **Validate data before insertion.** Sentinel stores whatever JSON you give it, validate your data first.
+- **Validate data before insertion.** Sentinel stores whatever JSON you give it—validate your data first.
 
 - **Consider using prefixes for large collections.** If you expect millions of documents, use ID prefixes to help with
-manual navigation: `a-alice`, `b-bob`.
+  manual navigation: `a-alice`, `b-bob`.
+
+- **Choose appropriate verification mode.** Use strict mode for production, warn mode for auditing, and silent mode for
+  performance-critical scenarios.
+
+- **Leverage streaming for large datasets.** Use `filter`, `all`, and `query` methods instead of collecting
+  all documents into memory.
+
+- **Use bulk insert for multiple documents.** The `bulk_insert` method is more efficient than multiple individual
+  `insert` calls.
 
 ## Next Steps
 
@@ -359,4 +691,5 @@ Now that you understand collections, learn about:
 
 - **[Document](/docs/document)**: Understanding document structure, metadata, and verification
 - **[Cryptography](/docs/cryptography)**: Configuring hashing, signing, and encryption algorithms
+- **[Querying and Filtering](/docs/querying)**: Advanced query building with filters, sorting, and projection
 - **[Error Handling](/docs/errors)**: Comprehensive guide to Sentinel errors

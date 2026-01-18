@@ -208,8 +208,11 @@ mod tests {
         };
 
         let result = run(args).await;
-        // Depending on implementation, may succeed or fail
-        assert!(result.is_ok(), "Update should handle non-existent document");
+        // Update should fail for non-existent document
+        assert!(
+            result.is_err(),
+            "Update should fail for non-existent document"
+        );
     }
 
     /// Test update in non-existent collection.
@@ -235,7 +238,10 @@ mod tests {
         };
 
         let result = run(args).await;
-        assert!(result.is_ok(), "Update should create collection if needed");
+        assert!(
+            result.is_err(),
+            "Update should fail for non-existent document even if collection is created"
+        );
     }
 
     /// Test update with read-only collection.

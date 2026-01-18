@@ -13,7 +13,6 @@
 
 </div>
 
-
 A document-based DBMS written in Rust that stores all data as files on disk, where tables are represented by folders and
 each document's primary key is the filename. Every piece of data is inspectable, auditable, and compliant by design.
 
@@ -116,62 +115,146 @@ Modern databases prioritize speed. Cyberpath Sentinel prioritizes **trust, trans
 ### Installation
 
 ```bash
-cargo install cyberpath-sentinel
-# or
-git clone https://github.com/cyberpath-HQ/cyberpath-sentinel
-cd cyberpath-sentinel
+# Install from crates.io
+cargo install sentinel-dbms
+
+# Or add to your Cargo.toml
+[dependencies]
+sentinel-dbms = "0.1"
+
+# Or build from source
+git clone https://github.com/cyberpath-HQ/sentinel
+cd sentinel
 cargo build --release
 ```
 
-### Basic Usage
+### Library Usage
 
 ```rust
-use cyberpath_sentinel_dbms::Store;
+use sentinel_dbms::{Store, QueryBuilder, Operator, SortOrder};
+use serde_json::json;
+use futures::TryStreamExt;
 
-// Create a store (creates data/ folder)
-let store = Store::new("./data").expect("Failed to create store");
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create a store (async I/O with optional passphrase for signing)
+    let store = Store::new("./data", None).await?;
 
-// Create a collection (creates data/users/ folder)
-let users = store.collection("users").expect("Failed to create collection");
+    // Access a collection (creates data/users/ folder if needed)
+    let users = store.collection("users").await?;
 
-// Insert a document (creates data/users/user-123.json)
-users.insert("user-123", json!({
-    "name": "Alice",
-    "email": "alice@example.com",
-    "role": "admin",
-    "created_at": "2026-01-11T12:00:00Z"
-})).expect("Failed to insert");
+    // Insert a document (creates data/users/user-123.json)
+    users.insert("user-123", json!({
+        "name": "Alice Johnson",
+        "email": "alice@example.com",
+        "role": "admin",
+        "department": "Engineering",
+        "age": 30
+    })).await?;
 
-// Query documents
-let user = users.get("user-123").expect("Failed to get");
-println!("{}", user);
+    // Retrieve a document
+    if let Some(user) = users.get("user-123").await? {
+        println!("User: {}", serde_json::to_string_pretty(&user)?);
+    }
 
-// List all documents
-let all_users = users.list().expect("Failed to list");
-for user_id in all_users {
-    println!("{}", user_id);
+    // Update a document
+    users.update("user-123", json!({
+        "name": "Alice Smith",
+        "email": "alice.smith@example.com",
+        "role": "admin",
+        "department": "Engineering",
+        "age": 31
+    })).await?;
+
+    // Stream all documents (memory-efficient for large collections)
+    let stream = users.all();
+    let docs: Vec<_> = stream.try_collect().await?;
+    println!("Total documents: {}", docs.len());
+
+    // Query with filters using predicate functions
+    let adults = users.filter(|doc| {
+        doc.data().get("age")
+            .and_then(|v| v.as_i64())
+            .map_or(false, |age| age >= 18)
+    });
+    let adult_docs: Vec<_> = adults.try_collect().await?;
+    println!("Adults: {}", adult_docs.len());
+
+    // Advanced querying with QueryBuilder
+    let query = QueryBuilder::new()
+        .filter("age", Operator::GreaterThan, json!(25))
+        .filter("role", Operator::Equals, json!("admin"))
+        .sort("name", SortOrder::Ascending)
+        .limit(10)
+        .offset(0)
+        .project(vec!["name".to_string(), "email".to_string()])
+        .build();
+
+    let result = users.query(query).await?;
+    println!("Query executed in {:?}", result.execution_time);
+
+    // Stream query results
+    let stream = result.documents;
+    futures::pin_mut!(stream);
+    while let Some(doc) = stream.try_next().await? {
+        println!("Found: {:?}", doc.data());
+    }
+
+    // Delete a document (soft delete to .deleted/ folder)
+    users.delete("user-123").await?;
+
+    Ok(())
 }
+```
 
-// Update a document
-users.update("user-123", json!({
-    "name": "Alice",
-    "email": "alice.smith@example.com",
-    "role": "admin",
-    "created_at": "2026-01-11T12:00:00Z"
-})).expect("Failed to update");
+### CLI Usage
 
-// Delete a document (creates data/users/.deleted/user-123.json)
-users.delete("user-123").expect("Failed to delete");
+The Sentinel CLI provides commands for managing stores and documents from the terminal:
 
-// Query with filters
-let admins = users.filter(|doc| {
-    doc["role"].as_str().unwrap_or("") == "admin"
-}).expect("Failed to filter");
+```bash
+# Initialize a store
+sentinel init --path ./my-store
+
+# Create a collection
+sentinel create-collection --store ./my-store --name users
+
+# Insert a document
+sentinel insert \
+  --store ./my-store \
+  --collection users \
+  --id user-1 \
+  --data '{"name": "Alice", "email": "alice@example.com"}'
+
+# Query documents
+sentinel query \
+  --store ./my-store \
+  --collection users \
+  --filter "age>25" \
+  --filter "role=admin" \
+  --sort "name:asc" \
+  --limit 10 \
+  --project "name,email"
+
+# Get a specific document
+sentinel get --store ./my-store --collection users --id user-1
+
+# List all documents in a collection
+sentinel list --store ./my-store --collection users
+
+# Update a document
+sentinel update \
+  --store ./my-store \
+  --collection users \
+  --id user-1 \
+  --data '{"name": "Alice Smith", "email": "alice.smith@example.com"}'
+
+# Delete a document
+sentinel delete --store ./my-store --collection users --id user-1
 ```
 
 ### Folder Structure
 
-```
+```text
 data/
 ├── users/
 │   ├── user-123.json
@@ -188,46 +271,47 @@ data/
 
 ---
 
-## 📋 Features & Roadmap
+## 📋 Features & Status
 
-### Core Features (Phase 1)
+### ✅ Implemented Features
 
-- [ ] Document storage as files
-- [ ] Collections (folder-based)
-- [ ] CRUD operations (Create, Read, Update, Delete)
-- [ ] JSON document format
-- [ ] Query engine with filtering
-- [ ] Transaction support (atomic operations)
-- [ ] File-level encryption
+- **Document Storage** - JSON files stored as inspectable documents
+- **Collections** - Folder-based namespaces for organizing documents
+- **Async CRUD Operations** - Full Create, Read, Update, Delete with Tokio
+- **Document Metadata** - Automatic version, timestamps, hash, and signature
+- **Streaming API** - Memory-efficient streaming for large datasets
+- **Advanced Querying** - Filter, sort, limit, offset, and projection
+- **Query Builder** - Fluent API for building complex queries
+- **Cryptography Module** - Modular hashing, signing, encryption, key derivation
+- **Multiple Algorithms**:
+  - Hashing: BLAKE3
+  - Signing: Ed25519
+  - Encryption: XChaCha20-Poly1305, AES-256-GCM-SIV, Ascon-128
+  - Key Derivation: Argon2id, PBKDF2
+- **Soft Deletes** - Documents moved to `.deleted/` folder
+- **CLI Tool** - Complete command-line interface with all operations
+- **Passphrase Protection** - Encrypt signing keys with passphrases
+- **Global Crypto Config** - Flexible configuration for algorithm selection
+- **Comprehensive Testing** - Extensive unit and integration tests
+- **Benchmarking** - Performance benchmarks with Criterion
 
-### Advanced Features (Phase 2)
+### 🚧 In Progress
 
 - [ ] Write-Ahead Logging (WAL) for durability
 - [ ] File locking for concurrent writes
-- [ ] In-memory caching and LRU eviction
-- [ ] Indexing strategies (lazy indices, hash indices)
-- [ ] Full-text search
+- [ ] Lazy indexing for improved query performance
+- [ ] In-memory caching with LRU eviction
+
+### 📋 Planned Features
+
+- [ ] Full-text search capabilities
 - [ ] Replication and sync (Git integration)
-
-### Enterprise Features (Phase 3)
-
-- [ ] Multi-version MVCC (Multi-Version Concurrency Control)
 - [ ] Backup and restore utilities
 - [ ] Compliance reporting dashboards
-- [ ] Audit trail generation
-- [ ] Encryption at rest (AES-256 or XChaCha20-Poly1305)
+- [ ] Multi-version concurrency control (MVCC)
 - [ ] Access control lists (ACLs)
-- [ ] Time-series data optimization
-
-### Game-Changing Features (Phase 4)
-
-- [ ] Distributed consensus (Raft-based replication)
-- [ ] Content-addressable storage (like Git)
+- [ ] Content-addressable storage
 - [ ] Merkle tree verification for integrity
-- [ ] Automated compliance audits
-- [ ] Zero-knowledge proof capabilities
-- [ ] Decentralized document signing
-- [ ] Temporal queries (valid-at-timestamp)
 
 ---
 
@@ -243,7 +327,7 @@ data/
 
 ### Core Components
 
-```
+```text
 ┌─────────────────────────────────────────┐
 │  Cyberpath Sentinel Client (Rust)       │
 ├─────────────────────────────────────────┤

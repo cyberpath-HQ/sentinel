@@ -1,0 +1,703 @@
+---
+title: Best Practices
+description: Best practices for building robust, secure, and performant applications with Sentinel.
+section: Advanced Topics
+order: 32
+keywords: ["best practices", "patterns", "security", "performance", "design"]
+related: ["architecture", "examples", "troubleshooting"]
+---
+
+This guide outlines best practices for building production-ready applications with Sentinel. Follow these patterns to
+create robust, secure, and performant systems.
+
+## Project Structure
+
+### Organize by Domain
+
+Structure collections by business domain:
+
+```text
+store_root/
+└── data/
+    ├── users/              # User management
+    ├── audit_logs/         # Audit trail
+    ├── certificates/       # PKI data
+    ├── config/            # Application config
+    └── sessions/          # User sessions
+```
+
+### Use Meaningful IDs
+
+Choose descriptive, sortable document IDs:
+
+```rust
+// Good: Descriptive and sortable
+users.insert("user-alice-johnson", data).await?;
+logs.insert("2026-01-17-10-30-00-login-alice", data).await?;
+
+// Avoid: Non-descriptive
+users.insert("123", data).await?;
+users.insert("abc", data).await?;
+```
+
+### Namespace Collections
+
+Use prefixes for related collections:
+
+```rust
+// User-related collections
+store.collection("user_profiles").await?;
+store.collection("user_sessions").await?;
+store.collection("user_preferences").await?;
+
+// Audit-related collections
+store.collection("audit_security").await?;
+store.collection("audit_data_access").await?;
+store.collection("audit_system").await?;
+```
+
+## Security
+
+### Always Use Passphrases in Production
+
+Enable document signing for tamper detection:
+
+```rust
+// Production: Always use passphrase
+let store = Store::new(
+    "./production_data",
+    Some(&std::env::var("SENTINEL_PASSPHRASE")?)
+).await?;
+
+// Development: Unsigned is OK for testing
+#[cfg(debug_assertions)]
+let store = Store::new("./dev_data", None).await?;
+```
+
+### Set Crypto Config Early
+
+Configure cryptography at application startup:
+
+```rust
+use sentinel_dbms::{CryptoConfig, set_global_crypto_config};
+
+#[tokio::main]
+async fn main() {
+    // Set once, before any crypto operations
+    let config = CryptoConfig {
+        hash_algorithm: HashAlgorithmChoice::Blake3,
+        signature_algorithm: SignatureAlgorithmChoice::Ed25519,
+        encryption_algorithm: EncryptionAlgorithmChoice::XChaCha20Poly1305,
+        key_derivation_algorithm: KeyDerivationAlgorithmChoice::Argon2id,
+    };
+
+    set_global_crypto_config(config)
+        .await
+        .expect("Failed to set crypto config");
+
+    // Now start your application
+    async_main().await;
+}
+```
+
+### Encrypt Sensitive Fields
+
+Don't store sensitive data in plain text:
+
+```rust
+use sentinel_dbms::{Store, encrypt_data};
+
+async fn store_user(
+    store: &Store,
+    username: &str,
+    password: &str,
+    encryption_key: &[u8; 32],
+) -> Result<()> {
+    let users = store.collection("users").await?;
+
+    // Hash password before encrypting
+    let password_hash = hash_password(password);
+
+    // Encrypt sensitive data
+    let encrypted_password = encrypt_data(
+        password_hash.as_bytes(),
+        encryption_key
+    ).await?;
+
+    users.insert(username, json!({
+        "username": username,
+        "password": encrypted_password,  // Encrypted
+        "created_at": Utc::now().to_rfc3339()
+    })).await?;
+
+    Ok(())
+}
+```
+
+### Verify Document Integrity
+
+Check hashes when security matters:
+
+```rust
+use sentinel_dbms::{Store, hash_data};
+
+async fn verify_document_integrity(
+    store: &Store,
+    collection_name: &str,
+    doc_id: &str,
+) -> Result<bool> {
+    let collection = store.collection(collection_name).await?;
+
+    if let Some(doc) = collection.get(doc_id).await? {
+        let computed_hash = hash_data(doc.data()).await?;
+        Ok(computed_hash == doc.hash())
+    } else {
+        Ok(false)
+    }
+}
+```
+
+### Store Passphrases Securely
+
+Never hardcode passphrases:
+
+```rust
+// Bad: Hardcoded passphrase
+let store = Store::new("./data", Some("hardcoded-secret")).await?;
+
+// Good: Environment variable
+let passphrase = std::env::var("SENTINEL_PASSPHRASE")
+    .expect("SENTINEL_PASSPHRASE not set");
+let store = Store::new("./data", Some(&passphrase)).await?;
+
+// Better: External secret management
+let passphrase = fetch_from_vault("sentinel/passphrase").await?;
+let store = Store::new("./data", Some(&passphrase)).await?;
+```
+
+## Performance
+
+### Use Streaming for Large Results
+
+Avoid collecting all documents into memory:
+
+```rust
+use futures::stream::TryStreamExt;
+
+// Bad: Loads all into memory
+let all_docs: Vec<_> = collection.all().try_collect().await?;
+for doc in all_docs {
+    process(doc);
+}
+
+// Good: Streams one at a time
+let mut stream = collection.all();
+while let Some(doc) = stream.try_next().await? {
+    process(doc).await?;
+}
+```
+
+### Apply Projection
+
+Request only needed fields:
+
+```rust
+// Bad: Transfers all fields
+let query = QueryBuilder::new()
+    .filter("status", Operator::Equals, json!("active"))
+    .build();
+
+// Good: Only transfers needed fields
+let query = QueryBuilder::new()
+    .filter("status", Operator::Equals, json!("active"))
+    .project(vec!["id".to_string(), "name".to_string()])
+    .build();
+```
+
+### Use Pagination
+
+Limit result sets for better performance:
+
+```rust
+async fn get_paginated_results(
+    collection: &Collection,
+    page: usize,
+    per_page: usize,
+) -> Result<Vec<Document>> {
+    let query = QueryBuilder::new()
+        .limit(per_page)
+        .offset(page * per_page)
+        .sort("created_at", SortOrder::Descending)
+        .build();
+
+    let result = collection.query(query).await?;
+    result.documents.try_collect().await
+}
+```
+
+### Implement Caching
+
+Cache frequently accessed documents:
+
+```rust
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+struct CachedCollection {
+    collection: Collection,
+    cache: Arc<RwLock<HashMap<String, Document>>>,
+}
+
+impl CachedCollection {
+    async fn get_cached(&self, id: &str) -> Result<Option<Document>> {
+        // Check cache first
+        {
+            let cache = self.cache.read().await;
+            if let Some(doc) = cache.get(id) {
+                return Ok(Some(doc.clone()));
+            }
+        }
+
+        // Not in cache, fetch from store
+        if let Some(doc) = self.collection.get(id).await? {
+            // Update cache
+            self.cache.write().await.insert(id.to_string(), doc.clone());
+            Ok(Some(doc))
+        } else {
+            Ok(None)
+        }
+    }
+}
+```
+
+### Batch Operations
+
+Group operations when possible:
+
+```rust
+// Bad: Many small operations
+for user in users_to_insert {
+    collection.insert(&user.id, user.data).await?;
+}
+
+// Good: Batch with concurrency
+use futures::stream::{self, StreamExt};
+
+stream::iter(users_to_insert)
+    .map(|user| async move {
+        collection.insert(&user.id, user.data).await
+    })
+    .buffer_unordered(10)  // 10 concurrent operations
+    .collect::<Vec<_>>()
+    .await;
+```
+
+## Error Handling
+
+### Handle Errors Gracefully
+
+Don't panic on errors:
+
+```rust
+// Bad: Panics on error
+let doc = collection.get("user-1").await.unwrap();
+
+// Good: Handles error
+match collection.get("user-1").await {
+    Ok(Some(doc)) => {
+        // Process document
+    }
+    Ok(None) => {
+        // Document not found
+        eprintln!("User not found");
+    }
+    Err(e) => {
+        // Handle error
+        eprintln!("Failed to get user: {}", e);
+    }
+}
+```
+
+### Provide Context
+
+Add context to errors:
+
+```rust
+use anyhow::{Context, Result};
+
+async fn load_user_profile(
+    store: &Store,
+    user_id: &str,
+) -> Result<UserProfile> {
+    let users = store
+        .collection("users")
+        .await
+        .context("Failed to open users collection")?;
+
+    let doc = users
+        .get(user_id)
+        .await
+        .context(format!("Failed to fetch user {}", user_id))?
+        .ok_or_else(|| anyhow::anyhow!("User {} not found", user_id))?;
+
+    serde_json::from_value(doc.data().clone())
+        .context("Failed to deserialize user profile")
+}
+```
+
+### Retry on Transient Errors
+
+Implement retry logic for I/O errors:
+
+```rust
+use tokio::time::{sleep, Duration};
+
+async fn insert_with_retry(
+    collection: &Collection,
+    id: &str,
+    data: Value,
+    max_retries: u32,
+) -> Result<()> {
+    let mut attempts = 0;
+
+    loop {
+        match collection.insert(id, data.clone()).await {
+            Ok(_) => return Ok(()),
+            Err(SentinelError::IoError(e)) if attempts < max_retries => {
+                attempts += 1;
+                eprintln!("Retry {}/{}: {}", attempts, max_retries, e);
+                sleep(Duration::from_millis(100 * attempts as u64)).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+```
+
+## Data Modeling
+
+### Denormalize for Performance
+
+Include frequently accessed data in documents:
+
+```rust
+// Bad: Requires multiple reads
+posts.insert("post-1", json!({
+    "title": "My Post",
+    "author_id": "user-1"
+})).await?;
+
+// Good: Includes author data
+posts.insert("post-1", json!({
+    "title": "My Post",
+    "author": {
+        "id": "user-1",
+        "name": "Alice",
+        "avatar": "https://..."
+    }
+})).await?;
+```
+
+### Use Timestamps
+
+Always include timestamps:
+
+```rust
+use chrono::Utc;
+
+collection.insert("doc-1", json!({
+    "data": "value",
+    "created_at": Utc::now().to_rfc3339(),
+    "updated_at": Utc::now().to_rfc3339()
+})).await?;
+```
+
+### Version Documents
+
+Track schema versions for migrations:
+
+```rust
+collection.insert("user-1", json!({
+    "schema_version": 2,  // Current schema version
+    "name": "Alice",
+    "email": "alice@example.com",
+    "preferences": {
+        "theme": "dark"
+    }
+})).await?;
+```
+
+### Store Metadata
+
+Include useful metadata:
+
+```rust
+collection.insert("doc-1", json!({
+    "data": "value",
+    "metadata": {
+        "created_by": "user-123",
+        "created_at": Utc::now().to_rfc3339(),
+        "updated_by": "user-456",
+        "updated_at": Utc::now().to_rfc3339(),
+        "version": 1,
+        "tags": ["important", "reviewed"]
+    }
+})).await?;
+```
+
+## Testing
+
+### Use Temporary Directories
+
+Isolate tests with temporary stores:
+
+```rust
+use tempfile::TempDir;
+
+#[tokio::test]
+async fn test_user_creation() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let store = Store::new(temp_dir.path(), None).await?;
+
+    // Run test
+    let users = store.collection("users").await?;
+    users.insert("test-user", json!({"name": "Test"})).await?;
+
+    // Verify
+    assert!(users.get("test-user").await?.is_some());
+
+    // Cleanup happens automatically when temp_dir is dropped
+    Ok(())
+}
+```
+
+### Test Error Conditions
+
+Test failure scenarios:
+
+```rust
+#[tokio::test]
+async fn test_invalid_document_id() {
+    let temp_dir = TempDir::new().unwrap();
+    let store = Store::new(temp_dir.path(), None).await.unwrap();
+    let collection = store.collection("test").await.unwrap();
+
+    // Test invalid IDs
+    let result = collection.insert("../etc/passwd", json!({})).await;
+    assert!(result.is_err());
+
+    let result = collection.insert(".hidden", json!({})).await;
+    assert!(result.is_err());
+}
+```
+
+### Test Concurrency
+
+Test concurrent operations:
+
+```rust
+#[tokio::test]
+async fn test_concurrent_writes() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let store = Arc::new(Store::new(temp_dir.path(), None).await?);
+
+    let handles: Vec<_> = (0..10)
+        .map(|i| {
+            let store = store.clone();
+            tokio::spawn(async move {
+                let users = store.collection("users").await?;
+                users.insert(
+                    &format!("user-{}", i),
+                    json!({"id": i})
+                ).await
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.await??;
+    }
+
+    Ok(())
+}
+```
+
+## Monitoring
+
+### Log Important Operations
+
+Use structured logging:
+
+```rust
+use tracing::{info, warn, error};
+
+async fn create_user(
+    store: &Store,
+    username: &str,
+    data: Value,
+) -> Result<()> {
+    info!("Creating user: {}", username);
+
+    let users = store.collection("users").await?;
+
+    match users.insert(username, data).await {
+        Ok(_) => {
+            info!("User {} created successfully", username);
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to create user {}: {}", username, e);
+            Err(e)
+        }
+    }
+}
+```
+
+### Track Metrics
+
+Monitor performance:
+
+```rust
+use std::time::Instant;
+
+async fn query_with_metrics(
+    collection: &Collection,
+    query: Query,
+) -> Result<QueryResult> {
+    let start = Instant::now();
+    let result = collection.query(query).await?;
+    let duration = start.elapsed();
+
+    info!(
+        "Query executed in {:?}, found {} results",
+        duration,
+        result.total_count.unwrap_or(0)
+    );
+
+    Ok(result)
+}
+```
+
+## Deployment
+
+### Use Environment Variables
+
+Configure via environment:
+
+```rust
+use std::env;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let store_path = env::var("SENTINEL_STORE_PATH")
+        .unwrap_or_else(|_| "./data".to_string());
+
+    let passphrase = env::var("SENTINEL_PASSPHRASE").ok();
+
+    let store = Store::new(&store_path, passphrase.as_deref()).await?;
+
+    // Run application
+    run_app(store).await
+}
+```
+
+### Backup Regularly
+
+Implement automated backups:
+
+```bash
+#!/bin/bash
+# backup.sh
+
+DATE=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR="/backups/sentinel"
+STORE_PATH="./data"
+
+# Create backup
+tar -czf "$BACKUP_DIR/sentinel-$DATE.tar.gz" "$STORE_PATH"
+
+# Keep only last 30 backups
+find "$BACKUP_DIR" -name "sentinel-*.tar.gz" -mtime +30 -delete
+
+# Verify backup
+tar -tzf "$BACKUP_DIR/sentinel-$DATE.tar.gz" > /dev/null && \
+    echo "Backup successful: sentinel-$DATE.tar.gz"
+```
+
+### Monitor Disk Space
+
+Check available space:
+
+```rust
+use std::fs;
+
+async fn check_disk_space(store_path: &str) -> Result<u64> {
+    let metadata = fs::metadata(store_path)?;
+    // On Unix, use statvfs for actual free space
+    // This is a simplified example
+    Ok(metadata.len())
+}
+```
+
+## Documentation
+
+### Document Your Schema
+
+Maintain schema documentation:
+
+```rust
+/// User profile document schema (version 2)
+///
+/// Fields:
+/// - `id`: Unique username (String)
+/// - `name`: Full name (String)
+/// - `email`: Email address (String)
+/// - `role`: User role (String: "admin" | "user" | "guest")
+/// - `created_at`: ISO 8601 timestamp (String)
+/// - `preferences`: User preferences (Object)
+///   - `theme`: UI theme (String: "light" | "dark")
+///   - `notifications`: Enable notifications (Boolean)
+#[derive(Serialize, Deserialize)]
+struct UserProfile {
+    id: String,
+    name: String,
+    email: String,
+    role: String,
+    created_at: String,
+    preferences: UserPreferences,
+}
+```
+
+### Add Code Comments
+
+Explain non-obvious code:
+
+```rust
+// Use a bloom filter to avoid checking disk for non-existent documents
+// This reduces I/O operations by ~70% in our workload
+if !bloom_filter.might_contain(&doc_id) {
+    return Ok(None);
+}
+
+let doc = collection.get(doc_id).await?;
+```
+
+## Summary
+
+Follow these best practices to build robust Sentinel applications:
+
+1. **Security**: Always use passphrases in production
+2. **Performance**: Use streaming, projection, and caching
+3. **Error Handling**: Handle errors gracefully with context
+4. **Data Modeling**: Denormalize and include timestamps
+5. **Testing**: Use temporary directories and test errors
+6. **Monitoring**: Log operations and track metrics
+7. **Deployment**: Use environment variables and backup regularly
+
+## Next Steps
+
+- Review [Examples](/docs/examples) for practical patterns
+- Study [Architecture](/docs/architecture) for deeper understanding
+- Check [Troubleshooting](/docs/troubleshooting) for common issues
+- Read [API Reference](/docs/api-reference) for complete details

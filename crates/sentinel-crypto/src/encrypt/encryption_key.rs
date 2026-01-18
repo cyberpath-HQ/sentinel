@@ -28,13 +28,13 @@ impl EncryptionKeyManager {
     }
 
     /// Generate a key from a passphrase using the default KDF
-    pub fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> {
-        crate::derive_key_from_passphrase(passphrase)
+    pub async fn derive_key_from_passphrase(passphrase: &str) -> Result<(Vec<u8>, [u8; 32]), CryptoError> {
+        crate::derive_key_from_passphrase(passphrase).await
     }
 
     /// Generate a key from a passphrase using the provided salt
-    pub fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
-        crate::derive_key_from_passphrase_with_salt(passphrase, salt)
+    pub async fn derive_key_from_passphrase_with_salt(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], CryptoError> {
+        crate::derive_key_from_passphrase_with_salt(passphrase, salt).await
     }
 }
 
@@ -64,18 +64,65 @@ mod tests {
         assert_ne!(old_key, new_key);
     }
 
-    #[test]
-    fn test_derive_key() {
-        let (salt1, key1) = EncryptionKeyManager::derive_key_from_passphrase("test").unwrap();
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn test_derive_key() {
+        crate::crypto_config::reset_global_crypto_config_for_tests().await;
+        let config = crate::CryptoConfig {
+            hash_algorithm:           crate::HashAlgorithmChoice::Blake3,
+            signature_algorithm:      crate::SignatureAlgorithmChoice::Ed25519,
+            encryption_algorithm:     crate::EncryptionAlgorithmChoice::XChaCha20Poly1305,
+            key_derivation_algorithm: crate::KeyDerivationAlgorithmChoice::Argon2id,
+        };
+        let _ = crate::set_global_crypto_config(config).await;
+
+        let (salt1, key1) = EncryptionKeyManager::derive_key_from_passphrase("test")
+            .await
+            .unwrap();
         assert_eq!(key1.len(), 32);
         assert_eq!(salt1.len(), 32);
 
         // Same passphrase with same salt should give same key
-        let key1_again = EncryptionKeyManager::derive_key_from_passphrase_with_salt("test", &salt1).unwrap();
+        let key1_again = EncryptionKeyManager::derive_key_from_passphrase_with_salt("test", &salt1)
+            .await
+            .unwrap();
         assert_eq!(key1, key1_again);
 
         // Different passphrase should give different key
-        let (_salt2, key2) = EncryptionKeyManager::derive_key_from_passphrase("different").unwrap();
+        let (_salt2, key2) = EncryptionKeyManager::derive_key_from_passphrase("different")
+            .await
+            .unwrap();
+        assert_ne!(key1, key2);
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn test_derive_key_pbkdf2() {
+        crate::crypto_config::reset_global_crypto_config_for_tests().await;
+        let config = crate::CryptoConfig {
+            hash_algorithm:           crate::HashAlgorithmChoice::Blake3,
+            signature_algorithm:      crate::SignatureAlgorithmChoice::Ed25519,
+            encryption_algorithm:     crate::EncryptionAlgorithmChoice::XChaCha20Poly1305,
+            key_derivation_algorithm: crate::KeyDerivationAlgorithmChoice::Pbkdf2,
+        };
+        let _ = crate::set_global_crypto_config(config).await;
+
+        let (salt1, key1) = EncryptionKeyManager::derive_key_from_passphrase("test")
+            .await
+            .unwrap();
+        assert_eq!(key1.len(), 32);
+        assert_eq!(salt1.len(), 32);
+
+        // Same passphrase with same salt should give same key
+        let key1_again = EncryptionKeyManager::derive_key_from_passphrase_with_salt("test", &salt1)
+            .await
+            .unwrap();
+        assert_eq!(key1, key1_again);
+
+        // Different passphrase should give different key
+        let (_salt2, key2) = EncryptionKeyManager::derive_key_from_passphrase("different")
+            .await
+            .unwrap();
         assert_ne!(key1, key2);
     }
 }
