@@ -88,7 +88,6 @@ pub struct Collection {
     pub(crate) signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
 }
 
-
 #[allow(
     unexpected_cfgs,
     reason = "tarpaulin_include is set by code coverage tool"
@@ -154,12 +153,10 @@ impl Collection {
         // Testing would require corrupting serde_json itself. Tarpaulin doesn't track map_err closures
         // properly.
         #[cfg(not(tarpaulin_include))]
-        let json = serde_json::to_string_pretty(&doc).map_err(
-            |e| {
-                error!("Failed to serialize document {} to JSON: {}", id, e);
-                e
-            },
-        )?;
+        let json = serde_json::to_string_pretty(&doc).map_err(|e| {
+            error!("Failed to serialize document {} to JSON: {}", id, e);
+            e
+        })?;
 
         tokio_fs::write(&file_path, json).await.map_err(|e| {
             error!(
