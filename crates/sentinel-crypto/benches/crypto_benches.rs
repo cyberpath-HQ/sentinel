@@ -129,12 +129,12 @@ fn bench_hash_data_medium(c: &mut Criterion) {
 fn bench_hash_data_large(c: &mut Criterion) {
     let data = json!({
         "key": "value",
-        "large_array": (0..1000).map(|i| {
+        "large_array": (0..100).map(|i| {
             json!({
                 "id": i,
                 "name": format!("item_{}", i),
-                "data": format!("large_data_string_{}_with_lots_of_content_to_make_it_bigger", i).repeat(10),
-                "numbers": (0..100).collect::<Vec<_>>()
+                "data": format!("large_data_string_{}_with_lots_of_content_to_make_it_bigger", i).repeat(5),
+                "numbers": (0..50).collect::<Vec<_>>()
             })
         }).collect::<Vec<_>>()
     });
@@ -167,7 +167,7 @@ fn bench_encrypt_data_medium(c: &mut Criterion) {
 
 fn bench_encrypt_data_large(c: &mut Criterion) {
     let key = [0u8; 32];
-    let data = b"large data chunk that will be encrypted".repeat(1000);
+    let data = b"large data chunk that will be encrypted".repeat(100);
 
     c.bench_function("encrypt_data_large", |b| {
         b.to_async(FuturesExecutor)
@@ -205,7 +205,7 @@ fn bench_decrypt_data_medium(c: &mut Criterion) {
 
 fn bench_decrypt_data_large(c: &mut Criterion) {
     let key = [0u8; 32];
-    let data = b"large data chunk that will be encrypted".repeat(1000);
+    let data = b"large data chunk that will be encrypted".repeat(100);
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
