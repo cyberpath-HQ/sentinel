@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .sort("name", SortOrder::Ascending)
         .limit(10)
         .offset(0)
-        .projection(vec!["name".to_string(), "email".to_string(), "age".to_string()])
+        .projection(vec!["name", "email", "age"])
         .build();
 
     // Execute query
@@ -279,11 +279,7 @@ use sentinel_dbms::QueryBuilder;
 
 let query = QueryBuilder::new()
     // Only return name, email, and department fields
-    .projection(vec![
-        "name".to_string(),
-        "email".to_string(),
-        "department".to_string()
-    ])
+    .projection(vec!["name", "email", "department"])
     .build();
 ```
 
@@ -530,7 +526,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let query = QueryBuilder::new()
         .filter("email", Operator::EndsWith, json!("@example.com"))
-        .projection(vec!["name".to_string(), "email".to_string()])
+        .projection(vec!["name", "email"])
         .build();
 
     let result = users.query(query).await?;
