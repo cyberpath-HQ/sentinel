@@ -186,9 +186,6 @@ mod tests {
             }
             println!();
         }
-        tokio::fs::copy(&wal_path, "/home/ebalo/format_demo_backup.wal")
-            .await
-            .unwrap();
 
         // Verify we can read back the entries
         let read_entries = wal.read_all_entries().await.unwrap();
