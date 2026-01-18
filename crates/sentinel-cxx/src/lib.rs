@@ -10,14 +10,9 @@ use tokio::runtime::Runtime;
 use serde_json::Value;
 use once_cell::sync::Lazy;
 
-// Global Tokio runtime for async C API
 static RUNTIME: Lazy<Mutex<Runtime>> =
     Lazy::new(|| Mutex::new(Runtime::new().expect("Failed to create Tokio runtime")));
 
-// Note: Task management was replaced with channel-based async operations for better Send trait
-// compliance
-
-// Error handling with thread-local storage
 thread_local! {
     static LAST_ERROR: std::cell::RefCell<Option<String>> = std::cell::RefCell::new(None);
 }
@@ -26,37 +21,31 @@ fn set_error(err: impl std::fmt::Display) { LAST_ERROR.with(|e| *e.borrow_mut() 
 
 fn get_error() -> Option<String> { LAST_ERROR.with(|e| e.borrow().clone()) }
 
-/// Opaque handle to a Sentinel Store
 #[repr(C)]
 pub struct sentinel_store_t {
     _private: [u8; 0],
 }
 
-/// Opaque handle to a Sentinel Collection
 #[repr(C)]
 pub struct sentinel_collection_t {
     _private: [u8; 0],
 }
 
-/// Opaque handle to a Sentinel Document
 #[repr(C)]
 pub struct sentinel_document_t {
     _private: [u8; 0],
 }
 
-/// Opaque handle to a Sentinel Query
 #[repr(C)]
 pub struct sentinel_query_t {
     _private: [u8; 0],
 }
 
-/// Async task handle
 #[repr(C)]
 pub struct sentinel_task_t {
     _private: [u8; 0],
 }
 
-/// Error codes returned by Sentinel operations
 #[repr(C)]
 pub enum sentinel_error_t {
     SENTINEL_OK                     = 0,
@@ -70,8 +59,6 @@ pub enum sentinel_error_t {
     SENTINEL_ERROR_TASK_PENDING     = 8,
 }
 
-/// Create a new Sentinel store synchronously (blocking)
-/// Returns NULL on error, check sentinel_get_last_error() for details
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_store_new(path: *const c_char, passphrase: *const c_char) -> *mut sentinel_store_t {
     if path.is_null() {
@@ -119,7 +106,6 @@ pub unsafe extern "C" fn sentinel_store_new(path: *const c_char, passphrase: *co
     Box::into_raw(Box::new(store)) as *mut sentinel_store_t
 }
 
-/// Free a Sentinel store
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_store_free(store: *mut sentinel_store_t) {
     if !store.is_null() {
@@ -129,8 +115,6 @@ pub unsafe extern "C" fn sentinel_store_free(store: *mut sentinel_store_t) {
     }
 }
 
-/// Get a collection from the store
-/// Returns NULL on error, check sentinel_get_last_error() for details
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_store_collection(
     store: *mut sentinel_store_t,
@@ -169,7 +153,6 @@ pub unsafe extern "C" fn sentinel_store_collection(
     Box::into_raw(Box::new(collection)) as *mut sentinel_collection_t
 }
 
-/// Delete a collection from the store
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_store_delete_collection(
     store: *mut sentinel_store_t,
@@ -206,8 +189,6 @@ pub unsafe extern "C" fn sentinel_store_delete_collection(
     }
 }
 
-/// List all collections in the store
-/// Returns NULL on error, result is a JSON array string that must be freed
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_store_list_collections(store: *mut sentinel_store_t) -> *mut c_char {
     if store.is_null() {
@@ -250,7 +231,6 @@ pub unsafe extern "C" fn sentinel_store_list_collections(store: *mut sentinel_st
     }
 }
 
-/// Free a Sentinel collection
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_free(collection: *mut sentinel_collection_t) {
     if !collection.is_null() {
@@ -260,7 +240,6 @@ pub unsafe extern "C" fn sentinel_collection_free(collection: *mut sentinel_coll
     }
 }
 
-/// Insert a document into a collection
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_insert(
     collection: *mut sentinel_collection_t,
@@ -314,9 +293,6 @@ pub unsafe extern "C" fn sentinel_collection_insert(
     }
 }
 
-/// Get a document by ID
-/// Returns NULL if not found or on error, check sentinel_get_last_error() for details
-/// Result is a JSON string that must be freed
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_get(
     collection: *mut sentinel_collection_t,
@@ -373,7 +349,6 @@ pub unsafe extern "C" fn sentinel_collection_get(
     }
 }
 
-/// Delete a document by ID
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_delete(
     collection: *mut sentinel_collection_t,
@@ -410,7 +385,6 @@ pub unsafe extern "C" fn sentinel_collection_delete(
     }
 }
 
-/// Get the count of documents in the collection
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_count(
     collection: *mut sentinel_collection_t,
@@ -443,7 +417,6 @@ pub unsafe extern "C" fn sentinel_collection_count(
     }
 }
 
-/// Update a document
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_update(
     collection: *mut sentinel_collection_t,
@@ -497,7 +470,6 @@ pub unsafe extern "C" fn sentinel_collection_update(
     }
 }
 
-/// Upsert a document (insert or update)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_upsert(
     collection: *mut sentinel_collection_t,
@@ -555,8 +527,6 @@ pub unsafe extern "C" fn sentinel_collection_upsert(
     }
 }
 
-/// Create a new query with a simple filter
-/// Returns NULL on error, check sentinel_get_last_error() for details
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_query_new_simple(
     field: *const c_char,
@@ -603,7 +573,6 @@ pub unsafe extern "C" fn sentinel_query_new_simple(
     Box::into_raw(Box::new(query)) as *mut sentinel_query_t
 }
 
-/// Free a query
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_query_free(query: *mut sentinel_query_t) {
     if !query.is_null() {
@@ -613,9 +582,6 @@ pub unsafe extern "C" fn sentinel_query_free(query: *mut sentinel_query_t) {
     }
 }
 
-/// Execute a query synchronously
-/// Returns JSON array of matching documents, NULL on error
-/// Check sentinel_get_last_error() for details
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_query(
     collection: *mut sentinel_collection_t,
@@ -664,9 +630,6 @@ pub unsafe extern "C" fn sentinel_collection_query(
     }
 }
 
-/// Get the last error message as a C string
-/// Returns NULL if no error occurred
-/// The returned string must be freed with sentinel_string_free
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_get_last_error() -> *mut c_char {
     match get_error() {
@@ -680,7 +643,6 @@ pub unsafe extern "C" fn sentinel_get_last_error() -> *mut c_char {
     }
 }
 
-/// Free a string returned by Sentinel functions
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_string_free(s: *mut c_char) {
     if !s.is_null() {
@@ -690,11 +652,6 @@ pub unsafe extern "C" fn sentinel_string_free(s: *mut c_char) {
     }
 }
 
-// ============================================================================
-// Async Operations (True Non-Blocking)
-// ============================================================================
-
-/// Callback function types for async operations
 type StoreCallback = Option<unsafe extern "C" fn(task_id: u64, result: *mut sentinel_store_t, user_data: *mut c_char)>;
 type CollectionCallback =
     Option<unsafe extern "C" fn(task_id: u64, result: *mut sentinel_collection_t, user_data: *mut c_char)>;
@@ -704,8 +661,6 @@ type BoolCallback = Option<unsafe extern "C" fn(task_id: u64, result: bool, user
 type CountCallback = Option<unsafe extern "C" fn(task_id: u64, result: u32, user_data: *mut c_char)>;
 type ErrorCallback = Option<unsafe extern "C" fn(task_id: u64, error: *const c_char, user_data: *mut c_char)>;
 
-/// Create a new Sentinel store asynchronously (non-blocking)
-/// Returns a task ID immediately. Result delivered via callback when complete.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_store_new_async(
     path: *const c_char,
@@ -796,7 +751,6 @@ pub unsafe extern "C" fn sentinel_store_new_async(
     0 // Return 0 since we don't use task IDs
 }
 
-/// Create a new collection asynchronously (alias for store_collection_async)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_new_async(
     store: *mut sentinel_store_t,
@@ -808,7 +762,6 @@ pub unsafe extern "C" fn sentinel_collection_new_async(
     unsafe { sentinel_store_collection_async(store, name, callback, error_callback, user_data) }
 }
 
-/// Get a collection from a store asynchronously
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_store_collection_async(
     store: *mut sentinel_store_t,
@@ -887,7 +840,6 @@ pub unsafe extern "C" fn sentinel_store_collection_async(
     0 // Return 0 since we don't use task IDs
 }
 
-/// Insert a document asynchronously
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_insert_async(
     collection: *mut sentinel_collection_t,
@@ -982,7 +934,6 @@ pub unsafe extern "C" fn sentinel_collection_insert_async(
     0 // Return 0 since we don't use task IDs
 }
 
-/// Get a document asynchronously
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_get_async(
     collection: *mut sentinel_collection_t,
@@ -1095,7 +1046,6 @@ pub unsafe extern "C" fn sentinel_collection_get_async(
     0 // Return 0 since we don't use task IDs
 }
 
-/// Update a document asynchronously
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_update_async(
     collection: *mut sentinel_collection_t,
@@ -1190,7 +1140,6 @@ pub unsafe extern "C" fn sentinel_collection_update_async(
     0
 }
 
-/// Upsert a document asynchronously (insert or update)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_upsert_async(
     collection: *mut sentinel_collection_t,
@@ -1285,7 +1234,6 @@ pub unsafe extern "C" fn sentinel_collection_upsert_async(
     0
 }
 
-/// Delete a document asynchronously
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_collection_delete_async(
     collection: *mut sentinel_collection_t,
@@ -1364,8 +1312,8 @@ pub unsafe extern "C" fn sentinel_collection_delete_async(
 }
 
 /// Get the count of documents asynchronously
-// #[unsafe(no_mangle)]
-// pub unsafe extern "C" fn sentinel_collection_count_async(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_collection_count_async(
     collection: *mut sentinel_collection_t,
     callback: CountCallback,
     error_callback: ErrorCallback,
@@ -1425,7 +1373,7 @@ pub unsafe extern "C" fn sentinel_collection_delete_async(
                             unsafe { cb(0, err_cstr.as_ptr(), user_data) };
                         }
                     }
-                }
+                },
             }
         }
     });
@@ -1433,56 +1381,249 @@ pub unsafe extern "C" fn sentinel_collection_delete_async(
     0
 }
 
+/// Create a new query builder
+/// Returns NULL on error
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_new() -> *mut sentinel_query_t {
+    use sentinel_dbms::QueryBuilder;
+    let builder = QueryBuilder::new();
+    let query = builder.build();
+    Box::into_raw(Box::new(query)) as *mut sentinel_query_t
+}
 
+/// Add an equality filter to a query
+/// Returns 0 on success, error code on failure
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_equals(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    json_value: *const c_char,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() || json_value.is_null() {
+        set_error("Query, field, and value cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
 
-    let collection_ref = unsafe { &*(collection as *mut Collection) };
-
-    let (tx, rx) = std::sync::mpsc::channel();
-    let user_data_usize = user_data as usize;
-    let callback_ptr = callback.map(|cb| cb as usize);
-    let error_callback_ptr = error_callback.map(|cb| cb as usize);
-
-    let rt = match RUNTIME.lock() {
-        Ok(rt) => rt,
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
         Err(e) => {
-            set_error(format!("Failed to acquire runtime lock: {}", e));
-            return 0;
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
         },
     };
 
-    rt.spawn(async move {
-        let result = collection_ref.count().await;
-        let _ = tx.send(result);
-    });
+    let value_str = match unsafe { CStr::from_ptr(json_value) }.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
 
-    // Handle result in a separate thread to call callbacks
-    std::thread::spawn(move || {
-        let user_data = user_data_usize as *mut c_char;
-        if let Ok(result) = rx.recv() {
-            match result {
-                Ok(count) => {
-                    if let Some(cb_ptr) = callback_ptr {
-                        let cb = unsafe { std::mem::transmute::<usize, CountCallback>(cb_ptr) };
-                        if let Some(cb) = cb {
-                            unsafe { cb(0, count as u32, user_data) };
-                        }
-                    }
-                },
-                Err(err) => {
-                    let err_cstr = match CString::new(err.to_string()) {
-                        Ok(cstr) => cstr,
-                        Err(_) => return,
-                    };
-                    if let Some(cb_ptr) = error_callback_ptr {
-                        let cb = unsafe { std::mem::transmute::<usize, ErrorCallback>(cb_ptr) };
-                        if let Some(cb) = cb {
-                            unsafe { cb(0, err_cstr.as_ptr(), user_data) };
-                        }
-                    }
-                },
-            }
-        }
-    });
+    let value: Value = match serde_json::from_str(value_str) {
+        Ok(v) => v,
+        Err(e) => {
+            set_error(format!("Invalid JSON value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_JSON_PARSE_ERROR;
+        },
+    };
 
-//    0
-//}
+    // Convert to QueryBuilder, add filter, convert back
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::Equals(field_str, value));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Add a greater than filter to a query
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_greater_than(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    json_value: *const c_char,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() || json_value.is_null() {
+        set_error("Query, field, and value cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let value_str = match unsafe { CStr::from_ptr(json_value) }.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let value: Value = match serde_json::from_str(value_str) {
+        Ok(v) => v,
+        Err(e) => {
+            set_error(format!("Invalid JSON value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_JSON_PARSE_ERROR;
+        },
+    };
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::GreaterThan(field_str, value));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Add a less than filter to a query
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_less_than(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    json_value: *const c_char,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() || json_value.is_null() {
+        set_error("Query, field, and value cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let value_str = match unsafe { CStr::from_ptr(json_value) }.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let value: Value = match serde_json::from_str(value_str) {
+        Ok(v) => v,
+        Err(e) => {
+            set_error(format!("Invalid JSON value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_JSON_PARSE_ERROR;
+        },
+    };
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::LessThan(field_str, value));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Add a contains filter to a query (for string fields)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_contains(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    substring: *const c_char,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() || substring.is_null() {
+        set_error("Query, field, and substring cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let substring_str = match unsafe { CStr::from_ptr(substring) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in substring: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::Contains(field_str, substring_str));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Set sorting for a query
+/// order: 0 = ascending, 1 = descending
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_sort(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    order: u32,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() {
+        set_error("Query and field cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let sort_order = match order {
+        0 => sentinel_dbms::SortOrder::Ascending,
+        1 => sentinel_dbms::SortOrder::Descending,
+        _ => {
+            set_error("Invalid sort order: use 0 for ascending, 1 for descending");
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    query_ref.sort = Some((field_str, sort_order));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Set limit for a query
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_limit(query: *mut sentinel_query_t, limit: u32) -> sentinel_error_t {
+    if query.is_null() {
+        set_error("Query cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+
+    query_ref.limit = Some(limit as usize);
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Set offset for a query (for pagination)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_offset(query: *mut sentinel_query_t, offset: u32) -> sentinel_error_t {
+    if query.is_null() {
+        set_error("Query cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+
+    query_ref.offset = Some(offset as usize);
+
+    sentinel_error_t::SENTINEL_OK
+}
