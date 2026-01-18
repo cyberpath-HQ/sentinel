@@ -384,4 +384,28 @@ mod tests {
             std::fs::set_permissions(&collection_path, perms).unwrap();
         }
     }
+
+    #[tokio::test]
+    async fn test_get_invalid_signature_mode() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+
+        let args = GetArgs {
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            id:               "doc1".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      false,
+            signature_mode:   "invalid".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+        };
+
+        let result = run(args).await;
+        assert!(
+            result.is_err(),
+            "Get should fail with invalid signature mode"
+        );
+    }
 }
