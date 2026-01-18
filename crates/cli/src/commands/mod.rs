@@ -549,6 +549,7 @@ mod tests {
             verify_signature: false,
             verify_hash:      false,
             signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
             hash_mode:        "strict".to_string(),
         };
         let cli = Cli {
@@ -625,7 +626,10 @@ mod tests {
         };
 
         let result = run_command(cli).await;
-        assert!(result.is_ok(), "run_command should succeed for Update");
+        assert!(
+            result.is_err(),
+            "run_command should fail for Update on non-existent document"
+        );
     }
 
     /// Test run_command with Delete command.

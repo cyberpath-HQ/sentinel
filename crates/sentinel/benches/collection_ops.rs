@@ -2,7 +2,7 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use futures::TryStreamExt;
-use sentinel_dbms::{Collection, Store};
+use sentinel_dbms::{Aggregation, Collection, Filter, Query, QueryBuilder, SortOrder, Store};
 use serde_json::json;
 use tempfile::tempdir;
 
@@ -10,6 +10,29 @@ async fn setup_collection() -> (Collection, tempfile::TempDir) {
     let temp_dir = tempdir().unwrap();
     let store = Store::new(temp_dir.path(), None).await.unwrap();
     let collection = store.collection("bench_collection").await.unwrap();
+    (collection, temp_dir)
+}
+
+async fn setup_collection_with_data(count: usize) -> (Collection, tempfile::TempDir) {
+    let (collection, temp_dir) = setup_collection().await;
+
+    // Insert test data
+    for i in 0 .. count {
+        let doc = json!({
+            "id": i,
+            "name": format!("document_{}", i),
+            "value": i * 10,
+            "category": format!("cat_{}", i % 10),
+            "active": i % 2 == 0,
+            "tags": vec![format!("tag_{}", i % 5), format!("tag_{}", (i + 1) % 5)],
+            "nested": {
+                "field": i,
+                "data": format!("nested_data_{}", i)
+            }
+        });
+        collection.insert(&format!("doc_{}", i), doc).await.unwrap();
+    }
+
     (collection, temp_dir)
 }
 

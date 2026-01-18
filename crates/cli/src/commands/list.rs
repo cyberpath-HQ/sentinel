@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use clap::Args;
 use sentinel_dbms::{
     futures::{pin_mut, StreamExt as _},
@@ -38,7 +40,7 @@ pub struct ListArgs {
 impl ListArgs {
     /// Convert CLI arguments to verification options.
     fn to_verification_options(&self) -> Result<VerificationOptions, String> {
-        let signature_verification_mode = VerificationMode::from_str(&self.signature_mode).ok_or_else(|| {
+        let signature_verification_mode = VerificationMode::from_str(&self.signature_mode).map_err(|_| {
             format!(
                 "Invalid signature verification mode: {}",
                 self.signature_mode
@@ -46,10 +48,10 @@ impl ListArgs {
         })?;
 
         let empty_signature_mode = VerificationMode::from_str(&self.empty_sig_mode)
-            .ok_or_else(|| format!("Invalid empty signature mode: {}", self.empty_sig_mode))?;
+            .map_err(|_| format!("Invalid empty signature mode: {}", self.empty_sig_mode))?;
 
         let hash_verification_mode = VerificationMode::from_str(&self.hash_mode)
-            .ok_or_else(|| format!("Invalid hash verification mode: {}", self.hash_mode))?;
+            .map_err(|_| format!("Invalid hash verification mode: {}", self.hash_mode))?;
 
         Ok(VerificationOptions {
             verify_signature: self.verify_signature,
@@ -175,6 +177,7 @@ mod tests {
             verify_signature: false,
             verify_hash:      false,
             signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
             hash_mode:        "strict".to_string(),
         };
 
@@ -202,6 +205,7 @@ mod tests {
             verify_signature: true,
             verify_hash:      true,
             signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
             hash_mode:        "strict".to_string(),
         };
 
@@ -229,6 +233,7 @@ mod tests {
             verify_signature: true,
             verify_hash:      true,
             signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
             hash_mode:        "strict".to_string(),
         };
 
@@ -289,6 +294,7 @@ mod tests {
             verify_signature: true,
             verify_hash:      true,
             signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
             hash_mode:        "strict".to_string(),
         };
 
