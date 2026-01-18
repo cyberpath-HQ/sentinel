@@ -1,24 +1,62 @@
 use clap::Args;
-use sentinel_dbms::futures::{pin_mut, StreamExt as _};
+use sentinel_dbms::{
+    futures::{pin_mut, StreamExt as _},
+    VerificationMode,
+    VerificationOptions,
+};
 use tracing::{error, info};
 
-/// Arguments for the list command.
+/// Arguments for list command.
 #[derive(Args, Clone, Default)]
 pub struct ListArgs {
     /// Store path
     #[arg(short, long)]
-    pub store_path: String,
+    pub store_path:       String,
     /// Collection name
     #[arg(short, long)]
-    pub collection: String,
-    /// Passphrase for decrypting the signing key
+    pub collection:       String,
+    /// Passphrase for decrypting signing key
     #[arg(long)]
-    pub passphrase: Option<String>,
+    pub passphrase:       Option<String>,
+    /// Verify document signature (default: true)
+    #[arg(long, default_value = "true")]
+    pub verify_signature: bool,
+    /// Verify document hash (default: true)
+    #[arg(long, default_value = "true")]
+    pub verify_hash:      bool,
+    /// Signature verification mode: strict, warn, or silent (default: strict)
+    #[arg(long, default_value = "strict")]
+    pub signature_mode:   String,
+    /// Hash verification mode: strict, warn, or silent (default: strict)
+    #[arg(long, default_value = "strict")]
+    pub hash_mode:        String,
+}
+
+impl ListArgs {
+    /// Convert CLI arguments to verification options.
+    fn to_verification_options(&self) -> Result<VerificationOptions, String> {
+        let signature_verification_mode = VerificationMode::from_str(&self.signature_mode).ok_or_else(|| {
+            format!(
+                "Invalid signature verification mode: {}",
+                self.signature_mode
+            )
+        })?;
+
+        let hash_verification_mode = VerificationMode::from_str(&self.hash_mode)
+            .ok_or_else(|| format!("Invalid hash verification mode: {}", self.hash_mode))?;
+
+        Ok(VerificationOptions {
+            verify_signature: self.verify_signature,
+            verify_hash: self.verify_hash,
+            signature_verification_mode,
+            hash_verification_mode,
+        })
+    }
 }
 
 /// List all documents in a Sentinel collection.
 ///
-/// This function retrieves and prints the IDs of all documents in the specified collection.
+/// This function retrieves and prints IDs of all documents in specified collection.
 /// The IDs are printed one per line to stdout.
 ///
 /// # Arguments
@@ -32,46 +70,60 @@ pub struct ListArgs {
 /// use sentinel_cli::commands::list::{run, ListArgs};
 ///
 /// let args = ListArgs {
-///     store_path: "/tmp/my_store".to_string(),
-///     collection: "users".to_string(),
-///     passphrase: None,
+///     store_path:       "/tmp/my_store".to_string(),
+///     collection:       "users".to_string(),
+///     passphrase:       None,
+///     verify_signature: true,
+///     verify_hash:      true,
+///     signature_mode:   "strict".to_string(),
+///     hash_mode:        "strict".to_string(),
 /// };
 /// run(args).await?;
 /// ```
 pub async fn run(args: ListArgs) -> sentinel_dbms::Result<()> {
     let store_path = args.store_path;
-    let collection = args.collection;
+    let collection_name = args.collection;
     info!(
         "Listing documents in collection '{}' in store {}",
-        collection, store_path
+        collection_name, store_path
     );
     let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
-    let coll = store.collection(&collection).await?;
-    let stream = coll.list();
+    let coll = store.collection(&collection_name).await?;
+
+    let verification_options = args.to_verification_options().map_err(|e| {
+        sentinel_dbms::SentinelError::ConfigError {
+            message: e,
+        }
+    })?;
+
+    let stream = coll.all_with_verification(&verification_options);
     pin_mut!(stream);
 
     let mut count: usize = 0;
-    // Process the stream item by item to avoid loading all IDs into memory
+    // Process stream item by item to avoid loading all IDs into memory
     while let Some(item) = stream.next().await {
         match item {
             Ok(id) => {
                 #[allow(clippy::print_stdout, reason = "CLI output")]
                 {
-                    println!("{}", id);
+                    println!("{}", &id);
                 }
                 count = count.saturating_add(1);
             },
             Err(e) => {
                 error!(
                     "Failed to list documents in collection '{}' in store {}: {}",
-                    collection, store_path, e
+                    collection_name, store_path, e
                 );
                 return Err(e);
             },
         }
     }
 
-    info!("Found {} documents in collection '{}'", count, collection);
+    info!(
+        "Found {} documents in collection '{}'",
+        count, collection_name
+    );
     Ok(())
 }
 
@@ -110,9 +162,13 @@ mod tests {
 
         // Test list command
         let args = ListArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
         };
 
         let result = run(args).await;
@@ -133,9 +189,13 @@ mod tests {
 
         // Test list command on empty collection
         let args = ListArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
         };
 
         let result = run(args).await;
@@ -156,19 +216,23 @@ mod tests {
 
         // Test list command on non-existent collection
         let args = ListArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "nonexistent".to_string(),
-            passphrase: None,
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "nonexistent".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
         };
 
         let result = run(args).await;
-        assert!(result.is_ok()); // Should succeed and create the collection
+        assert!(result.is_ok()); // Should succeed and create collection
     }
 
     /// Test list with unreadable collection directory.
     ///
-    /// This test verifies that list fails when the collection directory
-    /// is unreadable, covering the error handling in the stream processing.
+    /// This test verifies that list fails when collection directory
+    /// is unreadable, covering the error handling in stream processing.
     #[cfg(unix)]
     #[tokio::test]
     async fn test_list_unreadable_collection() {
@@ -201,7 +265,7 @@ mod tests {
         };
         crate::commands::insert::run(insert_args).await.unwrap();
 
-        // Make the collection directory unreadable (no read permission)
+        // Make collection directory unreadable (no read permission)
         let collection_path = store_path.join("data").join("test_collection");
         let mut perms = std::fs::metadata(&collection_path).unwrap().permissions();
         #[cfg(unix)]
@@ -212,9 +276,13 @@ mod tests {
         std::fs::set_permissions(&collection_path, perms).unwrap();
 
         let args = ListArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            passphrase: None,
+            store_path:       store_path.to_string_lossy().to_string(),
+            collection:       "test_collection".to_string(),
+            passphrase:       None,
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
         };
 
         let result = run(args).await;

@@ -1,40 +1,78 @@
 use clap::Args;
-use sentinel_dbms::futures::{pin_mut, StreamExt as _};
+use sentinel_dbms::{
+    futures::{pin_mut, StreamExt as _},
+    VerificationMode,
+    VerificationOptions,
+};
 use serde_json::Value;
 use tracing::{error, info};
 
-/// Arguments for the query command.
+/// Arguments for query command.
 #[derive(Args, Clone, Default)]
 pub struct QueryArgs {
     /// Store path
     #[arg(short, long)]
-    pub store_path: String,
+    pub store_path:       String,
     /// Collection name
     #[arg(short, long)]
-    pub collection: String,
-    /// Passphrase for decrypting the signing key
+    pub collection:       String,
+    /// Passphrase for decrypting signing key
     #[arg(long)]
-    pub passphrase: Option<String>,
+    pub passphrase:       Option<String>,
+    /// Verify document signature (default: true)
+    #[arg(long, default_value = "true")]
+    pub verify_signature: bool,
+    /// Verify document hash (default: true)
+    #[arg(long, default_value = "true")]
+    pub verify_hash:      bool,
+    /// Signature verification mode: strict, warn, or silent (default: strict)
+    #[arg(long, default_value = "strict")]
+    pub signature_mode:   String,
+    /// Hash verification mode: strict, warn, or silent (default: strict)
+    #[arg(long, default_value = "strict")]
+    pub hash_mode:        String,
     /// Filter documents (can be used multiple times)
     /// Syntax: field=value, field>value, field<value, field>=value, field<=value,
     /// field~substring, field^prefix, field$suffix, field in:value1,value2, field exists:true/false
     #[arg(long, value_name = "filter")]
-    pub filter:     Vec<String>,
+    pub filter:           Vec<String>,
     /// Sort by field (field:asc or field:desc)
     #[arg(long, value_name = "field:order")]
-    pub sort:       Option<String>,
+    pub sort:             Option<String>,
     /// Limit number of results
     #[arg(long)]
-    pub limit:      Option<usize>,
+    pub limit:            Option<usize>,
     /// Skip number of results
     #[arg(long)]
-    pub offset:     Option<usize>,
+    pub offset:           Option<usize>,
     /// Project fields (comma-separated)
     #[arg(long, value_name = "field1,field2")]
-    pub project:    Option<String>,
+    pub project:          Option<String>,
     /// Output format: json or table
     #[arg(long, default_value = "json")]
-    pub format:     String,
+    pub format:           String,
+}
+
+impl QueryArgs {
+    /// Convert CLI arguments to verification options.
+    fn to_verification_options(&self) -> Result<VerificationOptions, String> {
+        let signature_verification_mode = VerificationMode::from_str(&self.signature_mode).ok_or_else(|| {
+            format!(
+                "Invalid signature verification mode: {}",
+                self.signature_mode
+            )
+        })?;
+
+        let hash_verification_mode = VerificationMode::from_str(&self.hash_mode)
+            .ok_or_else(|| format!("Invalid hash verification mode: {}", self.hash_mode))?;
+
+        Ok(VerificationOptions {
+            verify_signature: self.verify_signature,
+            verify_hash: self.verify_hash,
+            signature_verification_mode,
+            hash_verification_mode,
+        })
+    }
 }
 
 /// Query documents in a Sentinel collection.
@@ -53,34 +91,43 @@ pub struct QueryArgs {
 /// use sentinel_cli::commands::query::{run, QueryArgs};
 ///
 /// let args = QueryArgs {
-///     store_path: "/tmp/my_store".to_string(),
-///     collection: "users".to_string(),
-///     passphrase: None,
-///     filter:     vec![
+///     store_path:       "/tmp/my_store".to_string(),
+///     collection:       "users".to_string(),
+///     passphrase:       None,
+///     verify_signature: true,
+///     verify_hash:      true,
+///     signature_mode:   "strict".to_string(),
+///     hash_mode:        "strict".to_string(),
+///     filter:           vec![
 ///         "age>25".to_string(),
 ///         "city=NYC".to_string(),
 ///         "name~Alice".to_string(),
 ///         "status in:active,inactive".to_string(),
 ///         "email exists:true".to_string(),
 ///     ],
-///     sort:       Some("name:asc".to_string()),
-///     limit:      Some(10),
-///     offset:     None,
-///     project:    Some("name,email".to_string()),
-///     format:     "json".to_string(),
+///     sort:             Some("name:asc".to_string()),
+///     limit:            Some(10),
+///     offset:           None,
+///     project:          Some("name,email".to_string()),
+///     format:           "json".to_string(),
 /// };
 /// run(args).await?;
 /// ```
 pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
-    let store_path = args.store_path;
-    let collection = args.collection;
+    let store_path = args.store_path.clone();
+    let collection = args.collection.clone();
     info!(
         "Querying documents in collection '{}' in store {}",
         collection, store_path
     );
-
     let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
     let coll = store.collection(&collection).await?;
+
+    let verification_options = args.to_verification_options().map_err(|e| {
+        sentinel_dbms::SentinelError::ConfigError {
+            message: e,
+        }
+    })?;
 
     // Build query
     let mut query_builder = sentinel_dbms::QueryBuilder::new();
@@ -163,7 +210,10 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
 
     let query = query_builder.build();
 
-    match coll.query(query).await {
+    match coll
+        .query_with_verification(query, &verification_options)
+        .await
+    {
         Ok(result) => {
             let documents_stream = result.documents;
             pin_mut!(documents_stream);
