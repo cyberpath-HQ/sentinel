@@ -58,9 +58,9 @@ impl From<&[u8]> for FixedBytes32 {
     }
 }
 
-/// Fixed-size byte array for collection/document ID (256 bytes)
+/// Fixed-size byte array for collection/document ID (padded to multiple of 16, max 256)
 #[derive(Debug, Clone, PartialEq)]
-pub struct FixedBytes256([u8; 256]);
+pub struct FixedBytes256(Vec<u8>);
 
 impl Serialize for FixedBytes256 {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -77,12 +77,7 @@ impl<'de> Deserialize<'de> for FixedBytes256 {
         D: serde::Deserializer<'de>,
     {
         let bytes: &[u8] = serde::Deserialize::deserialize(deserializer)?;
-        let mut arr = [0u8; 256];
-        let len = bytes.len().min(256);
-        arr[.. len].copy_from_slice(&bytes[.. len]);
-        // Pad with zeros if shorter
-        arr[len ..].fill(0);
-        Ok(FixedBytes256(arr))
+        Ok(FixedBytes256(bytes.to_vec()))
     }
 }
 
@@ -101,11 +96,15 @@ impl From<&[u8]> for FixedBytes256 {
         let mut temp = bytes.to_vec();
         let len = temp.len();
         let padded_len = ((len + 15) / 16) * 16;
-        temp.resize(padded_len, 0);
-        let mut arr = [0u8; 256];
-        let copy_len = temp.len().min(256);
-        arr[.. copy_len].copy_from_slice(&temp[.. copy_len]);
-        FixedBytes256(arr)
+        if padded_len > 256 {
+            temp.truncate(256);
+            // If truncated, pad to 256
+            temp.resize(256, 0);
+        }
+        else {
+            temp.resize(padded_len, 0);
+        }
+        FixedBytes256(temp)
     }
 }
 
