@@ -1,5 +1,6 @@
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 use signature::{Signer, Verifier};
+use tracing::{debug, trace};
 
 use crate::{error::CryptoError, sign_trait::SignatureAlgorithm};
 
@@ -19,18 +20,24 @@ impl SignatureAlgorithm for Ed25519Signer {
     type VerifyingKey = VerifyingKey;
 
     fn sign_hash(hash: &str, private_key: &SigningKey) -> Result<String, CryptoError> {
+        trace!("Signing hash with Ed25519");
         let signature = private_key.sign(hash.as_bytes());
-        Ok(hex::encode(signature.to_bytes()))
+        let sig_hex = hex::encode(signature.to_bytes());
+        debug!("Ed25519 signature created: {}", sig_hex);
+        Ok(sig_hex)
     }
 
     fn verify_signature(hash: &str, signature: &str, public_key: &VerifyingKey) -> Result<bool, CryptoError> {
+        trace!("Verifying signature with Ed25519");
         let sig_bytes = hex::decode(signature).map_err(CryptoError::Hex)?;
         let sig_array: [u8; 64] = sig_bytes
             .as_slice()
             .try_into()
             .map_err(|_| CryptoError::InvalidSignatureLength)?;
         let sig = Signature::from_bytes(&sig_array);
-        Ok(public_key.verify(hash.as_bytes(), &sig).is_ok())
+        let is_valid = public_key.verify(hash.as_bytes(), &sig).is_ok();
+        debug!("Ed25519 signature verification result: {}", is_valid);
+        Ok(is_valid)
     }
 }
 

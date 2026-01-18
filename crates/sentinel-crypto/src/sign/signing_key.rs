@@ -1,4 +1,5 @@
 use ed25519_dalek::SigningKey;
+use tracing::{debug, trace};
 use zeroize::Zeroize;
 
 use crate::error::CryptoError;
@@ -9,24 +10,34 @@ pub struct SigningKeyManager;
 impl SigningKeyManager {
     /// Generate a new random signing key
     pub fn generate_key() -> SigningKey {
+        trace!("Generating new signing key");
         let mut secret: [u8; 32] = rand::random();
         let key = SigningKey::from_bytes(&secret);
         secret.zeroize();
+        debug!("Signing key generated successfully");
         key
     }
 
     /// Rotate key: generate new key and return both old and new
     /// For rotation, you might want to sign with both or something
     pub fn rotate_key(old_key: &SigningKey) -> (SigningKey, SigningKey) {
+        trace!("Rotating signing key");
         let new_key = Self::generate_key();
+        debug!("Signing key rotated successfully");
         (old_key.clone(), new_key)
     }
 
     /// Export key as hex
-    pub fn export_key(key: &SigningKey) -> String { hex::encode(key.to_bytes()) }
+    pub fn export_key(key: &SigningKey) -> String {
+        trace!("Exporting signing key");
+        let hex = hex::encode(key.to_bytes());
+        debug!("Signing key exported");
+        hex
+    }
 
     /// Import key from hex
     pub fn import_key(hex: &str) -> Result<SigningKey, CryptoError> {
+        trace!("Importing signing key from hex");
         let bytes = hex::decode(hex).map_err(CryptoError::Hex)?;
         let mut array: [u8; 32] = bytes
             .as_slice()
@@ -34,6 +45,7 @@ impl SigningKeyManager {
             .map_err(|_| CryptoError::InvalidKeyLength)?;
         let key = SigningKey::from_bytes(&array);
         array.zeroize();
+        debug!("Signing key imported successfully");
         Ok(key)
     }
 }

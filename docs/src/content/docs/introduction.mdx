@@ -60,7 +60,7 @@ choices. Sentinel is for when you need to **trust your data completely** and raw
 
 ## Architecture Overview
 
-Sentinel follows a simple, hierarchical model:
+Sentinel follows a simple, hierarchical model with three primary layers:
 
 ```plaintext
 Store
@@ -68,16 +68,17 @@ Store
     └── Document (JSON file)
 ```
 
-A **Store** is the top-level container that manages all your collections. Each **Collection** is represented as a
-directory containing your documents. Every **Document** is an individual JSON file with embedded metadata including
-versioning, timestamps, cryptographic hashes, and optional digital signatures.
+A **Store** is the top-level container that manages all your collections, handles cryptographic signing, and provides the entry point
+for all database operations. Each **Collection** is represented as a directory containing your documents. Every **Document** is an
+individual JSON file with embedded metadata including versioning, timestamps, BLAKE3 hashes, and optional Ed25519 digital
+signatures.
 
 ```plaintext
 data/
 ├── users/
 │   ├── user-123.json
 │   ├── user-456.json
-│   └── user-789.json
+│   └── .deleted/               # Soft-deleted documents
 ├── audit_logs/
 │   ├── audit-2026-01-01.json
 │   └── audit-2026-01-02.json
@@ -85,6 +86,44 @@ data/
     ├── cert-abc123.json
     └── cert-def456.json
 ```
+
+## Key Features
+
+### Cryptographic Security
+
+Sentinel provides built-in cryptographic operations for data integrity and tamper evidence:
+
+- **BLAKE3 Hashing**: Every document automatically includes a cryptographic hash of its data for integrity verification
+- **Ed25519 Signing**: Optional digital signatures provide tamper-evident storage
+- **Multiple Encryption Algorithms**: Choose from XChaCha20-Poly1305, AES-256-GCM-SIV, or Ascon-128
+- **Key Derivation**: Argon2id or PBKDF2 for secure passphrase-to-key conversion
+
+### Streaming Operations
+
+Sentinel uses async streams throughout for memory-efficient processing:
+
+- **Streaming Queries**: Process large datasets without loading everything into memory
+- **Lazy Evaluation**: Filters and queries process documents on-demand
+- **Early Termination**: Limit and offset applied during streaming, not after collection
+
+### Verification Modes
+
+Flexible verification options let you balance security and performance:
+
+- **Strict Mode**: Fail immediately on verification errors (production default)
+- **Warn Mode**: Log warnings but continue processing (auditing scenarios)
+- **Silent Mode**: Skip verification entirely (performance-critical scenarios)
+- **Configurable Verification**: Control hash and signature verification independently
+
+### Flexible Querying
+
+Built-in query builder for complex data retrieval:
+
+- **Multiple Operators**: Equals, comparison, contains, starts/ends with, in-list, exists
+- **Sorting**: Order results by any field in ascending or descending order
+- **Pagination**: Control result sets with limit and offset
+- **Field Projection**: Select only the fields you need to reduce data transfer
+- **Logical Combining**: AND and OR filters for complex queries
 
 ## Core Design Principles
 
@@ -110,6 +149,37 @@ Ready to try Sentinel? Here's your path forward:
 1. **[Installation](/docs/installation)**: Add Sentinel to your Rust project
 2. **[Quick Start](/docs/quick-start)**: Create your first store and documents in minutes
 3. **[Core Concepts](/docs/store)**: Understand stores, collections, and documents
+
+## Project Structure
+
+Sentinel is organized as a Cargo workspace with multiple crates:
+
+```plaintext
+cyberpath-sentinel/
+├── Cargo.toml                      # Workspace configuration
+├── crates/
+│   ├── sentinel/                     # Core DBMS library
+│   ├── sentinel-crypto/              # Cryptographic operations
+│   └── cli/                        # Command-line interface
+├── docs/                           # Documentation
+└── tests/                          # Integration tests
+```
+
+Each crate focuses on a specific concern:
+
+- **sentinel**: Document storage, collections, querying, and verification
+- **sentinel-crypto**: Hashing, signing, encryption, and key derivation
+- **cli**: Command-line tool for database management
+
+## Ecosystem
+
+Sentinel is designed to work seamlessly with the Rust ecosystem:
+
+- **Tokio**: Async runtime for efficient I/O operations
+- **Serde**: Serialization framework for JSON handling
+- **Tracing**: Structured logging and diagnostics
+- **Async-stream**: Stream utilities for lazy evaluation
+- **RustCrypto**: Audited cryptographic primitives
 
 Sentinel is open source under the Apache 2.0 license. You can find the source code, report issues, and contribute on
 [GitHub](https://github.com/cyberpath-HQ/sentinel).

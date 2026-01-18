@@ -83,6 +83,20 @@ pub enum SentinelError {
         message: String,
     },
 
+    /// Document hash verification failed
+    #[error("Document '{id}' hash verification failed: {reason}")]
+    HashVerificationFailed {
+        id:     String,
+        reason: String,
+    },
+
+    /// Document signature verification failed
+    #[error("Document '{id}' signature verification failed: {reason}")]
+    SignatureVerificationFailed {
+        id:     String,
+        reason: String,
+    },
+
     /// Generic error for unexpected conditions
     #[error("Internal error: {message}")]
     Internal {

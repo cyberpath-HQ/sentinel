@@ -110,8 +110,8 @@ mod tests {
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice", "age": 30}"#.to_string(),
+            id: Some("doc1".to_string()),
+            data: Some(r#"{"name": "Alice", "age": 30}"#.to_string()),
             ..Default::default()
         };
         crate::commands::insert::run(insert_args).await.unwrap();
@@ -158,8 +158,8 @@ mod tests {
         let insert_args = crate::commands::insert::InsertArgs {
             store_path: store_path.to_string_lossy().to_string(),
             collection: "test_collection".to_string(),
-            id: "doc1".to_string(),
-            data: r#"{"name": "Alice"}"#.to_string(),
+            id: Some("doc1".to_string()),
+            data: Some(r#"{"name": "Alice"}"#.to_string()),
             ..Default::default()
         };
         crate::commands::insert::run(insert_args).await.unwrap();
@@ -208,8 +208,11 @@ mod tests {
         };
 
         let result = run(args).await;
-        // Depending on implementation, may succeed or fail
-        assert!(result.is_ok(), "Update should handle non-existent document");
+        // Update should fail for non-existent document
+        assert!(
+            result.is_err(),
+            "Update should fail for non-existent document"
+        );
     }
 
     /// Test update in non-existent collection.
@@ -235,7 +238,10 @@ mod tests {
         };
 
         let result = run(args).await;
-        assert!(result.is_ok(), "Update should create collection if needed");
+        assert!(
+            result.is_err(),
+            "Update should fail for non-existent document even if collection is created"
+        );
     }
 
     /// Test update with read-only collection.

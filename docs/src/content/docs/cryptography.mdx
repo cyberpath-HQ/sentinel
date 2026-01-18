@@ -16,7 +16,7 @@ The Sentinel crypto module (`sentinel-crypto`) provides four categories of crypt
 
 1. **Hashing**: Compute content hashes for integrity verification
 2. **Signing**: Create and verify digital signatures for tamper evidence
-3. **Encryption**: Encrypt and decrypt sensitive data
+3. **Encryption**: Encrypt and decrypt sensitive data with multiple algorithm options
 4. **Key Derivation**: Derive encryption keys from passphrases
 
 Each category has multiple algorithm choices, allowing you to balance security, performance, and compatibility for your
@@ -49,7 +49,8 @@ fn main() {
 }
 ```
 
-The configuration can only be set once per process. Attempting to set it again returns an error.
+The configuration can only be set once per process. Attempting to set it again will emit a warning and the original
+configuration will remain in effect.
 
 ## Default Configuration
 
@@ -68,7 +69,7 @@ These defaults provide excellent security and performance for most use cases.
 
 Sentinel uses hashing to create content fingerprints for integrity verification.
 
-### BLAKE3 (Default)
+### BLAKE3 (Default and Only Option)
 
 BLAKE3 is a modern, high-performance cryptographic hash function:
 
@@ -82,18 +83,21 @@ let hash = hash_data(&data)?;
 println!("Hash: {}", hash);  // 64-character hex string
 ```
 
-BLAKE3 provides several advantages over older hash functions. It offers 256-bit security with protection against length
-extension attacks. The algorithm supports parallel computation for large inputs, making it significantly faster than
-SHA-256 while maintaining equivalent security.
+BLAKE3 provides several advantages over older hash functions:
 
-All documents in Sentinel automatically include a BLAKE3 hash of their data field, enabling you to verify integrity at
-any time.
+- **Security**: 256-bit security with protection against length-extension attacks
+- **Performance**: Significantly faster than SHA-256 while maintaining equivalent security
+- **Parallelism**: Supports parallel computation for large inputs
+- **Deterministic**: Same input always produces same output
+
+All documents in Sentinel automatically include a BLAKE3 hash of their data field, enabling you to verify
+integrity at any time.
 
 ## Digital Signatures
 
 Signatures provide tamper-evident storage by cryptographically binding documents to a signing key.
 
-### Ed25519 (Default)
+### Ed25519 (Default and Only Option)
 
 Ed25519 is a modern elliptic curve signature scheme:
 
@@ -114,16 +118,21 @@ let is_valid = verify_signature(hash, &signature, &public_key)?;
 assert!(is_valid);
 ```
 
-Ed25519 provides 128-bit security with fast signing and verification operations. Signatures are 64 bytes long, and
-private keys are 32 bytes. The algorithm is deterministic, meaning the same message and key always produce the same
-signature.
+Ed25519 provides several benefits:
 
-When you create a Store with a passphrase, Sentinel generates an Ed25519 signing key and uses it to sign all documents
-automatically.
+- **Security**: 128-bit security level
+- **Performance**: Fast signing and verification operations
+- **Compactness**: Signatures are 64 bytes, private keys are 32 bytes
+- **Deterministic**: Same message and key always produce same signature
+- **Batch Verification**: Efficient for verifying multiple signatures at once
+
+When you create a Store with a passphrase, Sentinel generates an Ed25519 signing key and uses it to sign all
+documents automatically.
 
 ## Encryption
 
-Sentinel supports three authenticated encryption algorithms for protecting sensitive data.
+Sentinel supports three authenticated encryption algorithms for protecting sensitive data. Each algorithm provides different trade-offs
+between security, performance, and hardware acceleration.
 
 ### XChaCha20-Poly1305 (Default)
 
@@ -144,9 +153,16 @@ let decrypted = decrypt_data(&ciphertext, &key)?;
 assert_eq!(plaintext, decrypted.as_slice());
 ```
 
-XChaCha20-Poly1305 uses a 24-byte nonce, making it safe even if nonces are randomly generated. The extended nonce makes
-accidental nonce reuse extremely unlikely with random nonce generation. The algorithm provides both confidentiality and
-authentication.
+**Characteristics:**
+
+- **Nonce Size**: 24 bytes (extended nonce for random nonce generation)
+- **Security**: 256-bit security
+- **Performance**: Fast on all platforms
+- **Hardware**: No special acceleration needed
+- **Nonce Safety**: Extended nonce makes accidental reuse extremely unlikely
+
+XChaCha20-Poly1305 is recommended for general use due to its excellent security profile and good performance
+across all platforms.
 
 ### AES-256-GCM-SIV
 
@@ -167,8 +183,15 @@ let config = CryptoConfig {
 set_global_crypto_config(config).expect("Config set once");
 ```
 
-AES-256-GCM-SIV provides nonce misuse resistance with AES hardware acceleration. It's a good choice when hardware AES
-acceleration is available and performance is critical.
+**Characteristics:**
+
+- **Nonce Size**: 12 bytes (standard GCM nonce)
+- **Security**: 256-bit security with nonce misuse resistance
+- **Performance**: Very fast with hardware AES acceleration (AES-NI)
+- **Hardware**: Benefits from AES-NI instruction set
+- **Nonce Safety**: SIV mode provides nonce misuse resistance
+
+AES-256-GCM-SIV is a good choice when hardware AES acceleration is available and performance is critical.
 
 ### Ascon-128
 
@@ -189,8 +212,26 @@ let config = CryptoConfig {
 set_global_crypto_config(config).expect("Config set once");
 ```
 
+**Characteristics:**
+
+- **Nonce Size**: 16 bytes
+- **Security**: 128-bit security
+- **Performance**: Moderate speed
+- **Hardware**: No special acceleration needed
+- **Size**: Optimized for resource-constrained environments
+
 Ascon was selected as the winner of the NIST Lightweight Cryptography competition. It's designed for
 resource-constrained environments like embedded systems and IoT devices, while still providing strong security.
+
+### Encryption Algorithm Comparison
+
+| Algorithm          | Security  | Speed       | Nonce Size | Hardware Support | Best For                          |
+| ------------------ | --------- | ----------- | ---------- | ------------------ | --------------------------------- |
+| XChaCha20-Poly1305 | Excellent | Fast        | 24 bytes   | Any platform      | General use (default)             |
+| AES-256-GCM-SIV    | Excellent | Very Fast\* | 12 bytes   | AES-NI CPU       | Hardware-accelerated environments |
+| Ascon-128          | Very Good  | Moderate    | 16 bytes   | Any platform      | Constrained devices               |
+
+\*With hardware AES support
 
 ## Key Derivation
 
@@ -206,14 +247,20 @@ use sentinel_dbms::{derive_key_from_passphrase, derive_key_from_passphrase_with_
 // Derive a key with a new random salt
 let (salt, key) = derive_key_from_passphrase("my-secret-passphrase")?;
 
-// Re-derive with the same salt
+// Re-derive with same salt
 let same_key = derive_key_from_passphrase_with_salt("my-secret-passphrase", &salt)?;
 
 assert_eq!(key, same_key);
 ```
 
-Argon2id won the Password Hashing Competition and provides excellent protection against both GPU-based and side-channel
-attacks. It's memory-hard, making it expensive to attack with specialized hardware.
+**Characteristics:**
+
+- **Security**: Excellent protection against GPU-based and side-channel attacks
+- **Memory Hard**: Expensive to attack with specialized hardware
+- **Configurable**: Memory and parallelism can be tuned
+- **Standard**: Won the Password Hashing Competition
+
+Argon2id is the recommended choice for security-critical applications.
 
 ### PBKDF2
 
@@ -234,46 +281,156 @@ let config = CryptoConfig {
 set_global_crypto_config(config).expect("Config set once");
 ```
 
-PBKDF2 is supported in nearly every cryptographic library and is suitable when you need interoperability with other
-systems. However, it's less resistant to hardware-accelerated attacks than Argon2id.
+**Characteristics:**
 
-## Security Considerations
+- **Security**: Good protection against brute-force attacks
+- **Memory**: Low memory usage
+- **Performance**: Fast computation
+- **Compatibility**: Supported in nearly every cryptographic library
 
-When using Sentinel's cryptography module, keep these security principles in mind.
+PBKDF2 is suitable when you need interoperability with other systems. However, it's less resistant to
+hardware-accelerated attacks than Argon2id.
 
-- **Never hardcode passphrases.** Load them from environment variables, secret managers, or secure configuration files.
-
-- **Use the defaults unless you have specific requirements.** The default algorithms provide excellent security for most
-use cases.
-
-- **Understand the trade-offs.** Stronger algorithms may be slower. Choose based on your security requirements and
-performance constraints.
-
-- **Protect your signing keys.** The passphrase-derived key stored in `.keys/` is encrypted, but the passphrase itself
-must remain secret.
-
-- **Verify signatures when consuming data.** If documents should be signed, verify signatures before trusting the data.
-
-## Algorithm Comparison
-
-Here's a comparison of the available algorithms to help you choose:
-
-### Encryption Algorithms
-
-| Algorithm          | Security  | Speed       | Nonce Size | Best For                          |
-| ------------------ | --------- | ----------- | ---------- | --------------------------------- |
-| XChaCha20-Poly1305 | Excellent | Fast        | 24 bytes   | General use (default)             |
-| AES-256-GCM-SIV    | Excellent | Very Fast\* | 12 bytes   | Hardware-accelerated environments |
-| Ascon-128          | Excellent | Moderate    | 16 bytes   | Constrained devices               |
-
-\*With hardware AES support
-
-### Key Derivation Algorithms
+### Key Derivation Comparison
 
 | Algorithm | Security  | Speed | Memory | Best For                                 |
 | --------- | --------- | ----- | ------ | ---------------------------------------- |
 | Argon2id  | Excellent | Slow  | High   | Security-critical applications (default) |
 | PBKDF2    | Good      | Fast  | Low    | Compatibility requirements               |
+
+## Using Cryptography with Stores
+
+When you create a store with a passphrase, Sentinel uses the configured key derivation and encryption algorithms
+automatically:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Sentinel will:
+    // 1. Use Argon2id to derive key from passphrase (default)
+    // 2. Use XChaCha20-Poly1305 to encrypt the signing key (default)
+    // 3. Use Ed25519 for signing documents (default)
+    let store = Store::new("./secure-data", Some("my-passphrase")).await?;
+
+    Ok(())
+}
+```
+
+You can customize these algorithms by setting the global crypto configuration before creating the store.
+
+## Manual Cryptographic Operations
+
+You can also use cryptographic operations directly without going through Store:
+
+```rust
+use sentinel_dbms::{
+    hash_data,
+    sign_hash,
+    verify_signature,
+    encrypt_data,
+    decrypt_data,
+    derive_key_from_passphrase,
+    SigningKeyManager,
+    EncryptionKeyManager,
+};
+use serde_json::json;
+
+// Hash data
+let data = json!({"sensitive": "information"});
+let hash = hash_data(&data)?;
+
+// Sign with a key
+let signing_key = SigningKeyManager::generate_key();
+let signature = sign_hash(&hash, &signing_key)?;
+
+// Verify the signature
+let public_key = signing_key.verifying_key();
+let is_valid = verify_signature(&hash, &signature, &public_key)?;
+
+// Encrypt data
+let encryption_key = EncryptionKeyManager::generate_key();
+let plaintext = b"secret message";
+let ciphertext = encrypt_data(plaintext, &encryption_key)?;
+
+// Decrypt data
+let decrypted = decrypt_data(&ciphertext, &encryption_key)?;
+
+assert_eq!(plaintext, decrypted.as_slice());
+```
+
+## Security Considerations
+
+When using Sentinel's cryptography module, keep these security principles in mind:
+
+- **Never hardcode passphrases.** Load them from environment variables, secret managers, or secure configuration files.
+
+- **Use defaults unless you have specific requirements.** The default algorithms provide excellent security for most
+  use cases.
+
+- **Understand trade-offs.** Stronger algorithms may be slower. Choose based on your security requirements and
+  performance constraints.
+
+- **Protect your signing keys.** The passphrase-derived key stored in `.keys/` is encrypted, but the passphrase itself
+  must remain secret.
+
+- **Verify signatures when consuming data.** If documents should be signed, verify signatures before trusting the data.
+
+- **Secure key storage.** Use environment variables or secret managers to pass passphrases to your application, not command-line
+  arguments or config files.
+
+- **Rotate keys periodically.** Consider key rotation policies for long-running systems.
+
+- **Use appropriate algorithms for your environment.** Choose Ascon for embedded systems, AES-256-GCM-SIV for systems with
+  hardware acceleration, and XChaCha20-Poly1305 for general use.
+
+## Algorithm Selection Guide
+
+Use this guide to choose the right algorithms for your use case:
+
+### For General Applications
+
+Use the defaults (BLAKE3, Ed25519, XChaCha20-Poly1305, Argon2id):
+
+- Web applications
+- Desktop applications
+- Server-side services
+- Most use cases
+
+### For High-Performance Environments
+
+Use AES-256-GCM-SIV for encryption:
+
+- Systems with AES-NI support
+- High-throughput data processing
+- Real-time systems
+- Cloud instances with CPU acceleration
+
+### For Embedded Systems
+
+Use Ascon-128 for encryption:
+
+- IoT devices
+- Embedded controllers
+- Resource-constrained environments
+- Battery-powered devices
+
+### For Interoperability
+
+Use PBKDF2 for key derivation:
+
+- Systems needing compatibility with other cryptographic libraries
+- Legacy integration
+- Cross-platform consistency requirements
+
+### For Maximum Security
+
+Use Argon2id for key derivation and configure it with high memory and time parameters:
+
+- High-value data protection
+- Regulatory compliance
+- Security-critical infrastructure
 
 ## Next Steps
 
@@ -282,3 +439,4 @@ Now that you understand Sentinel's cryptography options, explore:
 - **[Store](/docs/store)**: How signing integrates with stores
 - **[Document](/docs/document)**: How hashing and signatures protect documents
 - **[Error Handling](/docs/errors)**: Handling cryptographic errors
+- **[Verification Options](/docs/errors)**: Configuring verification behavior

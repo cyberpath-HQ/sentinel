@@ -1,6 +1,6 @@
 ---
 title: Store
-description: Learn about the Store, the top-level container for collections in Sentinel.
+description: Learn about Store, the top-level container for collections in Sentinel.
 section: Core Concepts
 order: 10
 keywords: ["store", "database", "root", "passphrase", "signing"]
@@ -8,8 +8,8 @@ related: ["collection", "document", "quick-start"]
 ---
 
 The Store is the top-level container in Sentinel that manages all your collections. It represents a single database
-instance backed by a directory on your filesystem. This guide covers creating stores, configuring signing, and
-understanding the directory structure.
+instance backed by a directory on your filesystem. This guide covers creating stores, configuring signing, listing and
+deleting collections, and understanding the directory structure.
 
 ## Creating a Store
 
@@ -46,7 +46,55 @@ my-data/              # Store root (your specified path)
     └── .keys/        # Internal: encrypted signing key (if using passphrase)
 ```
 
-The `.keys/` directory is created automatically when you provide a passphrase. It stores your encrypted signing key.
+The `.keys/` directory is created automatically when you provide a passphrase. It stores your encrypted signing key
+in a special collection that only the passphrase can unlock.
+
+## Listing Collections
+
+List all collections in a store using the `list_collections` method:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+
+    // List all collections
+    let collections = store.list_collections().await?;
+
+    println!("Collections:");
+    for name in collections {
+        println!("  - {}", name);
+    }
+
+    Ok(())
+}
+```
+
+This method returns a vector of collection names in no particular order. If the store has no collections, an empty vector
+is returned.
+
+## Deleting Collections
+
+Remove an entire collection and all its documents using `delete_collection`:
+
+```rust
+use sentinel_dbms::Store;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./my-data", None).await?;
+
+    // Delete a collection and all its documents
+    store.delete_collection("temp_collection").await?;
+
+    Ok(())
+}
+```
+
+The deletion operation is permanent and cannot be undone. If the collection doesn't exist, the operation succeeds
+silently (idempotent). Use with caution.
 
 ## Signing with Passphrases
 
@@ -61,7 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First run: generates and stores a new signing key
     let store = Store::new("./secure-data", Some("my-secret")).await?;
 
-    // Subsequent runs: loads the existing signing key
+    // Subsequent runs: loads of existing signing key
     // You must use the same passphrase!
     let store = Store::new("./secure-data", Some("my-secret")).await?;
 
@@ -73,13 +121,39 @@ The signing key is derived and encrypted using your configured key derivation fu
 encryption algorithm (XChaCha20-Poly1305 by default). Even if someone accesses your store files, they cannot sign new
 documents without your passphrase.
 
+## Setting a Signing Key Programmatically
+
+You can also set a signing key directly without using a passphrase:
+
+```rust
+use sentinel_dbms::Store;
+use sentinel_dbms::SigningKeyManager;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut store = Store::new("./my-data", None).await?;
+
+    // Generate a signing key
+    let signing_key = SigningKeyManager::generate_key();
+
+    // Set it on the store
+    store.set_signing_key(signing_key);
+
+    // Now all new documents will be signed
+    Ok(())
+}
+```
+
+This approach is useful when you want to manage keys separately from passphrases, such as when integrating with external
+key management systems.
+
 ## Key Derivation Process
 
 When you provide a passphrase, Sentinel performs these steps:
 
 1. **First Run**: Generates a random 32-byte salt, derives an encryption key from your passphrase using the configured
-   KDF, generates a new Ed25519 signing key, encrypts the signing key with the derived encryption key, and stores the
-   encrypted key and salt in `.keys/signing_key.json`.
+   key derivation function, generates a new Ed25519 signing key, encrypts the signing key with the derived encryption key,
+   and stores the encrypted key and salt in `.keys/signing_key.json`.
 
 2. **Subsequent Runs**: Reads the stored salt, re-derives the encryption key from your passphrase, decrypts the signing
    key, and uses it for signing documents.
@@ -160,10 +234,11 @@ Collection names follow strict validation rules for filesystem safety:
 | No control characters    | ASCII 0x00-0x1F and 0x7F are forbidden           |
 | Not Windows reserved     | CON, PRN, AUX, NUL, COM1-9, LPT1-9 are forbidden |
 | No Windows special chars | `< > : " \| ? *` are forbidden                   |
+| No leading dots          | Names starting with `.` are forbidden (except `.keys`) |
 
 Examples of valid names: `users`, `audit_logs`, `products-v2`, `data.backup`
 
-Examples of invalid names: `users/admin`, `CON`, `file:name`, empty string
+Examples of invalid names: `users/admin`, `CON`, `file:name`, `.hidden`, empty string
 
 ## Error Handling
 
@@ -185,6 +260,10 @@ async fn main() {
         Err(SentinelError::Io { source }) => {
             eprintln!("I/O error: {}", source);
             // Permission denied, disk full, etc.
+        }
+        Err(SentinelError::StoreCorruption { reason }) => {
+            eprintln!("Store corrupted: {}", reason);
+            // Signing key file is damaged or missing fields
         }
         Err(e) => {
             eprintln!("Unexpected error: {}", e);
@@ -227,22 +306,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Store Internals
+
+The Store manages several internal mechanisms:
+
+### Directory Creation
+
+The store automatically creates the directory hierarchy on first use:
+
+```text
+store-path/           # Root directory (created by Store::new)
+└── data/             # Data directory (created on first collection access)
+    ├── .keys/        # Internal key storage (created with passphrase)
+    └── users/        # First collection (created by collection())
+```
+
+### Signing Key Management
+
+When a passphrase is provided, the signing key is stored securely:
+
+1. A random 32-byte salt is generated
+2. An encryption key is derived from the passphrase + salt using the configured KDF
+3. A new Ed25519 signing key pair is generated
+4. The private key is encrypted with the derived encryption key
+5. The encrypted private key and salt are stored in `.keys/signing_key.json`
+
+On subsequent opens, the process is reversed to recover the signing key.
+
 ## Best Practices
 
 When working with stores, keep these recommendations in mind:
 
 - **Choose meaningful paths.** Use paths that describe your application's purpose: `./audit-logs`, `./certificates`,
-`./config-store`.
+  `./config-store`.
 
 - **Secure your passphrase.** Don't hardcode passphrases. Load them from environment variables, secret managers, or secure
-configuration.
+  configuration.
 
 - **Use separate stores for separate purposes.** Don't mix audit logs with user data in the same store if they have
-different security requirements.
+  different security requirements.
 
 - **Back up regularly.** Since stores are just directories, use `rsync`, `tar`, or your preferred backup tool.
 
 - **Version with Git.** Your entire store can be a Git repository for complete change history.
+
+- **Test passphrase recovery.** Make sure you can open a signed store with your passphrase before committing to production.
 
 ## Next Steps
 

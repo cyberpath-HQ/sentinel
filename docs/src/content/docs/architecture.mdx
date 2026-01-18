@@ -1,0 +1,572 @@
+---
+title: Architecture
+description: Understanding the internal architecture, design patterns, and implementation details of Sentinel.
+section: Advanced Topics
+order: 30
+keywords: ["architecture", "design", "internals", "implementation", "async", "streaming"]
+related: ["store", "collection", "document", "cryptography"]
+---
+
+This document provides an in-depth look at Sentinel's architecture, design decisions, and implementation patterns.
+Understanding these concepts will help you work effectively with Sentinel and contribute to its development.
+
+## Design Philosophy
+
+Sentinel is built on five core principles:
+
+1. **Filesystem as the Database** - Leverage battle-tested filesystem reliability and tooling
+2. **Transparency by Default** - Human-readable JSON, no binary formats, full inspectability
+3. **Security First** - Cryptographic hashing, digital signatures, and optional encryption
+4. **Async Everything** - Non-blocking I/O with Tokio for high concurrency
+5. **Memory Efficiency** - Streaming APIs for handling large datasets
+
+## System Architecture
+
+### High-Level Overview
+
+```text
+┌─────────────────────────────────────────────────────┐
+│                  Application Layer                  │
+│             (Your Rust application)                 │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│              Sentinel Public API                    │
+│   (Store, Collection, Document, QueryBuilder)       │
+└──────────────────────┬──────────────────────────────┘
+                       │
+         ┌─────────────┼─────────────┐
+         │             │             │
+┌────────▼────┐ ┌──────▼─────┐ ┌─────▼─────┐
+│   Query     │ │  Filtering │ │ Streaming │
+│   Engine    │ │  & Sorting │ │  Utilities│
+└────────┬────┘ └──────┬─────┘ └────┬──────┘
+         │             │             │
+         └─────────────┼─────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│            Sentinel Crypto Module                   │
+│  (Hashing, Signing, Encryption, Key Derivation)     │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│               Tokio Async I/O                       │
+│    (Non-blocking file operations, streaming)        │
+└──────────────────────┬──────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────┐
+│              Operating System                       │
+│         (Filesystem, ACLs, Permissions)             │
+└─────────────────────────────────────────────────────┘
+```
+
+## Core Components
+
+### Store
+
+The `Store` is the top-level manager that represents a single database instance.
+
+**Responsibilities:**
+
+- Manage the root directory structure
+- Create and access collections
+- Handle signing key management with passphrase encryption
+- Provide a consistent interface for database operations
+
+**Internal Structure:**
+
+```rust
+pub struct Store {
+    root_path: PathBuf,
+    signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
+}
+```
+
+**Key Features:**
+
+- Thread-safe with `Arc<SigningKey>` for sharing across collections
+- Async initialization with `tokio::fs` operations
+- Automatic directory creation on first access
+- Passphrase-based signing key derivation and encryption
+
+### Collection
+
+A `Collection` represents a namespace for related documents, backed by a filesystem directory.
+
+**Responsibilities:**
+
+- Perform CRUD operations on documents
+- Stream documents for memory-efficient processing
+- Execute queries with filtering, sorting, and projection
+- Manage collection-level metadata (future)
+
+**Internal Structure:**
+
+```rust
+pub struct Collection {
+    pub(crate) path: PathBuf,
+    pub(crate) signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
+}
+```
+
+**Key Features:**
+
+- Lazy creation - directories created on first document insertion
+- Async I/O for all operations
+- Streaming APIs for large datasets
+- Soft deletes to `.deleted/` subdirectory
+
+### Document
+
+A `Document` represents a single data record with embedded metadata.
+
+**Internal Structure:**
+
+```rust
+pub struct Document {
+    pub(crate) id: String,
+    pub(crate) version: u32,
+    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) updated_at: DateTime<Utc>,
+    pub(crate) hash: String,
+    pub(crate) signature: String,
+    pub(crate) data: Value,
+}
+```
+
+**Metadata Fields:**
+
+- `id`: Unique identifier, becomes the filename
+- `version`: Sentinel metadata format version (currently 1)
+- `created_at`: Creation timestamp (UTC)
+- `updated_at`: Last modification timestamp (UTC)
+- `hash`: BLAKE3 hash of the data field (hex-encoded)
+- `signature`: Ed25519 signature of the hash (hex-encoded, empty if unsigned)
+- `data`: User's JSON data as `serde_json::Value`
+
+**Key Features:**
+
+- Automatic hash computation on creation and update
+- Optional digital signatures for tamper evidence
+- Immutable metadata (version, created_at)
+- Pretty-printed JSON serialization for human readability
+
+## Async I/O Model
+
+Sentinel uses Tokio for async I/O, enabling high concurrency without blocking threads.
+
+### Why Async?
+
+1. **Non-blocking Operations** - File I/O doesn't block other tasks
+2. **High Concurrency** - Handle many operations simultaneously
+3. **Resource Efficiency** - Fewer threads, less memory overhead
+4. **Scalability** - Better performance under load
+
+### Async Patterns
+
+All public APIs are async:
+
+```rust
+// Store creation
+let store = Store::new("./data", None).await?;
+
+// Collection access
+let collection = store.collection("users").await?;
+
+// CRUD operations
+collection.insert("user-1", data).await?;
+let doc = collection.get("user-1").await?;
+collection.update("user-1", new_data).await?;
+collection.delete("user-1").await?;
+
+// Queries
+let result = collection.query(query).await?;
+```
+
+### Streaming for Memory Efficiency
+
+Sentinel uses async streams (from `async_stream` and `futures`) to process large datasets without loading everything
+into memory:
+
+```rust
+// Stream all documents
+let stream = collection.all();
+
+// Stream filtered documents
+let stream = collection.filter(|doc| /* predicate */);
+
+// Stream query results
+let result = collection.query(query).await?;
+let stream = result.documents;
+```
+
+Streams are lazy - documents are only read from disk as you consume the stream.
+
+## Query Engine
+
+### Architecture
+
+```text
+┌─────────────────────────────────────┐
+│        QueryBuilder API             │
+│  (Fluent interface for queries)     │
+└────────────────┬────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────┐
+│          Query Struct               │
+│  (filters, sort, limit, offset,     │
+│   projection)                       │
+└────────────────┬────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────┐
+│       Collection.query()            │
+│  (Executes the query)               │
+└────────────────┬────────────────────┘
+                 │
+    ┌────────────┼────────────┐
+    │            │            │
+    ▼            ▼            ▼
+┌────────┐ ┌──────────┐ ┌──────────┐
+│Stream  │ │ Filter   │ │  Sort    │
+│Docs    │ │ Apply    │ │  Apply   │
+└────┬───┘ └─────┬────┘ └─────┬────┘
+     │           │            │
+     └───────────┼────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────┐
+│     Limit/Offset/Project            │
+└────────────────┬────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────┐
+│        QueryResult Stream           │
+└─────────────────────────────────────┘
+```
+
+### Filter Processing
+
+Filters are evaluated in-memory as documents stream from disk:
+
+```rust
+pub enum Filter {
+    Equals(String, Value),
+    GreaterThan(String, Value),
+    LessThan(String, Value),
+    Contains(String, String),
+    // ... more operators
+    And(Box<Filter>, Box<Filter>),
+    Or(Box<Filter>, Box<Filter>),
+}
+```
+
+Each document is checked against all filters using the `matches_filters()` function in the `filtering` module.
+
+### Sorting
+
+Sorting is performed in-memory after filtering:
+
+1. Stream and filter **ALL** documents
+2. Collect matching documents into a Vec; _this is potentially memory-intensive_
+3. Sort the Vec by the specified field
+4. Stream sorted results
+
+This approach trades memory for simplicity. Future versions will **try** to support streaming sort for large result
+sets.
+
+### Projection
+
+Field projection reduces data transfer by selecting only requested fields:
+
+```rust
+// Original document data
+{
+  "name": "Alice",
+  "email": "alice@example.com",
+  "address": "123 Main St",
+  "phone": "555-1234",
+  "age": 30
+}
+
+// With projection: ["name", "email"]
+{
+  "name": "Alice",
+  "email": "alice@example.com"
+}
+```
+
+Projection is applied to the `data` field. Metadata fields are always included.
+
+Currently, projection invalidates the signature since the data changes. The projected documents have an empty signature
+field and a hash computed over the projected data.
+
+Future versions may support signing projected documents and verifying signatures after projection, possibly also
+references to original hashes.
+
+## Cryptography Module
+
+Sentinel's crypto module (`sentinel-crypto`) is designed with modularity, security, and performance in mind.
+
+### Architecture
+
+```text
+┌──────────────────────────────────────────┐
+│         Global Crypto Config             │
+│  (Algorithm choices, set once)           │
+└────────────────┬─────────────────────────┘
+                 │
+     ┌───────────┼───────────┐
+     │           │           │
+     ▼           ▼           ▼
+┌─────────┐ ┌────────┐ ┌───────────┐
+│ Hashing │ │Signing │ │Encryption │
+│  Trait  │ │ Trait  │ │   Trait   │
+└────┬────┘ └───┬────┘ └─────┬─────┘
+     │          │            │
+     ▼          ▼            ▼
+┌─────────┐ ┌────────┐ ┌───────────┐
+│ BLAKE3  │ │Ed25519 │ │ XChaCha20 │
+│         │ │        │ │Poly1305   │
+└─────────┘ └────────┘ ├───────────┤
+                       │AES-256-GCM│
+                       │    SIV    │
+                       ├───────────┤
+                       │ Ascon-128 │
+                       └───────────┘
+```
+
+### Design Principles
+
+1. **Sealed Traits** - Prevent external insecure implementations
+2. **Memory Safety** - Automatic zeroization of sensitive data
+3. **Type Safety** - Associated types ensure compile-time correctness
+4. **Unified Errors** - Single `CryptoError` enum for all operations
+
+### Algorithm Choices
+
+**Hashing (BLAKE3):**
+
+- 256-bit security
+- Parallel computation support
+- Faster than SHA-256 with equivalent security
+- No length extension attacks
+- **Additional algorithms may be added in future versions**
+
+**Signing (Ed25519):**
+
+- Elliptic curve signatures
+- 128-bit security level
+- Fast verification
+- Small signature size (64 bytes)
+- **Additional algorithms may be added in future versions**
+
+**Encryption:**
+
+- **XChaCha20-Poly1305** (default): Strongest, nonce-misuse resistant
+- **AES-256-GCM-SIV**: Hardware-accelerated, nonce-misuse resistant
+- **Ascon-128**: Lightweight for constrained environments
+
+**Key Derivation:**
+
+- **Argon2id** (default): Memory-hard, GPU-resistant
+- **PBKDF2**: Widely compatible, good for constrained systems
+
+### Global Configuration
+
+Crypto algorithms are configured globally once per process:
+
+```rust
+let config = CryptoConfig {
+    hash_algorithm: HashAlgorithmChoice::Blake3,
+    signature_algorithm: SignatureAlgorithmChoice::Ed25519,
+    encryption_algorithm: EncryptionAlgorithmChoice::XChaCha20Poly1305,
+    key_derivation_algorithm: KeyDerivationAlgorithmChoice::Argon2id,
+};
+
+set_global_crypto_config(config)?;
+```
+
+This ensures consistency across all operations and allows easy algorithm switching.
+
+## File System Organization
+
+### Directory Structure
+
+```text
+store_root/
+├── data/                          # Main data directory
+│   ├── users/                     # Collection: users
+│   │   ├── user-123.json          # Document
+│   │   ├── user-456.json          # Document
+│   │   └── .deleted/              # Soft-deleted documents
+│   │       └── user-789.json
+│   ├── audit_logs/                # Collection: audit_logs
+│   │   ├── log-001.json
+│   │   └── log-002.json
+│   └── .keys/                     # Encrypted signing keys
+│       └── signing_key.json
+```
+
+### Naming Conventions
+
+**Document IDs:**
+
+- Must be filesystem-safe (no `/`, `\`, `..`, etc.)
+- Cannot start with `.` (reserved for metadata)
+- Become filenames with `.json` extension
+- Examples: `user-123`, `order_456`, `2026-01-17-log`
+
+**Collection Names:**
+
+- Must be filesystem-safe
+- Cannot be reserved names (`.keys`, `.metadata`)
+- Become directory names
+- Examples: `users`, `audit_logs`, `certificates`
+
+**Reserved Names:**
+
+- `.deleted` - Soft-deleted documents
+- `.keys` - Encrypted signing keys
+- `.metadata` - Collection metadata (future)
+- `.index` - Lazy indices (future)
+- `.wal` - Write-ahead log (future)
+
+## Performance Characteristics
+
+### Current Implementation
+
+| Operation | Complexity | Notes                         |
+| --------- | ---------- | ----------------------------- |
+| Insert    | O(1)       | Single async file write       |
+| Get       | O(1)       | Single async file read        |
+| Update    | O(1)       | Single async file write       |
+| Delete    | O(1)       | Async file rename             |
+| List      | O(n)       | Directory scan                |
+| Filter    | O(n)       | Scan all documents            |
+| Query     | O(n log n) | Filter O(n) + Sort O(n log n) |
+
+### Memory Usage
+
+- **Documents**: Loaded one-at-a-time via streaming
+- **Query Results**: Buffered in memory for sorting
+- **Filters**: Applied as documents stream (no buffering)
+- **Signing Keys**: Shared via `Arc<SigningKey>`
+
+### Future Optimizations
+
+**Planned improvements:**
+
+1. Lazy-built indices for frequently queried fields
+2. Hash indices for O(1) equality lookups
+3. Range indices for comparison operators
+4. Write-ahead logging for durability
+5. File locking for concurrent writes
+6. In-memory caching with LRU eviction
+
+## Error Handling
+
+Sentinel uses a unified error type across all operations:
+
+```rust
+pub enum SentinelError {
+    IoError(std::io::Error),
+    SerdeError(serde_json::Error),
+    CryptoError(sentinel_crypto::CryptoError),
+    ValidationError { message: String },
+    ConfigError { message: String },
+    NotFound { message: String },
+}
+```
+
+### Error Propagation
+
+Errors are propagated using the `?` operator and Rust's `Result` type:
+
+```rust
+pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
+    validate_document_id(id)?;  // Validation error
+    let doc = Document::new(...).await?;  // Crypto error
+    let json = serde_json::to_string_pretty(&doc)?;  // Serde error
+    tokio_fs::write(&file_path, json).await?;  // I/O error
+    Ok(())
+}
+```
+
+All errors are converted to `SentinelError` for consistent handling.
+
+## Thread Safety
+
+Sentinel is designed for concurrent access:
+
+1. **Store**: Safe to share across threads (signing key in `Arc`)
+2. **Collection**: Safe to share across threads
+3. **Document**: Immutable after creation, safe to share
+
+However, concurrent writes to the same document may result in the last-write-wins behavior. Future versions will include
+file locking for safe concurrent writes.
+
+## Testing Strategy
+
+Sentinel uses multiple testing approaches:
+
+1. **Unit Tests**: Test individual functions and modules
+2. **Integration Tests**: Test complete workflows
+3. **Property Tests**: Test invariants and edge cases
+4. **Benchmarks**: Measure performance with Criterion
+
+All tests use `tokio::test` for async support and `tempfile` for isolated test environments.
+
+## Future Architecture
+
+### Planned Enhancements
+
+**Indexing Layer:**
+
+```text
+Collection
+├── Documents (JSON files)
+├── Hash Indices (.index/field_name.idx)
+├── Range Indices (.index/field_name.range)
+└── Full-Text Search (.index/fts.idx)
+```
+
+**Transaction Layer:**
+
+```text
+Collection
+├── Documents
+├── Write-Ahead Log (.wal/transactions.log)
+└── Lock Manager (.locks/document_id.lock)
+```
+
+**Caching Layer:**
+
+```text
+Store
+└── LRU Cache (in-memory)
+    ├── Document Cache
+    ├── Index Cache
+    └── Query Result Cache
+```
+
+## Contributing
+
+Understanding this architecture is key to contributing effectively. Key areas for contribution:
+
+1. **Query Engine**: Optimize filtering and sorting
+2. **Indexing**: Implement lazy indices
+3. **Concurrency**: Add file locking and WAL
+4. **Caching**: Implement LRU cache
+5. **Testing**: Add more comprehensive tests
+
+See [CONTRIBUTING.md](https://github.com/cyberpath-HQ/sentinel/blob/main/CONTRIBUTING.md) for guidelines.
+
+## Resources
+
+- [Tokio Documentation](https://tokio.rs/)
+- [Async Rust Book](https://rust-lang.github.io/async-book/)
+- [RustCrypto Project](https://github.com/RustCrypto)
+- [BLAKE3 Specification](https://github.com/BLAKE3-team/BLAKE3-specs)
+- [Ed25519 Specification](https://ed25519.cr.yp.to/)

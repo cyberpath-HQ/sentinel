@@ -3,3 +3,4 @@ IMPLEMENTATION_PLAN_*.md
 flamegraph.svg
 perf*.data*
 node_modules/
+*review.*

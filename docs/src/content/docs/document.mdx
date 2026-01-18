@@ -1,6 +1,6 @@
 ---
 title: Document
-description: Learn about the Document structure, metadata fields, and integrity verification in Sentinel.
+description: Learn about Document structure, metadata fields, and integrity verification in Sentinel.
 section: Core Concepts
 order: 12
 keywords: ["document", "metadata", "hash", "signature", "JSON", "versioning"]
@@ -8,8 +8,8 @@ related: ["collection", "cryptography", "store"]
 ---
 
 Documents are the fundamental unit of storage in Sentinel. Each document is a JSON file containing your data along with
-metadata for versioning, timestamps, and cryptographic integrity verification. This guide explains the document
-structure and how to work with document metadata.
+metadata for versioning, timestamps, cryptographic integrity verification, and optional digital signatures. This guide explains
+document structure, how to work with document metadata, and how verification works.
 
 ## Document Structure
 
@@ -21,16 +21,17 @@ Every document stored in Sentinel has this structure:
   "version": 1,
   "created_at": "2026-01-15T12:00:00.000000Z",
   "updated_at": "2026-01-15T12:00:00.000000Z",
-  "hash": "a1b2c3d4e5f6789abcdef...",
-  "signature": "ed25519:xyz789...",
+  "hash": "a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789a",
+  "signature": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
   "data": {
-    // ...
+    "name": "Alice",
+    "email": "alice@example.com"
   }
 }
 ```
 
-The structure has two main parts: **metadata fields** managed by Sentinel and a **data field** containing your actual
-content.
+The structure has two main parts: **metadata fields** managed by Sentinel and a **data field** containing your
+actual content.
 
 ## Metadata Fields
 
@@ -45,7 +46,7 @@ let doc = users.get("alice").await?.unwrap();
 println!("Document ID: {}", doc.id());  // "alice"
 ```
 
-The ID must be a valid filename, see the [Collection](/docs/collection) documentation for validation rules.
+The ID must be a valid filename. See the [Collection](/docs/collection) documentation for validation rules.
 
 ### Version
 
@@ -55,18 +56,21 @@ The metadata format version used by Sentinel:
 println!("Version: {}", doc.version());  // Currently 1
 ```
 
-This allows future versions of Sentinel to handle documents created by older versions.
+This allows future versions of Sentinel to handle documents created by older versions. The version number is defined by
+the `META_SENTINEL_VERSION` constant (currently 1).
 
 ### Timestamps
 
-Two timestamps track document lifecycle:
+Two timestamps track the document lifecycle:
 
 ```rust
 println!("Created: {}", doc.created_at());   // When first inserted
 println!("Updated: {}", doc.updated_at());   // When last modified
 ```
 
-Timestamps are in UTC using RFC 3339 format with microsecond precision.
+Timestamps are in UTC using RFC 3339 format with microsecond precision. The `created_at` timestamp is set when the
+document is first created and never changes. The `updated_at` timestamp is updated every time the document
+data is modified.
 
 ### Hash
 
@@ -76,8 +80,22 @@ A BLAKE3 cryptographic hash of the document data:
 println!("Hash: {}", doc.hash());  // 64-character hex string
 ```
 
-The hash is computed from the `data` field only (not metadata). It enables integrity verification, if the data changes,
-the hash changes.
+The hash is computed from the `data` field only (not metadata). It enables integrity verification—if the data changes,
+the hash changes. This provides a reliable way to detect data corruption or tampering.
+
+```rust
+use sentinel_crypto::hash_data;
+
+// Recompute hash from data
+let computed_hash = hash_data(doc.data()).await?;
+
+// Verify integrity
+if doc.hash() == computed_hash {
+    println!("✓ Data integrity verified");
+} else {
+    println!("✗ Data may be corrupted!");
+}
+```
 
 ### Signature
 
@@ -89,6 +107,20 @@ println!("Signature: {}", doc.signature());
 
 If the store was created with a passphrase, documents are signed automatically. The signature covers the hash, providing
 tamper-evident storage. An empty string indicates an unsigned document.
+
+**Signed Document Example:**
+```json
+{
+  "signature": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+}
+```
+
+**Unsigned Document Example:**
+```json
+{
+  "signature": ""
+}
+```
 
 ### Data
 
@@ -130,10 +162,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Sentinel handles:
 
 1. Setting the ID to match the provided key
-2. Setting version to the current metadata version
-3. Setting `created_at` and `updated_at` to now
+2. Setting the version to the current metadata version
+3. Setting `created_at` and `updated_at` to the current time
 4. Computing the BLAKE3 hash of your data
-5. Signing with Ed25519 if a passphrase was provided
+5. Signing the hash with Ed25519 if a passphrase was provided
+6. Writing the document atomically to disk as `{id}.json`
+
+### Creating Unsigned Documents
+
+If you don't have a signing key or want to skip signing:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Store without passphrase = no signing
+    let store = Store::new("./data", None).await?;
+    let users = store.collection("users").await?;
+
+    users.insert("alice", json!({
+        "name": "Alice",
+        "email": "alice@example.com"
+    })).await?;
+
+    // Document will have empty signature
+    Ok(())
+}
+```
 
 ## Reading Document Properties
 
@@ -178,7 +235,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Document Integrity
 
-Sentinel provides two layers of integrity verification.
+Sentinel provides two layers of integrity verification: hash verification for data integrity and signature verification for
+tamper evidence.
 
 ### Hash Verification
 
@@ -198,19 +256,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(doc) = users.get("alice").await? {
         // Recompute hash from data
-        let computed_hash = hash_data(doc.data())?;
+        let computed_hash = hash_data(doc.data()).await?;
 
         // Compare with stored hash
         if doc.hash() == computed_hash {
             println!("✓ Data integrity verified");
         } else {
             println!("✗ Data may be corrupted!");
+            println!("  Expected: {}", doc.hash());
+            println!("  Computed: {}", computed_hash);
         }
     }
 
     Ok(())
 }
 ```
+
+Hash verification ensures that the document data hasn't been accidentally corrupted (e.g., disk errors, file corruption).
 
 ### Signature Verification
 
@@ -228,14 +290,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     users.insert("alice", json!({"name": "Alice"})).await?;
 
-    // Note: Signature verification requires access to the public key
-    // which is derived from the signing key in the store
-    // This is a simplified example
-
     if let Some(doc) = users.get("alice").await? {
         if !doc.signature().is_empty() {
+            // Recompute hash for verification
+            let computed_hash = hash_data(doc.data()).await?;
+
+            // Verify signature (requires access to public key from signing key)
+            // This is a simplified example
             println!("Document is signed");
-            // Full verification would use the public key
+            println!("  Hash: {}", doc.hash());
+            println!("  Signature: {}", doc.signature());
         } else {
             println!("Document is unsigned");
         }
@@ -244,6 +308,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+Signature verification provides tamper evidence—if someone modifies the document data without the signing key, the
+signature verification will fail.
+
+### Verification Modes
+
+Sentinel provides flexible verification modes through `VerificationOptions`:
+
+```rust
+use sentinel_dbms::{Store, VerificationOptions, VerificationMode};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", Some("passphrase")).await?;
+    let users = store.collection("users").await?;
+
+    // Strict mode (default for production)
+    let strict_options = VerificationOptions::strict();
+    let doc = users.get_with_verification("alice", &strict_options).await?;
+
+    // Warning mode (for auditing)
+    let warn_options = VerificationOptions::warn();
+    let doc = users.get_with_verification("alice", &warn_options).await?;
+
+    // Disabled mode (for performance)
+    let disabled_options = VerificationOptions::disabled();
+    let doc = users.get_with_verification("alice", &disabled_options).await?;
+
+    Ok(())
+}
+```
+
+- **Strict**: Fail immediately on verification errors
+- **Warn**: Log warnings but continue processing
+- **Silent**: Skip verification entirely
+
+See the [Error Handling](/docs/errors) guide for details on handling verification errors.
 
 ## File Format
 
@@ -256,7 +357,7 @@ Documents are stored as pretty-printed JSON files:
   "created_at": "2026-01-15T12:00:00.000000Z",
   "updated_at": "2026-01-15T12:00:00.000000Z",
   "hash": "a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789a",
-  "signature": "ed25519:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "signature": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
   "data": {
     "name": "Alice",
     "email": "alice@example.com"
@@ -366,28 +467,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Document Versioning
+
+Sentinel's version field allows for future compatibility:
+
+```rust
+use sentinel_dbms::META_SENTINEL_VERSION;
+
+// Current version
+println!("Current sentinel version: {}", META_SENTINEL_VERSION);  // Returns 1
+
+// All documents have this version
+let doc_version = doc.version();
+assert_eq!(doc_version, META_SENTINEL_VERSION);
+```
+
+This design allows Sentinel to:
+
+- Add new metadata fields without breaking existing documents
+- Change serialization formats while maintaining backward compatibility
+- Introduce new features that older versions can ignore
+- Migrate documents automatically when needed
+
 ## Best Practices
 
 When working with documents, keep these recommendations in mind:
 
 - **Design your data schema thoughtfully.** Even though Sentinel is schema-less, consistent structures make querying and
-maintenance easier.
+  maintenance easier.
 
 - **Keep documents reasonably sized.** While there's no hard limit, very large documents (megabytes) may impact
-performance.
+  performance.
 
 - **Use meaningful IDs.** Choose IDs that help identify documents: `user-{uuid}`, `order-{date}-{sequence}`,
-`cert-{fingerprint}`.
+  `cert-{fingerprint}`.
 
 - **Validate before inserting.** Sentinel stores whatever JSON you provide—validate your data in your application.
 
-- **Consider document relationships.** Store related IDs as references: `{"user_id": "user-123"}` rather than embedding
-entire documents. Currently, Sentinel does not support joins, so design accordingly.
+- **Consider document relationships.** Store related IDs as references: `{"user_id": "user-123"}` rather than
+  embedding entire documents. Currently, Sentinel does not support joins, so design accordingly.
+
+- **Use appropriate verification modes.** Use strict mode for production, warn mode for auditing, and silent mode for
+  performance-critical scenarios.
+
+- **Leverage hash verification.** Regularly verify document hashes to detect data corruption early.
+
+- **Back up regularly.** Since documents are just files, use standard backup tools.
 
 ## Next Steps
 
 Now that you understand documents, explore:
 
 - **[Cryptography](/docs/cryptography)**: Deep dive into hashing, signing, and encryption
-- **[Error Handling](/docs/errors)**: Understanding Sentinel errors
-- **[Collection](/docs/collection)**: Advanced collection operations
+- **[Querying and Filtering](/docs/querying)**: Advanced document retrieval and filtering
+- **[Error Handling](/docs/errors)**: Understanding Sentinel errors and verification failures
+- **[Collection](/docs/collection)**: Advanced collection operations and management

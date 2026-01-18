@@ -1,4 +1,5 @@
-use std::sync::OnceLock;
+use tokio::sync::RwLock as TokioRwLock;
+use tracing::{debug, trace, warn};
 
 use crate::error::CryptoError;
 
@@ -65,18 +66,48 @@ impl Default for CryptoConfig {
 }
 
 // Global configuration storage
-static GLOBAL_CONFIG: OnceLock<CryptoConfig> = OnceLock::new();
+static GLOBAL_CONFIG: TokioRwLock<Option<CryptoConfig>> = TokioRwLock::const_new(None);
 
 /// Sets the global cryptographic configuration.
 /// This affects all default cryptographic operations.
-/// Must be called before any cryptographic operations for the configuration to take effect.
-/// Returns an error if the config has already been set.
-pub fn set_global_crypto_config(config: CryptoConfig) -> Result<(), CryptoError> {
-    GLOBAL_CONFIG
-        .set(config)
-        .map_err(|_| CryptoError::ConfigAlreadySet)
+/// Can be called multiple times, but a warning is emitted if the config is changed.
+pub async fn set_global_crypto_config(config: CryptoConfig) -> Result<(), CryptoError> {
+    trace!("Setting global crypto config: {:?}", config);
+    let mut global = GLOBAL_CONFIG.write().await;
+    if global.is_some() {
+        warn!("Global crypto config is being changed. This may affect ongoing operations.");
+    }
+    *global = Some(config);
+    debug!("Global crypto config set successfully");
+    Ok(())
 }
 
 /// Gets the current global cryptographic configuration.
 /// Returns the default configuration if none has been set.
-pub fn get_global_crypto_config() -> &'static CryptoConfig { GLOBAL_CONFIG.get_or_init(CryptoConfig::default) }
+pub async fn get_global_crypto_config() -> Result<CryptoConfig, CryptoError> {
+    trace!("Retrieving global crypto config");
+    // First try to read
+    {
+        let global = GLOBAL_CONFIG.read().await;
+        if let Some(ref config) = *global {
+            debug!("Global crypto config retrieved: {:?}", config);
+            return Ok(config.clone());
+        }
+    }
+    // If none, initialize with write lock
+    let mut global = GLOBAL_CONFIG.write().await;
+    if global.is_none() {
+        *global = Some(CryptoConfig::default());
+    }
+    let config = global.as_ref().unwrap();
+    debug!("Global crypto config retrieved: {:?}", config);
+    Ok(config.clone())
+}
+
+/// Resets the global cryptographic configuration for testing purposes.
+/// This allows tests to set different configurations.
+#[cfg(test)]
+pub async fn reset_global_crypto_config_for_tests() {
+    let mut global = GLOBAL_CONFIG.write().await;
+    *global = None;
+}

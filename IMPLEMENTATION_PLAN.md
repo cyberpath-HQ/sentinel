@@ -546,17 +546,17 @@ mod tests {
 
 #### 1.2 Directory Operations
 
-- [ ] List documents in collection
-- [ ] Bulk operations
-- [ ] Soft deletes (.deleted/ folder)
-- [ ] Directory scanning optimization
+- [x] List documents in collection
+- [x] Bulk operations
+- [x] Soft deletes (.deleted/ folder)
+- [x] Directory scanning optimization
 
 #### 1.3 Basic Filtering
 
-- [ ] Simple filter predicates
-- [ ] In-memory filtering
-- [ ] Query builder pattern
-- [ ] Projection (selecting fields)
+- [x] Simple filter predicates
+- [x] In-memory filtering
+- [x] Query builder pattern
+- [x] Projection (selecting fields)
 
 **Target Users:** Developers needing simple, auditable document storage
 
