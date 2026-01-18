@@ -87,7 +87,8 @@ fn bench_derive_key_from_passphrase(c: &mut Criterion) {
     let passphrase = "test passphrase";
 
     c.bench_function("derive_key_from_passphrase", |b| {
-        b.iter(|| derive_key_from_passphrase(black_box(passphrase)))
+        b.to_async(FuturesExecutor)
+            .iter(|| async { derive_key_from_passphrase(black_box(passphrase)).await })
     });
 }
 
@@ -96,7 +97,8 @@ fn bench_derive_key_from_passphrase_with_salt(c: &mut Criterion) {
     let salt = [0u8; 32];
 
     c.bench_function("derive_key_from_passphrase_with_salt", |b| {
-        b.iter(|| derive_key_from_passphrase_with_salt(black_box(passphrase), black_box(&salt)))
+        b.to_async(FuturesExecutor)
+            .iter(|| async { derive_key_from_passphrase_with_salt(black_box(passphrase), black_box(&salt)).await })
     });
 }
 
