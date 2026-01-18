@@ -123,7 +123,10 @@ impl Store {
         if let Some(passphrase) = passphrase {
             debug!("Passphrase provided, handling signing key");
             let keys_collection = store.collection(".keys").await?;
-            if let Some(doc) = keys_collection.get("signing_key").await? {
+            if let Some(doc) = keys_collection
+                .get_with_verification("signing_key", &crate::VerificationOptions::disabled())
+                .await?
+            {
                 // Load existing signing key
                 debug!("Loading existing signing key from store");
                 let data = doc.data();
@@ -638,7 +641,11 @@ mod tests {
         // Corrupt the salt to invalid hex
         let store2 = Store::new(temp_dir.path(), None).await.unwrap();
         let keys_coll = store2.collection(".keys").await.unwrap();
-        let doc = keys_coll.get("signing_key").await.unwrap().unwrap();
+        let doc = keys_coll
+            .get_with_verification("signing_key", &crate::VerificationOptions::disabled())
+            .await
+            .unwrap()
+            .unwrap();
         let mut data = doc.data().clone();
         data["salt"] = serde_json::Value::String("invalid_hex".to_string());
         keys_coll.insert("signing_key", data).await.unwrap();
@@ -659,7 +666,11 @@ mod tests {
         // Corrupt the encrypted to short
         let store2 = Store::new(temp_dir.path(), None).await.unwrap();
         let keys_coll = store2.collection(".keys").await.unwrap();
-        let doc = keys_coll.get("signing_key").await.unwrap().unwrap();
+        let doc = keys_coll
+            .get_with_verification("signing_key", &crate::VerificationOptions::disabled())
+            .await
+            .unwrap()
+            .unwrap();
         let mut data = doc.data().clone();
         data["encrypted"] = serde_json::Value::String(hex::encode(&[0u8; 10])); // short
         keys_coll.insert("signing_key", data).await.unwrap();

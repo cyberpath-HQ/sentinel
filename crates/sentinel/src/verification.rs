@@ -42,7 +42,7 @@ impl VerificationMode {
 /// Options for controlling verification behavior when reading documents.
 ///
 /// These options allow fine-grained control over integrity verification at the method level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VerificationOptions {
     /// Whether to verify document signatures.
     /// Defaults to true for security.
@@ -56,6 +56,17 @@ pub struct VerificationOptions {
     /// How to handle hash verification failures.
     /// Defaults to Strict.
     pub hash_verification_mode:      VerificationMode,
+}
+
+impl Default for VerificationOptions {
+    fn default() -> Self {
+        Self {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: VerificationMode::Strict,
+            hash_verification_mode:      VerificationMode::Strict,
+        }
+    }
 }
 
 impl VerificationOptions {
