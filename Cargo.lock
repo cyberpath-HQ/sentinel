@@ -1572,11 +1572,13 @@ dependencies = [
 name = "sentinel-wal"
 version = "2.0.1"
 dependencies = [
+ "async-stream",
  "async-trait",
  "chrono",
  "crc32fast",
  "criterion",
  "cuid2",
+ "futures",
  "postcard",
  "serde",
  "serde_json",
