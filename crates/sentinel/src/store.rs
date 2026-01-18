@@ -5,6 +5,7 @@ use std::{
 
 use tokio::fs as tokio_fs;
 use tracing::{debug, error, trace, warn};
+use sentinel_wal::{WalConfig, WalManager};
 
 use crate::{
     validation::{is_reserved_name, is_valid_name_chars},
@@ -12,7 +13,6 @@ use crate::{
     Result,
     SentinelError,
 };
-use sentinel_wal::WalManager;
 
 /// The top-level manager for document collections in Cyberpath Sentinel.
 ///
@@ -258,7 +258,9 @@ impl Store {
         })?;
         debug!("Collection directory ensured: {:?}", path);
         let wal_path = path.join(".wal").join("transactions.wal");
-        let wal_manager = Some(Arc::new(WalManager::new(wal_path).await?));
+        let wal_manager = Some(Arc::new(
+            WalManager::new(wal_path, WalConfig::default()).await?,
+        ));
         trace!("Collection '{}' accessed successfully", name);
         Ok(Collection {
             path,

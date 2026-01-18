@@ -6,7 +6,6 @@ use serde_json::{json, Value};
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
 use tracing::{debug, error, info, trace, warn};
-use cuid2;
 use sentinel_wal::{EntryType, LogEntry, WalManager};
 
 use crate::{
@@ -142,14 +141,10 @@ impl Collection {
         Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
 
-        // Generate transaction ID for WAL
-        let transaction_id = cuid2::create_id();
-
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
             let entry = LogEntry::new(
                 EntryType::Insert,
-                transaction_id,
                 self.name().to_string(),
                 id.to_string(),
                 Some(data.clone()),
@@ -371,13 +366,10 @@ impl Collection {
         let dest_path = deleted_dir.join(format!("{}.json", id));
 
         // Generate transaction ID for WAL
-        let transaction_id = cuid2::create_id();
-
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
             let entry = LogEntry::new(
                 EntryType::Delete,
-                transaction_id,
                 self.name().to_string(),
                 id.to_string(),
                 None,
@@ -1444,14 +1436,10 @@ impl Collection {
         // Merge the new data with existing data
         let merged_data = Self::merge_json_values(existing_doc.data(), data);
 
-        // Generate transaction ID for WAL
-        let transaction_id = cuid2::create_id();
-
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
             let entry = LogEntry::new(
                 EntryType::Update,
-                transaction_id,
                 self.name().to_string(),
                 id.to_string(),
                 Some(merged_data.clone()),
