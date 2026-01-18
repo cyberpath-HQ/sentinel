@@ -8,8 +8,12 @@ Complete C and C++ bindings for Cyberpath Sentinel, providing full access to all
 - **Store Management**: Create, configure, and manage database stores
 - **Collection Operations**: Full CRUD operations on collections
 - **Document Operations**: Insert, update, delete, upsert, and query documents
-- **Query System**: Complex filtering, sorting, pagination, and aggregation
-- **Asynchronous Operations**: True non-blocking async operations with callbacks
+- **Advanced Query System**:
+  - **Multiple Filter Types**: Equals, GreaterThan, LessThan, GreaterOrEqual, LessOrEqual, Contains, StartsWith, EndsWith, In, Exists
+  - **Sorting**: Ascending/descending order on any field
+  - **Pagination**: Limit and offset for result pagination
+  - **Complex Queries**: Combine multiple filters with AND logic
+- **Asynchronous Operations**: True non-blocking async operations with callbacks for all functions
 - **Error Handling**: Comprehensive error reporting with detailed messages
 - **Memory Management**: Automatic cleanup with RAII in C++ and manual management in C
 
@@ -211,6 +215,46 @@ try {
     std::cerr << "Error: " << e.what() << std::endl;
 }
 ```
+
+## Advanced Query API
+
+The C/C++ bindings provide a comprehensive query system that supports complex filtering, sorting, and pagination.
+
+### Query Builder API
+
+```c
+// Create a new query
+sentinel_query_t* query = sentinel_query_builder_new();
+
+// Add filters
+sentinel_query_builder_filter_equals(query, "status", "\"active\"");
+sentinel_query_builder_filter_greater_than(query, "age", "21");
+sentinel_query_builder_filter_contains(query, "name", "John");
+
+// Add sorting
+sentinel_query_builder_sort(query, "score", 1); // 1 = descending
+
+// Add pagination
+sentinel_query_builder_limit(query, 10);
+sentinel_query_builder_offset(query, 20);
+
+// Execute query
+char* results = sentinel_collection_query(collection, query);
+
+// Clean up
+sentinel_query_free(query);
+```
+
+### Supported Filter Types
+
+- **Equality**: `sentinel_query_builder_filter_equals()`
+- **Comparison**: `sentinel_query_builder_filter_greater_than()`, `sentinel_query_builder_filter_less_than()`
+- **String Matching**: `sentinel_query_builder_filter_contains()`
+- **Complex Queries**: Combine multiple filters for AND logic
+
+### Query Results
+
+Currently returns document count as JSON string. Full document streaming implementation available in the underlying Rust library.
 
 ## Asynchronous Operations
 

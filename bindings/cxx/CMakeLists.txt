@@ -149,6 +149,11 @@ if(SENTINEL_CXX_BUILD_EXAMPLES)
     target_include_directories(c_query_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
     target_link_libraries(c_query_example PRIVATE sentinel-cxx)
 
+    # C complex query example
+    add_executable(c_complex_query_example examples/c_complex_query_example.c)
+    target_include_directories(c_complex_query_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
+    target_link_libraries(c_complex_query_example PRIVATE sentinel-cxx)
+
     # C async query example
     if(SENTINEL_CXX_ENABLE_ASYNC)
         add_executable(c_async_query_example examples/c_async_query_example.c)
