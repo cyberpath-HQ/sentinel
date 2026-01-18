@@ -26,10 +26,10 @@ impl<'de> Deserialize<'de> for FixedBytes32 {
     {
         let bytes: &[u8] = serde::Deserialize::deserialize(deserializer)?;
         let mut arr = [0u8; 32];
-        arr.copy_from_slice(&bytes[..32.min(bytes.len())]);
+        arr.copy_from_slice(&bytes[.. 32.min(bytes.len())]);
         if bytes.len() < 32 {
             // Pad with zeros if shorter
-            arr[bytes.len()..].fill(0);
+            arr[bytes.len() ..].fill(0);
         }
         Ok(FixedBytes32(arr))
     }
@@ -37,22 +37,19 @@ impl<'de> Deserialize<'de> for FixedBytes32 {
 
 impl std::ops::Deref for FixedBytes32 {
     type Target = [u8];
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+
+    fn deref(&self) -> &Self::Target { &self.0 }
 }
 
 impl std::ops::DerefMut for FixedBytes32 {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.0 }
 }
 
 impl From<&[u8]> for FixedBytes32 {
     fn from(bytes: &[u8]) -> Self {
         let mut arr = [0u8; 32];
         let len = bytes.len().min(32);
-        arr[..len].copy_from_slice(&bytes[..len]);
+        arr[.. len].copy_from_slice(&bytes[.. len]);
         FixedBytes32(arr)
     }
 }
@@ -78,31 +75,28 @@ impl<'de> Deserialize<'de> for FixedBytes256 {
         let bytes: &[u8] = serde::Deserialize::deserialize(deserializer)?;
         let mut arr = [0u8; 256];
         let len = bytes.len().min(256);
-        arr[..len].copy_from_slice(&bytes[..len]);
+        arr[.. len].copy_from_slice(&bytes[.. len]);
         // Pad with zeros if shorter
-        arr[len..].fill(0);
+        arr[len ..].fill(0);
         Ok(FixedBytes256(arr))
     }
 }
 
 impl std::ops::Deref for FixedBytes256 {
     type Target = [u8];
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+
+    fn deref(&self) -> &Self::Target { &self.0 }
 }
 
 impl std::ops::DerefMut for FixedBytes256 {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.0 }
 }
 
 impl From<&[u8]> for FixedBytes256 {
     fn from(bytes: &[u8]) -> Self {
         let mut arr = [0u8; 256];
         let len = bytes.len().min(256);
-        arr[..len].copy_from_slice(&bytes[..len]);
+        arr[.. len].copy_from_slice(&bytes[.. len]);
         FixedBytes256(arr)
     }
 }
@@ -214,16 +208,22 @@ impl LogEntry {
 
     /// Get the transaction ID as a string (trimmed)
     pub fn transaction_id_str(&self) -> &str {
-        std::str::from_utf8(&self.transaction_id).unwrap().trim_end_matches('\0')
+        std::str::from_utf8(&self.transaction_id)
+            .unwrap()
+            .trim_end_matches('\0')
     }
 
     /// Get the collection name as a string (trimmed)
     pub fn collection_str(&self) -> &str {
-        std::str::from_utf8(&self.collection).unwrap().trim_end_matches('\0')
+        std::str::from_utf8(&self.collection)
+            .unwrap()
+            .trim_end_matches('\0')
     }
 
     /// Get the document ID as a string (trimmed)
     pub fn document_id_str(&self) -> &str {
-        std::str::from_utf8(&self.document_id).unwrap().trim_end_matches('\0')
+        std::str::from_utf8(&self.document_id)
+            .unwrap()
+            .trim_end_matches('\0')
     }
 }
