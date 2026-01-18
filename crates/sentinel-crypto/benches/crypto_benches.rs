@@ -185,7 +185,8 @@ fn bench_decrypt_data_small(c: &mut Criterion) {
     let encrypted = rt.block_on(encrypt_data(data, &key)).unwrap();
 
     c.bench_function("decrypt_data_small", |b| {
-        b.iter(|| decrypt_data(black_box(&encrypted), black_box(&key)))
+        b.to_async(FuturesExecutor)
+            .iter(|| async { decrypt_data(black_box(&encrypted), black_box(&key)).await })
     });
 }
 
@@ -199,7 +200,8 @@ fn bench_decrypt_data_medium(c: &mut Criterion) {
     let encrypted = rt.block_on(encrypt_data(&data, &key)).unwrap();
 
     c.bench_function("decrypt_data_medium", |b| {
-        b.iter(|| decrypt_data(black_box(&encrypted), black_box(&key)))
+        b.to_async(FuturesExecutor)
+            .iter(|| async { decrypt_data(black_box(&encrypted), black_box(&key)).await })
     });
 }
 
@@ -213,7 +215,8 @@ fn bench_decrypt_data_large(c: &mut Criterion) {
     let encrypted = rt.block_on(encrypt_data(&data, &key)).unwrap();
 
     c.bench_function("decrypt_data_large", |b| {
-        b.iter(|| decrypt_data(black_box(&encrypted), black_box(&key)))
+        b.to_async(FuturesExecutor)
+            .iter(|| async { decrypt_data(black_box(&encrypted), black_box(&key)).await })
     });
 }
 
