@@ -22,7 +22,7 @@ Every document stored in Sentinel has this structure:
   "created_at": "2026-01-15T12:00:00.000000Z",
   "updated_at": "2026-01-15T12:00:00.000000Z",
   "hash": "a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789a",
-  "signature": "ed25519:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "signature": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
   "data": {
     "name": "Alice",
     "email": "alice@example.com"
@@ -111,7 +111,7 @@ tamper-evident storage. An empty string indicates an unsigned document.
 **Signed Document Example:**
 ```json
 {
-  "signature": "ed25519:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+  "signature": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 }
 ```
 
@@ -357,7 +357,7 @@ Documents are stored as pretty-printed JSON files:
   "created_at": "2026-01-15T12:00:00.000000Z",
   "updated_at": "2026-01-15T12:00:00.000000Z",
   "hash": "a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789a",
-  "signature": "ed25519:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+  "signature": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
   "data": {
     "name": "Alice",
     "email": "alice@example.com"
