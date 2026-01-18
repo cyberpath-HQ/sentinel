@@ -59,6 +59,21 @@ export default {
           "cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml && cargo publish --manifest-path crates/sentinel/Cargo.toml && cargo publish --manifest-path crates/cli/Cargo.toml",
       },
     ],
+    [
+      "@semantic-release/github",
+      {
+        assets: [
+          { path: "bindings/cxx/dist/*", label: "C/C++ Libraries" },
+        ],
+      },
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        successCmd:
+          "gh workflow run release-python.yml --ref ${nextRelease.gitTag} && gh workflow run release-js.yml --ref ${nextRelease.gitTag} && gh workflow run release-wasm.yml --ref ${nextRelease.gitTag} && gh workflow run release-cxx.yml --ref ${nextRelease.gitTag}",
+      },
+    ],
     "@semantic-release/github",
   ],
 };
