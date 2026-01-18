@@ -5,26 +5,51 @@ use std::{path::PathBuf, sync::Arc};
 use crc32fast::Hasher as Crc32Hasher;
 use tokio::{
     fs::{File, OpenOptions},
-    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, SeekFrom},
+    io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    sync::Mutex,
 };
 use tracing::{debug, info, warn};
+use async_stream::stream;
 
 use crate::{LogEntry, Result};
+
+/// Configuration for WAL manager
+#[derive(Debug, Clone)]
+pub struct WalConfig {
+    /// Optional maximum file size in bytes
+    pub max_file_size:        Option<u64>,
+    /// Optional compression mode: true for size-optimized, false for performance-optimized
+    pub compression_mode:     Option<bool>,
+    /// Optional maximum number of records per file
+    pub max_records_per_file: Option<usize>,
+}
+
+impl Default for WalConfig {
+    fn default() -> Self {
+        Self {
+            max_file_size:        None,
+            compression_mode:     None,
+            max_records_per_file: None,
+        }
+    }
+}
 
 /// Write-Ahead Log manager
 #[derive(Debug)]
 pub struct WalManager {
     /// Path to the WAL file
-    path:     PathBuf,
+    path:          PathBuf,
+    /// Configuration
+    config:        WalConfig,
     /// Current WAL file handle
-    file:     Arc<tokio::sync::RwLock<File>>,
-    /// Current position in the file
-    position: Arc<tokio::sync::RwLock<u64>>,
+    file:          Arc<tokio::sync::RwLock<BufWriter<File>>>,
+    /// Number of entries written
+    entries_count: Arc<Mutex<usize>>,
 }
 
 impl WalManager {
     /// Create a new WAL manager
-    pub async fn new(path: PathBuf) -> Result<Self> {
+    pub async fn new(path: PathBuf, config: WalConfig) -> Result<Self> {
         info!("Initializing WAL manager at {:?}", path);
 
         // Ensure the directory exists
@@ -39,12 +64,11 @@ impl WalManager {
             .open(&path)
             .await?;
 
-        let position = file.metadata().await?.len();
-
         Ok(Self {
             path,
-            file: Arc::new(tokio::sync::RwLock::new(file)),
-            position: Arc::new(tokio::sync::RwLock::new(position)),
+            config,
+            file: Arc::new(tokio::sync::RwLock::new(BufWriter::new(file))),
+            entries_count: Arc::new(Mutex::new(0)),
         })
     }
 
@@ -53,13 +77,29 @@ impl WalManager {
         debug!("Writing WAL entry: {:?}", entry.entry_type);
 
         let bytes = entry.to_bytes()?;
-        let mut file = self.file.write().await;
-        let mut pos = self.position.write().await;
+        let entry_size = bytes.len() as u64;
 
+        // Check file size limit
+        if let Some(max_size) = self.config.max_file_size {
+            let current_size = tokio::fs::metadata(&self.path).await?.len();
+            if current_size + entry_size > max_size {
+                return Err(crate::WalError::FileSizeLimitExceeded.into());
+            }
+        }
+
+        // Check record limit
+        if let Some(max_records) = self.config.max_records_per_file {
+            let count = *self.entries_count.lock().await;
+            if count >= max_records {
+                return Err(crate::WalError::RecordLimitExceeded.into());
+            }
+        }
+
+        let mut file = self.file.write().await;
         file.write_all(&bytes).await?;
         file.flush().await?;
 
-        *pos += bytes.len() as u64;
+        *self.entries_count.lock().await += 1;
 
         debug!("WAL entry written successfully");
         Ok(())
@@ -69,12 +109,12 @@ impl WalManager {
     pub async fn read_all_entries(&self) -> Result<Vec<LogEntry>> {
         info!("Reading all WAL entries for recovery");
 
-        let mut file = self.file.write().await;
-        file.seek(SeekFrom::Start(0)).await?;
+        let file = File::open(&self.path).await?;
+        let mut reader = BufReader::new(file);
 
         let mut entries = Vec::new();
         let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer).await?;
+        reader.read_to_end(&mut buffer).await?;
 
         let mut offset = 0;
         while offset < buffer.len() {
@@ -116,7 +156,44 @@ impl WalManager {
         }
 
         info!("Read {} WAL entries", entries.len());
+        *self.entries_count.lock().await = entries.len();
         Ok(entries)
+    }
+
+    /// Stream all entries from the WAL file
+    pub fn stream_entries(&self) -> impl futures::Stream<Item = Result<LogEntry>> + '_ {
+        let path = self.path.clone();
+        stream! {
+            match File::open(&path).await {
+                Ok(file) => {
+                    let mut reader = BufReader::new(file);
+                    let mut buffer = [0u8; 4];
+                    loop {
+                        // Read length
+                        match reader.read_exact(&mut buffer).await {
+                            Ok(_) => {
+                                let len = u32::from_le_bytes(buffer) as usize;
+                                let mut data = vec![0u8; len];
+                                match reader.read_exact(&mut data).await {
+                                    Ok(_) => {
+                                        match LogEntry::from_bytes(&data) {
+                                            Ok(entry) => yield Ok(entry),
+                                            Err(e) => {
+                                                warn!("Skipping invalid WAL entry: {}", e);
+                                                // Try to continue, but since length is wrong, may fail
+                                            }
+                                        }
+                                    }
+                                    Err(_) => break, // EOF or error
+                                }
+                            }
+                            Err(_) => break, // EOF
+                        }
+                    }
+                }
+                Err(e) => yield Err(e.into()),
+            }
+        }
     }
 
     /// Perform a checkpoint (truncate the log)
@@ -137,8 +214,8 @@ impl WalManager {
             .open(&self.path)
             .await?;
 
-        *self.file.write().await = file;
-        *self.position.write().await = 0;
+        *self.file.write().await = BufWriter::new(file);
+        *self.entries_count.lock().await = 0;
 
         info!("WAL checkpoint completed");
         Ok(())
