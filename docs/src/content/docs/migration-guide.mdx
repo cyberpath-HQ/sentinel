@@ -209,10 +209,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for record in records {
         let id = record["id"].as_str()
-            .or_else(|| record["id"].as_i64().map(|n| n.to_string().leak() as &str))
+            .map(|s| s.to_string())
+            .or_else(|| record["id"].as_i64().map(|n| n.to_string()))
             .unwrap();
 
-        users.insert(id, record).await?;
+        users.insert(&id, record).await?;
     }
 
     Ok(())
