@@ -173,6 +173,54 @@ mod tests {
     }
 
     #[test]
+    fn test_compare_json_values_negative_large_numbers() {
+        let neg_large1: Value =
+            serde_json::from_str("-1000000000000000000000000000000000000000000000000000000000000000000000000000000")
+                .unwrap();
+        let neg_large2: Value =
+            serde_json::from_str("-2000000000000000000000000000000000000000000000000000000000000000000000000000000")
+                .unwrap();
+        let pos_large: Value =
+            serde_json::from_str("1000000000000000000000000000000000000000000000000000000000000000000000000000000")
+                .unwrap();
+        assert_eq!(
+            compare_json_values(&neg_large1, &neg_large2),
+            std::cmp::Ordering::Greater // -100 > -200
+        );
+        assert_eq!(
+            compare_json_values(&neg_large2, &neg_large1),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            compare_json_values(&neg_large1, &pos_large),
+            std::cmp::Ordering::Less // negative < positive
+        );
+        assert_eq!(
+            compare_json_values(&pos_large, &neg_large1),
+            std::cmp::Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn test_compare_json_values_nan() {
+        let nan: Value = serde_json::from_str("NaN").unwrap();
+        let num: Value = json!(1);
+        // NaN comparisons should be Equal due to unwrap_or(Equal)
+        assert_eq!(
+            compare_json_values(&nan, &num),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            compare_json_values(&num, &nan),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            compare_json_values(&nan, &nan),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
     fn test_compare_json_values_string() {
         assert_eq!(
             compare_json_values(&json!("a"), &json!("a")),

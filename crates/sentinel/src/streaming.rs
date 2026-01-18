@@ -56,25 +56,18 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_stream_document_ids() {
+    async fn test_stream_document_ids_empty_directory() {
         let temp_dir = TempDir::new().unwrap();
         let collection_path = temp_dir.path().join("collection");
         tokio_fs::create_dir(&collection_path).await.unwrap();
-        let doc_ids = vec!["doc1", "doc2", "doc3"];
-        for id in &doc_ids {
-            let file_path = collection_path.join(format!("{}.json", id));
-            tokio_fs::write(&file_path, b"{}").await.unwrap();
-        }
+        // No files in directory
         let mut stream = stream_document_ids(collection_path);
         let mut found_ids = Vec::new();
         while let Some(result) = stream.next().await {
             let id = result.unwrap();
             found_ids.push(id);
         }
-        found_ids.sort();
-        let mut expected_ids: Vec<String> = doc_ids.iter().map(|s| s.to_string()).collect();
-        expected_ids.sort();
-        assert_eq!(found_ids, expected_ids);
+        assert!(found_ids.is_empty());
     }
 
     #[tokio::test]

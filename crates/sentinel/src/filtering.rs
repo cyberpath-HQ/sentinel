@@ -256,6 +256,14 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_matches_filters_contains_non_string_or_array() {
+        // Test with number field - should return false
+        let doc = create_doc(json!({"age": 25})).await;
+        let filter = Filter::Contains("age".to_string(), "25".to_string());
+        assert!(!matches_filters(&doc, &[&filter]));
+    }
+
+    #[tokio::test]
     async fn test_matches_filters_starts_with() {
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::StartsWith("name".to_string(), "Ali".to_string());
