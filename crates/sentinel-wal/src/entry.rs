@@ -139,11 +139,11 @@ impl LogEntry {
     /// Create a new log entry
     pub fn new(
         entry_type: EntryType,
-        transaction_id: String,
         collection: String,
         document_id: String,
         data: Option<serde_json::Value>,
     ) -> Self {
+        let transaction_id = cuid2::CuidConstructor::new().with_length(32).create_id();
         let data_str = data.map(|v| v.to_string());
         Self {
             entry_type,
