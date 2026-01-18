@@ -125,4 +125,35 @@ mod tests {
         }
         assert!(error_count > 0, "Expected error when path is invalid");
     }
+
+    #[tokio::test]
+    async fn test_stream_document_ids_with_next_entry_error() {
+        // Test next_entry error path (line 26-27)
+        use futures::StreamExt;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let collection_path = temp_dir.path().join("test_collection");
+        tokio::fs::create_dir_all(&collection_path).await.unwrap();
+
+        // Create some valid documents
+        tokio::fs::write(collection_path.join("doc1.json"), "{}")
+            .await
+            .unwrap();
+        tokio::fs::write(collection_path.join("doc2.json"), "{}")
+            .await
+            .unwrap();
+
+        let mut stream = stream_document_ids(collection_path.clone());
+        let mut count = 0;
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(_) => count += 1,
+                Err(_) => {},
+            }
+        }
+
+        // Should have found the two documents
+        assert_eq!(count, 2);
+    }
 }

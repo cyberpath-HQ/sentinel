@@ -2505,6 +2505,20 @@ mod tests {
                 (key, value)
             })
             .collect();
+
+        // Convert Vec<(String, Value)> to Vec<(&str, Value)>
+        let documents_refs: Vec<(&str, serde_json::Value)> = documents
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.clone()))
+            .collect();
+
+        // This should trigger the debug log for bulk insert
+        let result = collection.bulk_insert(documents_refs).await;
+        assert!(result.is_ok());
+
+        // Verify all documents were inserted
+        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert_eq!(docs.len(), 100);
     }
 
     #[tokio::test]
@@ -2930,6 +2944,51 @@ mod tests {
 
         let result = collection.verify_document(&retrieved, &options).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_insert_unsigned_document() {
+        // Test inserting document without signing key to cover line 147-148
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let collection = store.collection("test").await.unwrap();
+
+        let data = json!({ "name": "test" });
+        let result = collection.insert("unsigned-doc", data).await;
+        assert!(result.is_ok());
+
+        let doc = collection.get("unsigned-doc").await.unwrap().unwrap();
+        assert_eq!(doc.data()["name"], "test");
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_document() {
+        // Test deleting a document that doesn't exist to cover line 371-374
+        let (collection, _temp_dir) = setup_collection().await;
+
+        // Try to delete a document that was never created
+        let result = collection.delete("nonexistent-doc").await;
+        assert!(result.is_ok()); // Should succeed silently
+    }
+
+    #[tokio::test]
+    async fn test_delete_soft_delete_path() {
+        // Test soft delete to cover line 358-359
+        let (collection, temp_dir) = setup_collection().await;
+
+        // Insert a document
+        let data = json!({ "name": "to-delete" });
+        collection.insert("doc-to-delete", data).await.unwrap();
+
+        // Delete it
+        let result = collection.delete("doc-to-delete").await;
+        assert!(result.is_ok());
+
+        // Verify it's in .deleted directory
+        let deleted_path = temp_dir
+            .path()
+            .join("data/test_collection/.deleted/doc-to-delete.json");
+        assert!(tokio::fs::metadata(&deleted_path).await.is_ok());
     }
 
     #[tokio::test]

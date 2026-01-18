@@ -793,4 +793,118 @@ mod tests {
         let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_store_new_with_corrupted_keys_missing_salt() {
+        let temp_dir = tempdir().unwrap();
+        // First create a store with passphrase to generate keys
+        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
+
+        // Now corrupt the .keys collection by inserting a document with missing salt
+        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
+        let keys_coll = store2.collection(".keys").await.unwrap();
+        // Insert corrupted document
+        let corrupted_data = serde_json::json!({
+            "encrypted": "some_encrypted_data"
+            // missing "salt"
+        });
+        keys_coll
+            .insert("signing_key", corrupted_data)
+            .await
+            .unwrap();
+
+        // Now try to create a new store with passphrase, should fail due to missing salt
+        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_corrupted_keys_invalid_salt_hex() {
+        let temp_dir = tempdir().unwrap();
+        // First create a store with passphrase to generate keys
+        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
+
+        // Now corrupt the .keys collection by inserting a document with invalid salt hex
+        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
+        let keys_coll = store2.collection(".keys").await.unwrap();
+        // Insert corrupted document
+        let corrupted_data = serde_json::json!({
+            "encrypted": "some_encrypted_data",
+            "salt": "invalid_hex_salt"
+        });
+        keys_coll
+            .insert("signing_key", corrupted_data)
+            .await
+            .unwrap();
+
+        // Now try to create a new store with passphrase, should fail due to invalid salt hex
+        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_invalid_key_length() {
+        // Test line 154-161: invalid key length error
+        let temp_dir = tempdir().unwrap();
+        // First create a store with passphrase to generate keys
+        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
+            .await
+            .unwrap();
+
+        // Now corrupt the .keys collection by modifying the encrypted data to have wrong length
+        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
+        let keys_coll = store2.collection(".keys").await.unwrap();
+
+        // Get the existing document to extract the salt
+        let existing_doc = keys_coll
+            .get_with_verification("signing_key", &crate::VerificationOptions::disabled())
+            .await
+            .unwrap()
+            .unwrap();
+        let salt = existing_doc.data()["salt"].as_str().unwrap();
+
+        // Create encrypted data that will decrypt to wrong length
+        let encryption_key =
+            sentinel_crypto::derive_key_from_passphrase_with_salt("test_passphrase", &hex::decode(salt).unwrap())
+                .await
+                .unwrap();
+        let wrong_length_bytes = vec![0u8; 16]; // 16 bytes instead of 32
+        let encrypted = sentinel_crypto::encrypt_data(&wrong_length_bytes, &encryption_key)
+            .await
+            .unwrap();
+
+        let corrupted_data = serde_json::json!({
+            "encrypted": encrypted,
+            "salt": salt
+        });
+        keys_coll
+            .insert("signing_key", corrupted_data)
+            .await
+            .unwrap();
+
+        // Now try to create a new store with passphrase, should fail due to invalid key length
+        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_creates_root_directory() {
+        // Test line 110-117: creating root directory
+        let temp_dir = tempdir().unwrap();
+        let new_path = temp_dir.path().join("new_store");
+
+        // Ensure path doesn't exist
+        assert!(!tokio::fs::metadata(&new_path).await.is_ok());
+
+        // Create store, should create the directory
+        let result = Store::new(&new_path, None).await;
+        assert!(result.is_ok());
+
+        // Verify directory was created
+        assert!(tokio::fs::metadata(&new_path).await.unwrap().is_dir());
+    }
 }

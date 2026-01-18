@@ -173,6 +173,11 @@ mod tests {
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::GreaterOrEqual("name".to_string(), json!(20));
         assert!(!matches_filters(&doc, &[&filter]));
+
+        // Test with non-number value
+        let doc = create_doc(json!({"age": 25})).await;
+        let filter = Filter::GreaterOrEqual("age".to_string(), json!("not a number"));
+        assert!(!matches_filters(&doc, &[&filter]));
     }
 
     #[tokio::test]
@@ -187,6 +192,11 @@ mod tests {
         // Test with non-number field
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::LessThan("name".to_string(), json!(20));
+        assert!(!matches_filters(&doc, &[&filter]));
+
+        // Test with non-number value
+        let doc = create_doc(json!({"age": 25})).await;
+        let filter = Filter::LessThan("age".to_string(), json!("not a number"));
         assert!(!matches_filters(&doc, &[&filter]));
     }
 
@@ -208,6 +218,11 @@ mod tests {
         // Test with non-number field
         let doc = create_doc(json!({"name": "Alice"})).await;
         let filter = Filter::LessOrEqual("name".to_string(), json!(20));
+        assert!(!matches_filters(&doc, &[&filter]));
+
+        // Test with non-number value
+        let doc = create_doc(json!({"age": 25})).await;
+        let filter = Filter::LessOrEqual("age".to_string(), json!("not a number"));
         assert!(!matches_filters(&doc, &[&filter]));
     }
 
@@ -335,6 +350,14 @@ mod tests {
             Box::new(Filter::Equals("name".to_string(), json!("Bob"))),
             Box::new(Filter::GreaterThan("age".to_string(), json!(30))),
         );
+        assert!(!matches_filters(&doc, &[&filter]));
+    }
+
+    #[tokio::test]
+    async fn test_filter_greater_than_non_number() {
+        // Test line 26: GreaterThan with non-number VALUE in the filter (not field)
+        let doc = create_doc(json!({"name": "Alice", "age": 30})).await;
+        let filter = Filter::GreaterThan("age".to_string(), json!("not a number"));
         assert!(!matches_filters(&doc, &[&filter]));
     }
 
