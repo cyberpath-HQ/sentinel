@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::str::FromStr as _;
 
 use clap::Args;
 use sentinel_dbms::{
@@ -97,7 +97,7 @@ pub async fn run(args: ListArgs) -> sentinel_dbms::Result<()> {
         collection_name, store_path
     );
     let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
-    let coll = store.collection(&collection_name).await?;
+    let coll = store.collection(collection_name).await?;
 
     let verification_options = args.to_verification_options().map_err(|e| {
         sentinel_dbms::SentinelError::ConfigError {

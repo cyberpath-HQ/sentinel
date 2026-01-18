@@ -373,11 +373,9 @@ impl Store {
                     e
                 })?
                 .is_dir()
-            {
-                if let Some(name) = entry.file_name().to_str() {
-                    collections.push(name.to_string());
+                && let Some(name) = entry.file_name().to_str() {
+                    collections.push(name.to_owned());
                 }
-            }
         }
 
         debug!("Found {} collections", collections.len());

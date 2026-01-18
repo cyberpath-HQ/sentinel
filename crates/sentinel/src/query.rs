@@ -336,7 +336,7 @@ impl QueryBuilder {
 }
 
 /// Aggregation operations for queries.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Aggregation {
     /// Count of matching documents
     Count,

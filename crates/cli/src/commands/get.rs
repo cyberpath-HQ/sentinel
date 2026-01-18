@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::str::FromStr as _;
 
 use clap::Args;
 use sentinel_dbms::{VerificationMode, VerificationOptions};
@@ -99,7 +99,7 @@ pub async fn run(args: GetArgs) -> sentinel_dbms::Result<()> {
         id, collection, store_path
     );
     let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
-    let coll = store.collection(&collection).await?;
+    let coll = store.collection(collection).await?;
 
     let id = &args.id;
     let verification_options = args.to_verification_options().map_err(|e| {

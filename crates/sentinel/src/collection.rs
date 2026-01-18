@@ -673,7 +673,7 @@ impl Collection {
                                         Ok(mut doc) => {
                                             doc.id = id.to_owned();
 
-                                            let collection_ref = Collection {
+                                            let collection_ref = Self {
                                                 path: collection_path.clone(),
                                                 signing_key: signing_key.clone(),
                                             };
@@ -818,7 +818,7 @@ impl Collection {
                                         Ok(mut doc) => {
                                             doc.id = id.to_owned();
 
-                                            let collection_ref = Collection {
+                                            let collection_ref = Self {
                                                 path: collection_path.clone(),
                                                 signing_key: signing_key.clone(),
                                             };
@@ -1104,7 +1104,7 @@ impl Collection {
                         let mut doc_with_id = doc;
                         doc_with_id.id = id.clone();
 
-                        let collection_ref = Collection {
+                        let collection_ref = Self {
                             path: collection_path.clone(),
                             signing_key: signing_key.clone(),
                         };
@@ -1189,7 +1189,7 @@ impl Collection {
                 crate::VerificationMode::Strict => {
                     error!("Document {} hash verification failed: {}", doc.id(), reason);
                     return Err(SentinelError::HashVerificationFailed {
-                        id: doc.id().to_string(),
+                        id: doc.id().to_owned(),
                         reason,
                     });
                 },
@@ -1227,13 +1227,13 @@ impl Collection {
         trace!("Verifying signature for document: {}", doc.id());
 
         if doc.signature().is_empty() {
-            let reason = "Document has no signature".to_string();
+            let reason = "Document has no signature".to_owned();
 
             match options.empty_signature_mode {
                 crate::VerificationMode::Strict => {
                     error!("Document {} has no signature: {}", doc.id(), reason);
                     return Err(SentinelError::SignatureVerificationFailed {
-                        id: doc.id().to_string(),
+                        id: doc.id().to_owned(),
                         reason,
                     });
                 },
@@ -1255,7 +1255,7 @@ impl Collection {
             let is_valid = sentinel_crypto::verify_signature(doc.hash(), doc.signature(), &public_key).await?;
 
             if !is_valid {
-                let reason = "Signature verification using public key failed".to_string();
+                let reason = "Signature verification using public key failed".to_owned();
 
                 match options.signature_verification_mode {
                     crate::VerificationMode::Strict => {
@@ -1265,7 +1265,7 @@ impl Collection {
                             reason
                         );
                         return Err(SentinelError::SignatureVerificationFailed {
-                            id: doc.id().to_string(),
+                            id: doc.id().to_owned(),
                             reason,
                         });
                     },
@@ -1613,13 +1613,11 @@ impl Collection {
             Aggregation::Avg(ref field) |
             Aggregation::Min(ref field) |
             Aggregation::Max(ref field) = aggregation
-            {
-                if let Some(value) = Self::extract_numeric_value(&doc, field) {
+                && let Some(value) = Self::extract_numeric_value(&doc, field) {
                     sum += value;
                     min = min.min(value);
                     max = max.max(value);
                 }
-            }
         }
 
         let result = match aggregation {
