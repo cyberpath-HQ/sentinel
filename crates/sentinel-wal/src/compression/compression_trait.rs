@@ -37,7 +37,9 @@ impl CompressionTrait for ZstdCompressor {
 
         let mut encoder = ZstdEncoder::new(std::io::Cursor::new(data));
         let mut compressed: Vec<u8> = Vec::new();
-        encoder.read_to_end(&mut compressed).await
+        encoder
+            .read_to_end(&mut compressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("Zstd compression error: {}", e)))?;
         Ok(compressed)
     }
@@ -48,7 +50,9 @@ impl CompressionTrait for ZstdCompressor {
 
         let mut decoder = ZstdDecoder::new(std::io::Cursor::new(data));
         let mut decompressed: Vec<u8> = Vec::new();
-        decoder.read_to_end(&mut decompressed).await
+        decoder
+            .read_to_end(&mut decompressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("Zstd decompression error: {}", e)))?;
         Ok(decompressed)
     }
@@ -65,7 +69,9 @@ impl CompressionTrait for Lz4Compressor {
 
         let mut encoder = Lz4Encoder::new(std::io::Cursor::new(data));
         let mut compressed: Vec<u8> = Vec::new();
-        encoder.read_to_end(&mut compressed).await
+        encoder
+            .read_to_end(&mut compressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("LZ4 compression error: {}", e)))?;
         Ok(compressed)
     }
@@ -76,7 +82,9 @@ impl CompressionTrait for Lz4Compressor {
 
         let mut decoder = Lz4Decoder::new(std::io::Cursor::new(data));
         let mut decompressed = Vec::new();
-        decoder.read_to_end(&mut decompressed).await
+        decoder
+            .read_to_end(&mut decompressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("LZ4 decompression error: {}", e)))?;
         Ok(decompressed)
     }
@@ -93,7 +101,9 @@ impl CompressionTrait for BrotliCompressor {
 
         let mut encoder = BrotliEncoder::new(std::io::Cursor::new(data));
         let mut compressed = Vec::new();
-        encoder.read_to_end(&mut compressed).await
+        encoder
+            .read_to_end(&mut compressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("Brotli compression error: {}", e)))?;
         Ok(compressed)
     }
@@ -104,7 +114,9 @@ impl CompressionTrait for BrotliCompressor {
 
         let mut decoder = BrotliDecoder::new(std::io::Cursor::new(data));
         let mut decompressed = Vec::new();
-        decoder.read_to_end(&mut decompressed).await
+        decoder
+            .read_to_end(&mut decompressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("Brotli decompression error: {}", e)))?;
         Ok(decompressed)
     }
@@ -121,7 +133,9 @@ impl CompressionTrait for DeflateCompressor {
 
         let mut encoder = DeflateEncoder::new(std::io::Cursor::new(data));
         let mut compressed = Vec::new();
-        encoder.read_to_end(&mut compressed).await
+        encoder
+            .read_to_end(&mut compressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("DEFLATE compression error: {}", e)))?;
         Ok(compressed)
     }
@@ -132,7 +146,9 @@ impl CompressionTrait for DeflateCompressor {
 
         let mut decoder = DeflateDecoder::new(std::io::Cursor::new(data));
         let mut decompressed = Vec::new();
-        decoder.read_to_end(&mut decompressed).await
+        decoder
+            .read_to_end(&mut decompressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("DEFLATE decompression error: {}", e)))?;
         Ok(decompressed)
     }
@@ -149,7 +165,9 @@ impl CompressionTrait for GzipCompressor {
 
         let mut encoder = GzipEncoder::new(std::io::Cursor::new(data));
         let mut compressed = Vec::new();
-        encoder.read_to_end(&mut compressed).await
+        encoder
+            .read_to_end(&mut compressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("GZIP compression error: {}", e)))?;
         Ok(compressed)
     }
@@ -160,7 +178,9 @@ impl CompressionTrait for GzipCompressor {
 
         let mut decoder = GzipDecoder::new(std::io::Cursor::new(data));
         let mut decompressed = Vec::new();
-        decoder.read_to_end(&mut decompressed).await
+        decoder
+            .read_to_end(&mut decompressed)
+            .await
             .map_err(|e| crate::WalError::Serialization(format!("GZIP decompression error: {}", e)))?;
         Ok(decompressed)
     }
