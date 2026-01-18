@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
 use tracing::{debug, error, info, trace, warn};
-use uuid::Uuid;
+use cuid2;
 use sentinel_wal::{EntryType, LogEntry, WalManager};
 
 use crate::{
@@ -143,7 +143,7 @@ impl Collection {
         let file_path = self.path.join(format!("{}.json", id));
 
         // Generate transaction ID for WAL
-        let transaction_id = uuid::Uuid::new_v4();
+        let transaction_id = cuid2::create_id();
 
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
@@ -371,7 +371,7 @@ impl Collection {
         let dest_path = deleted_dir.join(format!("{}.json", id));
 
         // Generate transaction ID for WAL
-        let transaction_id = Uuid::new_v4();
+        let transaction_id = cuid2::create_id();
 
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
@@ -1445,7 +1445,7 @@ impl Collection {
         let merged_data = Self::merge_json_values(existing_doc.data(), data);
 
         // Generate transaction ID for WAL
-        let transaction_id = Uuid::new_v4();
+        let transaction_id = cuid2::create_id();
 
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
@@ -1796,13 +1796,13 @@ impl Collection {
             for entry in entries {
                 match entry.entry_type {
                     EntryType::Insert => {
-                        if let Some(data) = entry.data {
+                        if let Some(data) = entry.data_as_value()? {
                             // Replay insert
                             self.insert(&entry.document_id, data).await?;
                         }
                     },
                     EntryType::Update => {
-                        if let Some(data) = entry.data {
+                        if let Some(data) = entry.data_as_value()? {
                             // For recovery, we can treat update as insert since WAL is append-only
                             self.insert(&entry.document_id, data).await?;
                         }
