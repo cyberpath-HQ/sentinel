@@ -39,7 +39,7 @@ pub struct GetArgs {
 impl GetArgs {
     /// Convert CLI arguments to verification options.
     fn to_verification_options(&self) -> Result<VerificationOptions, String> {
-        let signature_verification_mode = VerificationMode::from_str(&self.signature_mode).map_err(|_| {
+        let signature_verification_mode = VerificationMode::from_str(&self.signature_mode).map_err(|_e| {
             format!(
                 "Invalid signature verification mode: {}",
                 self.signature_mode
@@ -47,10 +47,10 @@ impl GetArgs {
         })?;
 
         let empty_signature_mode = VerificationMode::from_str(&self.empty_sig_mode)
-            .map_err(|_| format!("Invalid empty signature mode: {}", self.empty_sig_mode))?;
+            .map_err(|_e| format!("Invalid empty signature mode: {}", self.empty_sig_mode))?;
 
         let hash_verification_mode = VerificationMode::from_str(&self.hash_mode)
-            .map_err(|_| format!("Invalid hash verification mode: {}", self.hash_mode))?;
+            .map_err(|_e| format!("Invalid hash verification mode: {}", self.hash_mode))?;
 
         Ok(VerificationOptions {
             verify_signature: self.verify_signature,
