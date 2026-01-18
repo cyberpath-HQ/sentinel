@@ -240,6 +240,7 @@ impl Collection {
     ///     verify_signature: true,
     ///     verify_hash: true,
     ///     signature_verification_mode: VerificationMode::Warn,
+    ///     empty_signature_mode: VerificationMode::Warn,
     ///     hash_verification_mode: VerificationMode::Warn,
     /// };
     /// let doc = collection.get_with_verification("user-123", &options).await?;
@@ -988,12 +989,6 @@ impl Collection {
         })
     }
 
-    /// Executes a query that requires sorting by collecting all matching documents first.
-    async fn execute_sorted_query(&self, all_ids: &[String], query: &crate::Query) -> Result<Vec<Document>> {
-        self.execute_sorted_query_with_verification(all_ids, query, &crate::VerificationOptions::default())
-            .await
-    }
-
     /// Executes a query that requires sorting by collecting all matching documents first with
     /// verification.
     async fn execute_sorted_query_with_verification(
@@ -1056,15 +1051,6 @@ impl Collection {
         }
 
         Ok(final_docs)
-    }
-
-    /// Executes a query without sorting, allowing streaming with early limit application.
-    async fn execute_streaming_query(
-        &self,
-        query: &crate::Query,
-    ) -> Result<std::pin::Pin<Box<dyn Stream<Item = Result<Document>> + Send>>> {
-        self.execute_streaming_query_with_verification(query, &crate::VerificationOptions::default())
-            .await
     }
 
     /// Executes a query without sorting, allowing streaming with early limit application and
@@ -1170,19 +1156,19 @@ impl Collection {
         project_document(doc, fields).await
     }
 
-    /// Verifies document hash according to the specified verification mode.
+    /// Verifies document hash according to the specified verification options.
     ///
     /// # Arguments
     ///
     /// * `doc` - The document to verify
-    /// * `mode` - The verification mode (Strict, Warn, or Silent)
+    /// * `options` - The verification options
     ///
     /// # Returns
     ///
-    /// Returns `Ok(())` if verification passes or is in Warn/Silent mode,
+    /// Returns `Ok(())` if verification passes or is handled according to the mode,
     /// or `Err(SentinelError::HashVerificationFailed)` if verification fails in Strict mode.
-    async fn verify_hash(&self, doc: &Document, mode: crate::VerificationMode) -> Result<()> {
-        if mode == crate::VerificationMode::Silent {
+    async fn verify_hash(&self, doc: &Document, options: crate::VerificationOptions) -> Result<()> {
+        if options.hash_verification_mode == crate::VerificationMode::Silent {
             return Ok(());
         }
 
@@ -1196,7 +1182,7 @@ impl Collection {
                 computed_hash
             );
 
-            match mode {
+            match options.hash_verification_mode {
                 crate::VerificationMode::Strict => {
                     error!("Document {} hash verification failed: {}", doc.id(), reason);
                     return Err(SentinelError::HashVerificationFailed {
@@ -1217,19 +1203,21 @@ impl Collection {
         Ok(())
     }
 
-    /// Verifies document signature according to the specified verification mode.
+    /// Verifies document signature according to the specified verification options.
     ///
     /// # Arguments
     ///
     /// * `doc` - The document to verify
-    /// * `mode` - The verification mode (Strict, Warn, or Silent)
+    /// * `options` - The verification options containing modes for different scenarios
     ///
     /// # Returns
     ///
-    /// Returns `Ok(())` if verification passes or is in Warn/Silent mode,
+    /// Returns `Ok(())` if verification passes or is handled according to the mode,
     /// or `Err(SentinelError::SignatureVerificationFailed)` if verification fails in Strict mode.
-    async fn verify_signature(&self, doc: &Document, mode: crate::VerificationMode) -> Result<()> {
-        if mode == crate::VerificationMode::Silent {
+    async fn verify_signature(&self, doc: &Document, options: crate::VerificationOptions) -> Result<()> {
+        if options.signature_verification_mode == crate::VerificationMode::Silent &&
+            options.empty_signature_mode == crate::VerificationMode::Silent
+        {
             return Ok(());
         }
 
@@ -1238,27 +1226,24 @@ impl Collection {
         if doc.signature().is_empty() {
             let reason = "Document has no signature".to_string();
 
-            match mode {
+            match options.empty_signature_mode {
                 crate::VerificationMode::Strict => {
-                    error!(
-                        "Document {} signature verification failed: {}",
-                        doc.id(),
-                        reason
-                    );
+                    error!("Document {} has no signature: {}", doc.id(), reason);
                     return Err(SentinelError::SignatureVerificationFailed {
                         id: doc.id().to_string(),
                         reason,
                     });
                 },
                 crate::VerificationMode::Warn => {
-                    warn!(
-                        "Document {} signature verification failed: {}",
-                        doc.id(),
-                        reason
-                    );
+                    warn!("Document {} has no signature: {}", doc.id(), reason);
                 },
                 crate::VerificationMode::Silent => {},
             }
+            return Ok(());
+        }
+
+        if !options.verify_signature {
+            trace!("Signature verification disabled for document: {}", doc.id());
             return Ok(());
         }
 
@@ -1269,7 +1254,7 @@ impl Collection {
             if !is_valid {
                 let reason = "Signature verification using public key failed".to_string();
 
-                match mode {
+                match options.signature_verification_mode {
                     crate::VerificationMode::Strict => {
                         error!(
                             "Document {} signature verification failed: {}",
@@ -1311,17 +1296,15 @@ impl Collection {
     ///
     /// # Returns
     ///
-    /// Returns `Ok(())` if verifications pass or are in Warn/Silent mode,
+    /// Returns `Ok(())` if verifications pass or are handled according to the modes,
     /// or an error if verification fails in Strict mode.
     async fn verify_document(&self, doc: &Document, options: &crate::VerificationOptions) -> Result<()> {
         if options.verify_hash {
-            self.verify_hash(doc, options.hash_verification_mode)
-                .await?;
+            self.verify_hash(doc, *options).await?;
         }
 
         if options.verify_signature {
-            self.verify_signature(doc, options.signature_verification_mode)
-                .await?;
+            self.verify_signature(doc, *options).await?;
         }
 
         Ok(())
