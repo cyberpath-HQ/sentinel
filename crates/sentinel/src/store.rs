@@ -12,6 +12,7 @@ use crate::{
     Result,
     SentinelError,
 };
+use sentinel_wal::WalManager;
 
 /// The top-level manager for document collections in Cyberpath Sentinel.
 ///
@@ -256,10 +257,13 @@ impl Store {
             e
         })?;
         debug!("Collection directory ensured: {:?}", path);
+        let wal_path = path.join(".wal").join("transactions.wal");
+        let wal_manager = Some(Arc::new(WalManager::new(wal_path).await?));
         trace!("Collection '{}' accessed successfully", name);
         Ok(Collection {
             path,
             signing_key: self.signing_key.clone(),
+            wal_manager,
         })
     }
 
