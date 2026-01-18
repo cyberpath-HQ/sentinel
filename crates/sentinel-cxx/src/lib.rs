@@ -1364,8 +1364,8 @@ pub unsafe extern "C" fn sentinel_collection_delete_async(
 }
 
 /// Get the count of documents asynchronously
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sentinel_collection_count_async(
+// #[unsafe(no_mangle)]
+// pub unsafe extern "C" fn sentinel_collection_count_async(
     collection: *mut sentinel_collection_t,
     callback: CountCallback,
     error_callback: ErrorCallback,
@@ -1425,10 +1425,64 @@ pub unsafe extern "C" fn sentinel_collection_count_async(
                             unsafe { cb(0, err_cstr.as_ptr(), user_data) };
                         }
                     }
-                },
+                }
             }
         }
     });
 
     0
 }
+
+
+
+    let collection_ref = unsafe { &*(collection as *mut Collection) };
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let user_data_usize = user_data as usize;
+    let callback_ptr = callback.map(|cb| cb as usize);
+    let error_callback_ptr = error_callback.map(|cb| cb as usize);
+
+    let rt = match RUNTIME.lock() {
+        Ok(rt) => rt,
+        Err(e) => {
+            set_error(format!("Failed to acquire runtime lock: {}", e));
+            return 0;
+        },
+    };
+
+    rt.spawn(async move {
+        let result = collection_ref.count().await;
+        let _ = tx.send(result);
+    });
+
+    // Handle result in a separate thread to call callbacks
+    std::thread::spawn(move || {
+        let user_data = user_data_usize as *mut c_char;
+        if let Ok(result) = rx.recv() {
+            match result {
+                Ok(count) => {
+                    if let Some(cb_ptr) = callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, CountCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(0, count as u32, user_data) };
+                        }
+                    }
+                },
+                Err(err) => {
+                    let err_cstr = match CString::new(err.to_string()) {
+                        Ok(cstr) => cstr,
+                        Err(_) => return,
+                    };
+                    if let Some(cb_ptr) = error_callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, ErrorCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(0, err_cstr.as_ptr(), user_data) };
+                        }
+                    }
+                },
+            }
+        }
+    });
+
+//    0
+//}
