@@ -1,14 +1,12 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use sentinel_wal::{EntryType, LogEntry, WalManager};
+use criterion::{criterion_group, criterion_main, Criterion};
+use sentinel_wal::{EntryType, LogEntry, WalConfig, WalManager};
 use serde_json::json;
 use tempfile::tempdir;
-use cuid2;
 
 /// Benchmark WAL entry serialization
 fn bench_log_entry_serialization(c: &mut Criterion) {
     let entry = LogEntry::new(
         EntryType::Insert,
-        cuid2::create_id(),
         "users".to_string(),
         "user-123".to_string(),
         Some(json!({"name": "Alice", "email": "alice@example.com"})),
@@ -16,7 +14,7 @@ fn bench_log_entry_serialization(c: &mut Criterion) {
 
     c.bench_function("log_entry_serialization", |b| {
         b.iter(|| {
-            let _bytes = black_box(entry.to_bytes().unwrap());
+            let _bytes = std::hint::black_box(entry.to_bytes().unwrap());
         });
     });
 }
@@ -25,7 +23,6 @@ fn bench_log_entry_serialization(c: &mut Criterion) {
 fn bench_log_entry_deserialization(c: &mut Criterion) {
     let entry = LogEntry::new(
         EntryType::Insert,
-        cuid2::create_id(),
         "users".to_string(),
         "user-123".to_string(),
         Some(json!({"name": "Alice", "email": "alice@example.com"})),
@@ -34,7 +31,7 @@ fn bench_log_entry_deserialization(c: &mut Criterion) {
 
     c.bench_function("log_entry_deserialization", |b| {
         b.iter(|| {
-            let _entry = black_box(LogEntry::from_bytes(&bytes).unwrap());
+            let _entry = std::hint::black_box(LogEntry::from_bytes(&bytes).unwrap());
         });
     });
 }
@@ -43,13 +40,14 @@ fn bench_log_entry_deserialization(c: &mut Criterion) {
 fn bench_wal_write(c: &mut Criterion) {
     let temp_dir = tempdir().unwrap();
     let wal_path = temp_dir.path().join("bench.wal");
-    let wal = tokio::runtime::Runtime::new()
-        .unwrap()
-        .block_on(async { WalManager::new(wal_path).await.unwrap() });
+    let wal = tokio::runtime::Runtime::new().unwrap().block_on(async {
+        WalManager::new(wal_path, WalConfig::default())
+            .await
+            .unwrap()
+    });
 
     let entry = LogEntry::new(
         EntryType::Insert,
-        cuid2::create_id(),
         "users".to_string(),
         "user-123".to_string(),
         Some(json!({"name": "Alice", "email": "alice@example.com"})),
@@ -58,7 +56,7 @@ fn bench_wal_write(c: &mut Criterion) {
     c.bench_function("wal_write_entry", |b| {
         b.iter(|| {
             tokio::runtime::Runtime::new().unwrap().block_on(async {
-                black_box(wal.write_entry(entry.clone()).await.unwrap());
+                std::hint::black_box(wal.write_entry(entry.clone()).await.unwrap());
             });
         });
     });
@@ -69,13 +67,14 @@ fn bench_wal_read(c: &mut Criterion) {
     let temp_dir = tempdir().unwrap();
     let wal_path = temp_dir.path().join("bench.wal");
     let wal = tokio::runtime::Runtime::new().unwrap().block_on(async {
-        let wal = WalManager::new(wal_path).await.unwrap();
+        let wal = WalManager::new(wal_path, WalConfig::default())
+            .await
+            .unwrap();
 
         // Write some entries
         for i in 0 .. 100 {
             let entry = LogEntry::new(
                 EntryType::Insert,
-                cuid2::create_id(),
                 "users".to_string(),
                 format!("user-{}", i),
                 Some(json!({"name": format!("User {}", i), "id": i})),
@@ -89,7 +88,7 @@ fn bench_wal_read(c: &mut Criterion) {
     c.bench_function("wal_read_all_entries", |b| {
         b.iter(|| {
             tokio::runtime::Runtime::new().unwrap().block_on(async {
-                let _entries = black_box(wal.read_all_entries().await.unwrap());
+                let _entries = std::hint::black_box(wal.read_all_entries().await.unwrap());
             });
         });
     });
