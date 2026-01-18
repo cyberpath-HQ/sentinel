@@ -144,7 +144,44 @@ pub struct LogEntry {
 }
 
 impl LogEntry {
-    /// Create a new log entry
+    /// Create a new log entry with the specified parameters.
+    ///
+    /// This constructor generates a unique transaction ID using CUID2 and captures
+    /// the current timestamp. The data is serialized to JSON string format if provided.
+    ///
+    /// # Arguments
+    ///
+    /// * `entry_type` - The type of operation (Insert, Update, Delete)
+    /// * `collection` - Name of the collection this entry belongs to
+    /// * `document_id` - Unique identifier of the document
+    /// * `data` - Optional JSON data payload (for insert/update operations)
+    ///
+    /// # Returns
+    ///
+    /// Returns a new `LogEntry` instance with a generated transaction ID and timestamp.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_wal::{LogEntry, EntryType};
+    /// use serde_json::json;
+    ///
+    /// // Create an insert entry
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     Some(json!({"name": "Alice", "age": 30}))
+    /// );
+    ///
+    /// // Create a delete entry (no data needed)
+    /// let delete_entry = LogEntry::new(
+    ///     EntryType::Delete,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     None
+    /// );
+    /// ```
     pub fn new(
         entry_type: EntryType,
         collection: String,
@@ -163,7 +200,34 @@ impl LogEntry {
         }
     }
 
-    /// Serialize the entry to binary format with checksum
+    /// Serialize the entry to binary format with checksum.
+    ///
+    /// This method serializes the log entry using Postcard (a compact binary format)
+    /// and appends a CRC32 checksum for data integrity verification. The binary format
+    /// is used for efficient storage and fast I/O operations.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the serialized bytes with checksum, or a `WalError`
+    /// if serialization fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_wal::{EntryType, LogEntry};
+    ///
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     None,
+    /// );
+    ///
+    /// let bytes = entry.to_bytes().unwrap();
+    /// assert!(!bytes.is_empty());
+    /// // The serialized data includes the entry plus a 4-byte CRC32 checksum
+    /// assert!(bytes.len() > 4);
+    /// ```
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         let serialized =
             postcard::to_stdvec(self).map_err(|e: postcard::Error| WalError::Serialization(e.to_string()))?;
@@ -183,7 +247,46 @@ impl LogEntry {
         Ok(bytes)
     }
 
-    /// Deserialize from binary format and verify checksum
+    /// Deserialize from binary format and verify checksum.
+    ///
+    /// This method deserializes a log entry from Postcard binary format and verifies
+    /// the CRC32 checksum to ensure data integrity. The last 4 bytes of the input
+    /// are expected to contain the checksum.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - The binary data containing the serialized entry and checksum
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the deserialized `LogEntry`, or a `WalError`
+    /// if deserialization fails or checksum verification fails.
+    ///
+    /// # Errors
+    ///
+    /// * `WalError::InvalidEntry` - If the data is too short (less than 4 bytes for checksum)
+    /// * `WalError::ChecksumMismatch` - If the calculated checksum doesn't match the stored one
+    /// * `WalError::Serialization` - If Postcard deserialization fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_wal::{EntryType, LogEntry};
+    ///
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     None,
+    /// );
+    ///
+    /// let bytes = entry.to_bytes().unwrap();
+    /// let deserialized = LogEntry::from_bytes(&bytes).unwrap();
+    ///
+    /// assert_eq!(deserialized.entry_type, EntryType::Insert);
+    /// assert_eq!(deserialized.collection_str(), "users");
+    /// assert_eq!(deserialized.document_id_str(), "user-123");
+    /// ```
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 4 {
             return Err(WalError::InvalidEntry("Entry too short".to_string()));
@@ -211,7 +314,34 @@ impl LogEntry {
         Ok(entry)
     }
 
-    /// Serialize the entry to JSON format
+    /// Serialize the entry to JSON format.
+    ///
+    /// This method converts the log entry to a human-readable JSON Lines format.
+    /// All fields are included in the JSON output, with string representations
+    /// for binary fields (transaction_id, collection, document_id).
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the JSON string representation, or a `WalError`
+    /// if JSON serialization fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_wal::{LogEntry, EntryType};
+    /// use serde_json::json;
+    ///
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     Some(json!({"name": "Alice"}))
+    /// );
+    ///
+    /// let json_str = entry.to_json().unwrap();
+    /// println!("{}", json_str);
+    /// // Output: {"entry_type":"Insert","transaction_id":"...","collection":"users","document_id":"user-123","timestamp":1234567890,"data":"{\"name\":\"Alice\"}"}
+    /// ```
     pub fn to_json(&self) -> Result<String> {
         let json_value = serde_json::json!({
             "entry_type": self.entry_type,
@@ -230,7 +360,44 @@ impl LogEntry {
         Ok(json_str)
     }
 
-    /// Deserialize from JSON format
+    /// Deserialize from JSON format.
+    ///
+    /// This method parses a log entry from JSON Lines format. All required fields
+    /// must be present in the JSON object. String fields are converted back to
+    /// their fixed-size binary representations.
+    ///
+    /// # Arguments
+    ///
+    /// * `json_str` - The JSON string representation of a log entry
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the deserialized `LogEntry`, or a `WalError`
+    /// if parsing fails or required fields are missing.
+    ///
+    /// # Errors
+    ///
+    /// * `WalError::InvalidEntry` - If required fields are missing or have wrong types
+    /// * `WalError::Serialization` - If JSON parsing fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_wal::{EntryType, LogEntry};
+    ///
+    /// let json_str = r#"{
+    ///     "entry_type": "Insert",
+    ///     "transaction_id": "abc123",
+    ///     "collection": "users",
+    ///     "document_id": "user-123",
+    ///     "timestamp": 1234567890,
+    ///     "data": "{\"name\":\"Alice\"}"
+    /// }"#;
+    ///
+    /// let entry = LogEntry::from_json(json_str).unwrap();
+    /// assert_eq!(entry.entry_type, EntryType::Insert);
+    /// assert_eq!(entry.collection_str(), "users");
+    /// ```
     pub fn from_json(json_str: &str) -> Result<Self> {
         let json_value: serde_json::Value = serde_json::from_str(json_str)
             .map_err(|e| WalError::Serialization(format!("JSON parsing error: {}", e)))?;
@@ -295,7 +462,33 @@ impl LogEntry {
         Ok(entry)
     }
 
-    /// Get the data as a JSON Value
+    /// Get the data as a JSON Value.
+    ///
+    /// This method parses the stored JSON string data into a `serde_json::Value`
+    /// for programmatic access to the document data.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing `Some(Value)` if data exists and is valid JSON,
+    /// `None` if no data is stored, or a `WalError` if JSON parsing fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_wal::{LogEntry, EntryType};
+    /// use serde_json::json;
+    ///
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     Some(json!({"name": "Alice", "age": 30}))
+    /// );
+    ///
+    /// let data = entry.data_as_value().unwrap().unwrap();
+    /// assert_eq!(data["name"], "Alice");
+    /// assert_eq!(data["age"], 30);
+    /// ```
     pub fn data_as_value(&self) -> Result<Option<serde_json::Value>> {
         match &self.data {
             Some(s) => {
@@ -307,21 +500,90 @@ impl LogEntry {
         }
     }
 
-    /// Get the transaction ID as a string (trimmed)
+    /// Get the transaction ID as a string (trimmed).
+    ///
+    /// Returns the transaction ID with null bytes trimmed from the end.
+    /// Transaction IDs are generated using CUID2 and are guaranteed to be valid UTF-8.
+    ///
+    /// # Returns
+    ///
+    /// Returns the transaction ID as a string slice.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_wal::{EntryType, LogEntry};
+    ///
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     None,
+    /// );
+    ///
+    /// let tx_id = entry.transaction_id_str();
+    /// assert!(!tx_id.is_empty());
+    /// // Transaction IDs are unique identifiers generated using CUID2
+    /// println!("Transaction ID: {}", tx_id);
+    /// ```
     pub fn transaction_id_str(&self) -> &str {
         std::str::from_utf8(&self.transaction_id)
             .unwrap()
             .trim_end_matches('\0')
     }
 
-    /// Get the collection name as a string (trimmed)
+    /// Get the collection name as a string (trimmed).
+    ///
+    /// Returns the collection name with null bytes trimmed from the end.
+    /// Collection names are stored as UTF-8 strings.
+    ///
+    /// # Returns
+    ///
+    /// Returns the collection name as a string slice.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_wal::{EntryType, LogEntry};
+    ///
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     None,
+    /// );
+    ///
+    /// assert_eq!(entry.collection_str(), "users");
+    /// ```
     pub fn collection_str(&self) -> &str {
         std::str::from_utf8(&self.collection)
             .unwrap()
             .trim_end_matches('\0')
     }
 
-    /// Get the document ID as a string (trimmed)
+    /// Get the document ID as a string (trimmed).
+    ///
+    /// Returns the document ID with null bytes trimmed from the end.
+    /// Document IDs are stored as UTF-8 strings.
+    ///
+    /// # Returns
+    ///
+    /// Returns the document ID as a string slice.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_wal::{EntryType, LogEntry};
+    ///
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     None,
+    /// );
+    ///
+    /// assert_eq!(entry.document_id_str(), "user-123");
+    /// ```
     pub fn document_id_str(&self) -> &str {
         std::str::from_utf8(&self.document_id)
             .unwrap()
