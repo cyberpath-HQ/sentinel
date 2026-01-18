@@ -31,7 +31,7 @@ pub mod manager;
 // Re-exports
 pub use error::WalError;
 pub use entry::{EntryType, FixedBytes256, FixedBytes32, LogEntry};
-pub use manager::WalManager;
+pub use manager::{WalConfig, WalManager};
 pub use postcard;
 pub use cuid2;
 
@@ -43,7 +43,7 @@ mod tests {
     use tempfile::tempdir;
     use serde_json::json;
 
-    use crate::{EntryType, LogEntry, WalManager};
+    use crate::{EntryType, LogEntry, WalConfig, WalManager};
 
     /// Test that log entries can be serialized and deserialized correctly.
     ///
@@ -53,10 +53,8 @@ mod tests {
     /// - All fields are preserved through serialization
     #[tokio::test]
     async fn test_log_entry_serialization() {
-        let transaction_id = cuid2::create_id();
         let entry = LogEntry::new(
             EntryType::Insert,
-            transaction_id.clone(),
             "users".to_string(),
             "user-123".to_string(),
             Some(json!({"name": "Alice"})),
@@ -90,12 +88,12 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let wal_path = temp_dir.path().join("test.wal");
 
-        let wal = WalManager::new(wal_path).await.unwrap();
+        let wal = WalManager::new(wal_path, WalConfig::default())
+            .await
+            .unwrap();
 
-        let transaction_id = cuid2::create_id();
         let entry = LogEntry::new(
             EntryType::Insert,
-            transaction_id,
             "users".to_string(),
             "user-123".to_string(),
             Some(json!({"name": "Alice"})),
@@ -120,12 +118,12 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let wal_path = temp_dir.path().join("test.wal");
 
-        let wal = WalManager::new(wal_path.clone()).await.unwrap();
+        let wal = WalManager::new(wal_path.clone(), WalConfig::default())
+            .await
+            .unwrap();
 
-        let transaction_id = cuid2::create_id();
         let entry = LogEntry::new(
             EntryType::Insert,
-            transaction_id,
             "users".to_string(),
             "user-123".to_string(),
             Some(json!({"name": "Alice"})),
@@ -138,5 +136,57 @@ mod tests {
         wal.checkpoint().await.unwrap();
 
         assert_eq!(wal.size().await.unwrap(), 0);
+    }
+
+    /// Test WAL file format demonstration.
+    ///
+    /// This test creates a WAL file with sample entries and demonstrates the binary format.
+    /// The format is: [length:u32_le][postcard_data][crc32:u32_le] for each entry.
+    #[tokio::test]
+    async fn test_wal_file_format() {
+        let temp_dir = tempdir().unwrap();
+        let wal_path = temp_dir.path().join("format_demo.wal");
+
+        let wal = WalManager::new(wal_path.clone(), WalConfig::default())
+            .await
+            .unwrap();
+
+        // Write a few entries
+        let entries = vec![
+            LogEntry::new(
+                EntryType::Insert,
+                "users".to_string(),
+                "user-1".to_string(),
+                Some(json!({"name": "Alice"})),
+            ),
+            LogEntry::new(
+                EntryType::Update,
+                "products".to_string(),
+                "prod-2".to_string(),
+                Some(json!({"price": 29.99})),
+            ),
+        ];
+
+        for entry in entries {
+            wal.write_entry(entry).await.unwrap();
+        }
+
+        // Read the raw file bytes
+        let file_bytes = tokio::fs::read(&wal_path).await.unwrap();
+
+        println!("WAL file binary format demonstration:");
+        println!("Total file size: {} bytes", file_bytes.len());
+        println!("Hex dump:");
+        for (i, chunk) in file_bytes.chunks(16).enumerate() {
+            print!("{:08x}: ", i * 16);
+            for &byte in chunk {
+                print!("{:02x} ", byte);
+            }
+            println!();
+        }
+
+        // Verify we can read back the entries
+        let read_entries = wal.read_all_entries().await.unwrap();
+        assert_eq!(read_entries.len(), 2);
     }
 }
