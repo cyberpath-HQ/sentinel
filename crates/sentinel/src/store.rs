@@ -372,10 +372,11 @@ impl Store {
                     error!("Failed to get file type for entry: {}", e);
                     e
                 })?
-                .is_dir()
-                && let Some(name) = entry.file_name().to_str() {
-                    collections.push(name.to_owned());
-                }
+                .is_dir() &&
+                let Some(name) = entry.file_name().to_str()
+            {
+                collections.push(name.to_owned());
+            }
         }
 
         debug!("Found {} collections", collections.len());
