@@ -693,7 +693,7 @@ let config = CryptoConfig {
     key_derivation_algorithm: KeyDerivationAlgorithmChoice::Argon2id,
 };
 
-set_global_crypto_config(config)?;
+set_global_crypto_config(config).await?;
 ```
 
 ## Algorithm Choices
