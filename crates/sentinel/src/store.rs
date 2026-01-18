@@ -263,6 +263,120 @@ impl Store {
         })
     }
 
+    /// Deletes a collection and all its documents.
+    ///
+    /// This method removes the entire collection directory and all documents within it.
+    /// The operation is permanent and cannot be undone. If the collection doesn't exist,
+    /// the operation succeeds silently (idempotent).
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the collection to delete
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `SentinelError` if the operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_dbms::Store;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    ///
+    /// // Create a collection
+    /// let collection = store.collection("temp_collection").await?;
+    ///
+    /// // ... use collection ...
+    ///
+    /// // Delete the collection
+    /// store.delete_collection("temp_collection").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn delete_collection(&self, name: &str) -> Result<()> {
+        trace!("Deleting collection: {}", name);
+        validate_collection_name(name)?;
+        let path = self.root_path.join("data").join(name);
+
+        // Check if collection exists
+        if !path.exists() {
+            debug!("Collection '{}' does not exist, nothing to delete", name);
+            return Ok(());
+        }
+
+        // Remove the entire directory
+        tokio_fs::remove_dir_all(&path).await.map_err(|e| {
+            error!("Failed to delete collection directory {:?}: {}", path, e);
+            e
+        })?;
+
+        debug!("Collection '{}' deleted successfully", name);
+        Ok(())
+    }
+
+    /// Lists all collections in the store.
+    ///
+    /// This method returns a list of all collection names that exist in the store.
+    /// The names are returned in no particular order.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Vec<String>` containing the names of all collections.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sentinel_dbms::Store;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    ///
+    /// // Create some collections
+    /// store.collection("users").await?;
+    /// store.collection("products").await?;
+    ///
+    /// // List all collections
+    /// let collections = store.list_collections().await?;
+    /// assert!(collections.contains(&"users".to_string()));
+    /// assert!(collections.contains(&"products".to_string()));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn list_collections(&self) -> Result<Vec<String>> {
+        trace!("Listing collections");
+        let data_path = self.root_path.join("data");
+
+        // Ensure data directory exists
+        tokio_fs::create_dir_all(&data_path).await.map_err(|e| {
+            error!("Failed to create data directory {:?}: {}", data_path, e);
+            e
+        })?;
+
+        // Read directory entries
+        let mut entries = tokio_fs::read_dir(&data_path).await.map_err(|e| {
+            error!("Failed to read data directory {:?}: {}", data_path, e);
+            e
+        })?;
+
+        let mut collections = Vec::new();
+        while let Some(entry) = entries.next_entry().await.map_err(|e| {
+            error!("Failed to read directory entry: {}", e);
+            e
+        })? {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    collections.push(name.to_string());
+                }
+            }
+        }
+
+        debug!("Found {} collections", collections.len());
+        Ok(collections)
+    }
+
     pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) { self.signing_key = Some(Arc::new(key)); }
 }
 
