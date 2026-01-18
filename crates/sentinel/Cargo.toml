@@ -21,7 +21,7 @@ serde_json = { version = "1.0.149", features = ["arbitrary_precision"] }
 async-trait = "0.1.89"
 thiserror = "2.0.17"
 chrono = { version = "0.4.43", features = ["serde"] }
-sentinel-crypto = { version = "1.2.0", path = "../sentinel-crypto" }
+sentinel-crypto = { version = "2.0.0", path = "../sentinel-crypto" }
 hex = "0.4.3"
 tracing = "0.1.44"
 tokio-stream = "0.1.18"
