@@ -335,6 +335,21 @@ impl QueryBuilder {
     }
 }
 
+/// Aggregation operations for queries.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Aggregation {
+    /// Count of matching documents
+    Count,
+    /// Sum of numeric values in the specified field
+    Sum(String),
+    /// Average of numeric values in the specified field
+    Avg(String),
+    /// Minimum value in the specified field
+    Min(String),
+    /// Maximum value in the specified field
+    Max(String),
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
