@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum VerificationMode {
     /// Fail with an error when verification fails (default for production).
-    /// This is the strictest mode and recommended for production use.
+    /// This is the strictest mode and is recommended for production use.
     #[default]
     Strict,
     /// Emit a warning when verification fails but continue processing.
@@ -50,9 +50,12 @@ pub struct VerificationOptions {
     /// Whether to verify document hashes.
     /// Defaults to true for integrity.
     pub verify_hash:                 bool,
-    /// How to handle signature verification failures.
+    /// How to handle signature verification failures (invalid signatures).
     /// Defaults to Strict.
     pub signature_verification_mode: VerificationMode,
+    /// How to handle empty signature documents.
+    /// Defaults to Warn (documents without signatures are common in mixed collections).
+    pub empty_signature_mode:        VerificationMode,
     /// How to handle hash verification failures.
     /// Defaults to Strict.
     pub hash_verification_mode:      VerificationMode,
@@ -64,6 +67,7 @@ impl Default for VerificationOptions {
             verify_signature:            true,
             verify_hash:                 true,
             signature_verification_mode: VerificationMode::Strict,
+            empty_signature_mode:        VerificationMode::Warn,
             hash_verification_mode:      VerificationMode::Strict,
         }
     }
@@ -76,6 +80,7 @@ impl VerificationOptions {
             verify_signature:            true,
             verify_hash:                 true,
             signature_verification_mode: VerificationMode::Strict,
+            empty_signature_mode:        VerificationMode::Strict,
             hash_verification_mode:      VerificationMode::Strict,
         }
     }
@@ -86,6 +91,7 @@ impl VerificationOptions {
             verify_signature:            false,
             verify_hash:                 false,
             signature_verification_mode: VerificationMode::Silent,
+            empty_signature_mode:        VerificationMode::Silent,
             hash_verification_mode:      VerificationMode::Silent,
         }
     }
@@ -96,6 +102,7 @@ impl VerificationOptions {
             verify_signature:            true,
             verify_hash:                 true,
             signature_verification_mode: VerificationMode::Warn,
+            empty_signature_mode:        VerificationMode::Warn,
             hash_verification_mode:      VerificationMode::Warn,
         }
     }
@@ -139,6 +146,7 @@ mod tests {
         assert!(opts.verify_signature);
         assert!(opts.verify_hash);
         assert_eq!(opts.signature_verification_mode, VerificationMode::Strict);
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Warn);
         assert_eq!(opts.hash_verification_mode, VerificationMode::Strict);
     }
 
@@ -148,6 +156,7 @@ mod tests {
         assert!(opts.verify_signature);
         assert!(opts.verify_hash);
         assert_eq!(opts.signature_verification_mode, VerificationMode::Strict);
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Strict);
         assert_eq!(opts.hash_verification_mode, VerificationMode::Strict);
     }
 
@@ -157,6 +166,7 @@ mod tests {
         assert!(!opts.verify_signature);
         assert!(!opts.verify_hash);
         assert_eq!(opts.signature_verification_mode, VerificationMode::Silent);
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Silent);
         assert_eq!(opts.hash_verification_mode, VerificationMode::Silent);
     }
 
@@ -166,6 +176,7 @@ mod tests {
         assert!(opts.verify_signature);
         assert!(opts.verify_hash);
         assert_eq!(opts.signature_verification_mode, VerificationMode::Warn);
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Warn);
         assert_eq!(opts.hash_verification_mode, VerificationMode::Warn);
     }
 }
