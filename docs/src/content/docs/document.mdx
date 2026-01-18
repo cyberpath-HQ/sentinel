@@ -472,14 +472,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Sentinel's version field allows for future compatibility:
 
 ```rust
-use sentinel_dbms::Document;
+use sentinel_dbms::META_SENTINEL_VERSION;
 
 // Current version
-println!("Current sentinel version: {}", Document::version());  // Returns 1
+println!("Current sentinel version: {}", META_SENTINEL_VERSION);  // Returns 1
 
 // All documents have this version
 let doc_version = doc.version();
-assert_eq!(doc_version, 1);
+assert_eq!(doc_version, META_SENTINEL_VERSION);
 ```
 
 This design allows Sentinel to:
