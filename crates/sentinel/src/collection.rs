@@ -289,43 +289,6 @@ impl Collection {
         }
     }
 
-    /// Updates an existing document or creates a new one if it doesn't exist.
-    ///
-    /// This method is semantically equivalent to `insert` in the current implementation,
-    /// as it overwrites the entire document. Future versions may implement partial updates
-    /// or version tracking.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The unique identifier of the document to update.
-    /// * `data` - The new JSON data that will replace the existing document.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` on success, or a `SentinelError` if the operation fails.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use sentinel_dbms::{Store, Collection};
-    /// use serde_json::json;
-    ///
-    /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
-    ///
-    /// // Insert initial document
-    /// collection.insert("user-123", json!({"name": "Alice", "age": 30})).await?;
-    ///
-    /// // Update the document with new data
-    /// collection.update("user-123", json!({"name": "Alice", "age": 31})).await?;
-    ///
-    /// // Verify the update
-    /// let doc = collection.get("user-123").await?.unwrap();
-    /// assert_eq!(doc.data()["age"], 31);
-    /// # Ok(())
-    /// # }
-    /// ```
     /// Deletes a document from the collection (soft delete).
     ///
     /// Moves the JSON file corresponding to the given ID to a `.deleted/` subdirectory
@@ -451,6 +414,42 @@ impl Collection {
     pub fn list(&self) -> std::pin::Pin<Box<dyn Stream<Item = Result<String>> + Send>> {
         trace!("Streaming document IDs from collection: {}", self.name());
         stream_document_ids(self.path.clone())
+    }
+
+    /// Counts the total number of documents in the collection.
+    ///
+    /// This method streams through all document IDs and counts them efficiently
+    /// without loading the full documents into memory.
+    ///
+    /// # Returns
+    ///
+    /// Returns the total count of documents as a `usize`, or a `SentinelError` if
+    /// there was an error accessing the collection.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use sentinel_dbms::{Store, Collection};
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Insert some documents
+    /// collection.insert("user-123", json!({"name": "Alice"})).await?;
+    /// collection.insert("user-456", json!({"name": "Bob"})).await?;
+    ///
+    /// // Count the documents
+    /// let count = collection.count().await?;
+    /// assert_eq!(count, 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn count(&self) -> Result<usize> {
+        trace!("Counting documents in collection: {}", self.name());
+        let ids: Vec<String> = self.list().try_collect().await?;
+        Ok(ids.len())
     }
 
     /// Performs bulk insert operations on multiple documents.
