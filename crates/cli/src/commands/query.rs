@@ -28,6 +28,9 @@ pub struct QueryArgs {
     /// Signature verification mode: strict, warn, or silent (default: strict)
     #[arg(long, default_value = "strict")]
     pub signature_mode:   String,
+    /// How to handle documents with no signature: strict, warn, or silent (default: warn)
+    #[arg(long, default_value = "warn")]
+    pub empty_sig_mode:   String,
     /// Hash verification mode: strict, warn, or silent (default: strict)
     #[arg(long, default_value = "strict")]
     pub hash_mode:        String,
@@ -63,6 +66,9 @@ impl QueryArgs {
             )
         })?;
 
+        let empty_signature_mode = VerificationMode::from_str(&self.empty_sig_mode)
+            .ok_or_else(|| format!("Invalid empty signature mode: {}", self.empty_sig_mode))?;
+
         let hash_verification_mode = VerificationMode::from_str(&self.hash_mode)
             .ok_or_else(|| format!("Invalid hash verification mode: {}", self.hash_mode))?;
 
@@ -70,6 +76,7 @@ impl QueryArgs {
             verify_signature: self.verify_signature,
             verify_hash: self.verify_hash,
             signature_verification_mode,
+            empty_signature_mode,
             hash_verification_mode,
         })
     }
