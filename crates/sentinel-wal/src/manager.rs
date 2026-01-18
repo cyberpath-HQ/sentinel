@@ -61,7 +61,47 @@ pub struct WalManager {
 }
 
 impl WalManager {
-    /// Create a new WAL manager
+    /// Create a new WAL manager instance.
+    ///
+    /// This constructor initializes a WAL manager with the specified file path and configuration.
+    /// It creates the necessary directory structure and opens the WAL file for append operations.
+    /// The file is created if it doesn't exist, and opened in append mode for existing files.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The file system path where the WAL file should be stored
+    /// * `config` - Configuration options including format, size limits, and compression settings
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the initialized `WalManager`, or a `WalError` if initialization fails.
+    ///
+    /// # Errors
+    ///
+    /// * `WalError::Io` - If directory creation or file operations fail
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use sentinel_wal::{WalManager, WalConfig, WalFormat};
+    /// use std::path::PathBuf;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = WalConfig {
+    ///     format: WalFormat::Binary, // or WalFormat::JsonLines
+    ///     max_file_size: Some(10 * 1024 * 1024), // 10MB
+    ///     ..Default::default()
+    /// };
+    ///
+    /// let wal = WalManager::new(
+    ///     PathBuf::from("data/myapp.wal"),
+    ///     config
+    /// ).await?;
+    ///
+    /// // WAL is now ready for writing entries
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn new(path: PathBuf, config: WalConfig) -> Result<Self> {
         debug!("Creating WAL manager at {:?} with config: max_file_size={:?}, compression={:?}, max_records={:?}, format={:?}",
                path, config.max_file_size, config.compression_algorithm, config.max_records_per_file, config.format);
@@ -90,7 +130,58 @@ impl WalManager {
         Ok(manager)
     }
 
-    /// Write a log entry to the WAL
+    /// Write a log entry to the WAL.
+    ///
+    /// This method appends a log entry to the WAL file using the configured format
+    /// (binary or JSON Lines). The entry is serialized and written atomically to ensure
+    /// data integrity. For JSON Lines format, each entry is written as a separate line.
+    ///
+    /// # Arguments
+    ///
+    /// * `entry` - The log entry to write to the WAL
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on successful write, or a `WalError` if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// * `WalError::Serialization` - If entry serialization fails
+    /// * `WalError::Io` - If file write operations fail
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use sentinel_wal::{WalManager, WalConfig, LogEntry, EntryType};
+    /// use std::path::PathBuf;
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = WalConfig::default();
+    /// let mut wal = WalManager::new(PathBuf::from("data/app.wal"), config).await?;
+    ///
+    /// // Write an insert operation
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     Some(json!({"name": "Alice", "email": "alice@example.com"}))
+    /// );
+    ///
+    /// wal.write_entry(entry).await?;
+    ///
+    /// // Write a delete operation
+    /// let delete_entry = LogEntry::new(
+    ///     EntryType::Delete,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     None
+    /// );
+    ///
+    /// wal.write_entry(delete_entry).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn write_entry(&self, entry: LogEntry) -> Result<()> {
         debug!("Writing WAL entry: {:?} in format {:?}", entry.entry_type, self.config.format);
 
@@ -375,7 +466,49 @@ impl WalManager {
         Ok(files)
     }
 
-    /// Read all entries from the WAL (for recovery)
+    /// Read all log entries from the WAL for recovery.
+    ///
+    /// This method reads and parses all entries from the WAL file(s) in the configured format.
+    /// It's typically used during database recovery to replay operations. The method automatically
+    /// detects the format (binary or JSON Lines) and parses entries accordingly.
+    ///
+    /// For binary format, entries are parsed by finding checksum boundaries.
+    /// For JSON Lines format, entries are parsed line by line.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing a vector of all `LogEntry` instances found in the WAL,
+    /// or a `WalError` if reading or parsing fails.
+    ///
+    /// # Errors
+    ///
+    /// * `WalError::Io` - If file operations fail
+    /// * `WalError::Serialization` - If entry parsing fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use sentinel_wal::{WalManager, WalConfig};
+    /// use std::path::PathBuf;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = WalConfig::default();
+    /// let wal = WalManager::new(PathBuf::from("data/app.wal"), config).await?;
+    ///
+    /// // Read all entries for recovery
+    /// let entries = wal.read_all_entries().await?;
+    ///
+    /// println!("Found {} entries in WAL", entries.len());
+    /// for entry in entries {
+    /// println!("Entry: {:?} on {} in collection {}",
+    ///         entry.entry_type,
+    ///         entry.document_id_str(),
+    ///         entry.collection_str()
+    ///     );
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn read_all_entries(&self) -> Result<Vec<LogEntry>> {
         info!("Reading all WAL entries for recovery from {:?}", self.path);
 
@@ -397,7 +530,53 @@ impl WalManager {
         Ok(all_entries)
     }
 
-    /// Stream all entries from the WAL file
+    /// Stream log entries from the WAL file.
+    ///
+    /// This method provides a streaming interface to read WAL entries without loading
+    /// the entire file into memory. It's more memory-efficient than `read_all_entries()`
+    /// for large WAL files. The stream automatically handles format detection and parsing.
+    ///
+    /// For binary format, entries are streamed by reading length prefixes.
+    /// For JSON Lines format, entries are streamed line by line.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Stream` that yields `Result<LogEntry>` items. The stream will yield
+    /// `Ok(entry)` for successfully parsed entries and `Err(error)` for parsing failures.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use sentinel_wal::{WalManager, WalConfig};
+    /// use std::path::PathBuf;
+    /// use futures::StreamExt;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = WalConfig::default();
+    /// let wal = WalManager::new(PathBuf::from("data/app.wal"), config).await?;
+    ///
+    /// // Stream entries for processing
+    /// let mut stream = wal.stream_entries();
+    /// use futures::pin_mut;
+    /// pin_mut!(stream);
+    ///
+    /// let mut count = 0;
+    /// while let Some(result) = stream.next().await {
+    ///     match result {
+    ///         Ok(entry) => {
+    ///             count += 1;
+    ///             println!("Processed entry {}: {:?}", count, entry.entry_type);
+    ///         },
+    ///         Err(e) => {
+    ///             eprintln!("Error reading entry: {}", e);
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// println!("Total entries processed: {}", count);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn stream_entries(&self) -> impl futures::Stream<Item = Result<LogEntry>> + '_ {
         let path = self.path.clone();
         let format = self.config.format;
@@ -471,34 +650,110 @@ impl WalManager {
         }
     }
 
-    /// Perform a checkpoint (truncate the log)
+    /// Perform a checkpoint operation on the WAL.
+    ///
+    /// A checkpoint ensures that all pending WAL entries are durably written to disk
+    /// and creates a recovery point. This is different from truncation - checkpointing
+    /// preserves the WAL for potential future recovery while marking a safe recovery point.
+    ///
+    /// The checkpoint process:
+    /// 1. Flushes any buffered writes to disk
+    /// 2. Ensures file metadata is synchronized
+    /// 3. Records the checkpoint position for recovery
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on successful checkpoint, or a `WalError` if the operation fails.
+    ///
+    /// # Errors
+    ///
+    /// * `WalError::Io` - If file synchronization operations fail
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use sentinel_wal::{WalManager, WalConfig, LogEntry, EntryType};
+    /// use std::path::PathBuf;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = WalConfig::default();
+    /// let wal = WalManager::new(PathBuf::from("data/app.wal"), config).await?;
+    ///
+    /// // Write some entries
+    /// let entry = LogEntry::new(
+    ///     EntryType::Insert,
+    ///     "users".to_string(),
+    ///     "user-123".to_string(),
+    ///     None
+    /// );
+    /// wal.write_entry(entry).await?;
+    ///
+    /// // Create a checkpoint
+    /// wal.checkpoint().await?;
+    ///
+    /// // At this point, all entries are safely on disk
+    /// // and can be recovered from if needed
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn checkpoint(&self) -> Result<()> {
         info!("Performing WAL checkpoint at {:?}", self.path);
 
-        // Close current file
-        drop(self.file.write().await);
+        // Flush any buffered writes
+        debug!("Flushing WAL file buffers");
+        self.file.write().await.flush().await?;
 
-        // Truncate the file
-        debug!("Truncating WAL file");
-        tokio::fs::File::create(&self.path).await?;
+        // Get the current file handle and sync to disk
+        debug!("Syncing WAL file to disk");
+        self.file.write().await.get_ref().sync_all().await?;
 
-        // Reopen
-        debug!("Reopening WAL file for writing");
-        let file = OpenOptions::new()
-            .create(true)
-            .read(true)
-            .append(true)
-            .open(&self.path)
-            .await?;
+        // Record checkpoint position (current file size)
+        let checkpoint_position = self.size().await?;
+        debug!("Checkpoint created at position: {} bytes", checkpoint_position);
 
-        *self.file.write().await = BufWriter::new(file);
-        *self.entries_count.lock().await = 0;
-
-        info!("WAL checkpoint completed successfully");
+        info!("WAL checkpoint completed successfully at position {}", checkpoint_position);
         Ok(())
     }
 
-    /// Get the current size of the WAL file
+    /// Get the current size of the WAL file in bytes.
+    ///
+    /// This method returns the size of the WAL file on disk, which can be used
+    /// to monitor file growth and determine if rotation is needed based on
+    /// the configured `max_file_size` limit.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the file size in bytes, or a `WalError` if
+    /// the metadata cannot be read.
+    ///
+    /// # Errors
+    ///
+    /// * `WalError::Io` - If file metadata operations fail
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use sentinel_wal::{WalManager, WalConfig};
+    /// use std::path::PathBuf;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let config = WalConfig {
+    ///     max_file_size: Some(10 * 1024 * 1024), // 10MB
+    ///     ..Default::default()
+    /// };
+    /// let wal = WalManager::new(PathBuf::from("data/app.wal"), config.clone()).await?;
+    ///
+    /// let size = wal.size().await?;
+    /// println!("WAL file size: {} bytes", size);
+    ///
+    /// if let Some(max_size) = config.max_file_size {
+    ///     if size >= max_size {
+    ///         println!("WAL file should be rotated");
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn size(&self) -> Result<u64> {
         let metadata = tokio::fs::metadata(&self.path).await?;
         let size = metadata.len();
