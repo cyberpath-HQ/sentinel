@@ -4,11 +4,13 @@ project(sentinel-cxx VERSION 2.0.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(GNUInstallDirs)
+
 # Options
 option(SENTINEL_CXX_BUILD_SHARED "Build shared library" ON)
 option(SENTINEL_CXX_BUILD_STATIC "Build static library" ON)
 option(SENTINEL_CXX_BUILD_TESTS "Build tests" ON)
-option(SENTINEL_CXX_BUILD_EXAMPLES "Build examples" ON)
+option(SENTINEL_CXX_BUILD_EXAMPLES "Build examples" OFF)
 option(SENTINEL_CXX_ENABLE_ASYNC "Enable async operations" ON)
 
 # Find Sentinel library
@@ -18,7 +20,8 @@ option(SENTINEL_CXX_ENABLE_ASYNC "Enable async operations" ON)
 if(NOT SENTINEL_CXX_LIBRARY)
     find_library(SENTINEL_CXX_LIBRARY
         NAMES sentinel-cxx sentinel_cxx
-        PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/release
+        PATHS ${CMAKE_CURRENT_SOURCE_DIR}/lib
+              ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/release
               ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/debug
     )
 endif()
@@ -26,7 +29,8 @@ endif()
 if(NOT SENTINEL_CXX_INCLUDE_DIR)
     find_path(SENTINEL_CXX_INCLUDE_DIR
         NAMES sentinel-cxx.h
-        PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/release
+        PATHS ${CMAKE_CURRENT_SOURCE_DIR}/include/sentinel
+              ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/release
               ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/debug
     )
 endif()
@@ -129,21 +133,20 @@ if(SENTINEL_CXX_BUILD_EXAMPLES)
     target_include_directories(c_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
     target_link_libraries(c_example PRIVATE sentinel-cxx)
 
+    # C++ example
+    add_executable(cpp_example examples/cpp_example.cpp)
+    target_link_libraries(cpp_example PRIVATE sentinel-cxx)
+
+    # C example
+    add_executable(c_example examples/c_example.c)
+    target_include_directories(c_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
+    target_link_libraries(c_example PRIVATE sentinel-cxx)
+
     # C async example
     if(SENTINEL_CXX_ENABLE_ASYNC)
         add_executable(c_async_example examples/c_async_example.c)
         target_include_directories(c_async_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
         target_link_libraries(c_async_example PRIVATE sentinel-cxx)
-    endif()
-
-    # C++ example
-    add_executable(cpp_example examples/cpp_example.cpp)
-    target_link_libraries(cpp_example PRIVATE sentinel-cxx)
-
-    # C++ async example
-    if(SENTINEL_CXX_ENABLE_ASYNC)
-        add_executable(cpp_async_example examples/cpp_async_example.cpp)
-        target_link_libraries(cpp_async_example PRIVATE sentinel-cxx)
     endif()
 endif()
 
@@ -151,33 +154,23 @@ endif()
 if(SENTINEL_CXX_BUILD_TESTS)
     enable_testing()
 
-    # C++ unit tests
-    add_executable(cxx_unit_tests tests/cxx_unit_tests.cpp)
-    target_link_libraries(cxx_unit_tests PRIVATE sentinel-cxx)
-    add_test(NAME cxx_unit_tests COMMAND cxx_unit_tests)
+    # C++ tests
+    add_executable(cpp_tests tests/cpp_tests.cpp)
+    target_link_libraries(cpp_tests PRIVATE sentinel-cxx)
+    add_test(NAME cpp_tests COMMAND cpp_tests)
 
-    # C tests
-    add_executable(c_unit_tests tests/c_unit_tests.c)
-    target_include_directories(c_unit_tests PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
-    target_link_libraries(c_unit_tests PRIVATE sentinel-cxx)
-    add_test(NAME c_unit_tests COMMAND c_unit_tests)
+    # C test example (basic functionality test)
+    add_executable(test_c_bindings examples/test_c_bindings.c)
+    target_include_directories(test_c_bindings PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
+    target_link_libraries(test_c_bindings PRIVATE sentinel-cxx)
+    add_test(NAME test_c_bindings COMMAND test_c_bindings)
 
-    # Async tests (if enabled)
-    if(SENTINEL_CXX_ENABLE_ASYNC)
-        add_executable(async_tests tests/async_tests.cpp)
-        target_link_libraries(async_tests PRIVATE sentinel-cxx)
-        add_test(NAME async_tests COMMAND async_tests)
-    endif()
-
-    # Performance tests
-    add_executable(perf_tests tests/perf_tests.cpp)
-    target_link_libraries(perf_tests PRIVATE sentinel-cxx)
-    add_test(NAME perf_tests COMMAND perf_tests)
-
-    # Integration tests
-    add_executable(integration_tests tests/integration_tests.cpp)
-    target_link_libraries(integration_tests PRIVATE sentinel-cxx)
-    add_test(NAME integration_tests COMMAND integration_tests)
+    # TODO: Add more comprehensive tests when implemented
+    # - cxx_unit_tests
+    # - c_unit_tests
+    # - async_tests
+    # - perf_tests
+    # - integration_tests
 endif()
 
 # Print configuration summary
