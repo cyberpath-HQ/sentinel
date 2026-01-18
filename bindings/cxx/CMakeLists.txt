@@ -152,7 +152,12 @@ if(SENTINEL_CXX_BUILD_EXAMPLES)
     # C complex query example
     add_executable(c_complex_query_example examples/c_complex_query_example.c)
     target_include_directories(c_complex_query_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
-    target_link_libraries(c_complex_query_example PRIVATE sentinel-cxx)
+    target_link_libraries(c_complex_query_example PRIVATE sentinel-cxx ${CMAKE_BINARY_DIR}/../../../target/release/libsentinel_cxx.a)
+
+    # C advanced query example (all filter types and OR/AND operations)
+    add_executable(c_advanced_query_example examples/c_advanced_query_example.c)
+    target_include_directories(c_advanced_query_example PRIVATE ${SENTINEL_CXX_INCLUDE_DIR})
+    target_link_libraries(c_advanced_query_example PRIVATE sentinel-cxx ${CMAKE_BINARY_DIR}/../../../target/release/libsentinel_cxx.a)
 
     # C async query example
     if(SENTINEL_CXX_ENABLE_ASYNC)
