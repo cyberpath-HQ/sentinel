@@ -10,7 +10,7 @@ workspace_target = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'ta
 sys.path.insert(0, workspace_target)
 
 try:
-    import sentinel
+    import sentinel_python as sentinel
 except ImportError:
     pytest.skip("Python extension not built", allow_module_level=True)
 
@@ -235,7 +235,12 @@ class TestQueryBuilder:
 
         result = await temp_collection.query(qb)
         assert result is not None
-        # Note: QueryResult implementation is incomplete, will need to be extended
+        documents = result.documents()
+        assert len(documents) <= 2
+
+        # Verify results are from NYC
+        for doc in documents:
+            assert doc.data["city"] == "NYC"
 
 class TestDocument:
     @pytest.mark.asyncio

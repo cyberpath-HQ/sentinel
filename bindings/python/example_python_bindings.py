@@ -1,180 +1,265 @@
 #!/usr/bin/env python3
 """
-Python example demonstrating Cyberpath Sentinel usage
+Example usage of the Sentinel Python bindings.
+
+This script demonstrates the basic usage of the Sentinel database
+through its Python bindings.
 """
 
 import asyncio
 import tempfile
 import os
-import sys
-from pathlib import Path
 
-# Add the built extension to Python path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "target" / "debug"))
+# Add the built extension to the path
+workspace_target = os.path.join(os.path.dirname(__file__), '..', '..', 'target', 'debug')
+if workspace_target not in os.path.sys.path:
+    os.sys.path.insert(0, workspace_target)
 
-import sentinel
+import sentinel_python as sentinel
 
 
 async def main():
-    """Main example function"""
-    print("Cyberpath Sentinel Python Bindings Example")
-    print("=" * 45)
+    print("🚀 Sentinel Python Bindings Example")
+    print("=" * 50)
 
-    # Create a temporary directory for the database
+    # Create a temporary directory for our database
     with tempfile.TemporaryDirectory() as temp_dir:
-        db_path = os.path.join(temp_dir, "sentinel_example_db")
-        print(f"Using database at: {db_path}\n")
+        print(f"📁 Using temporary directory: {temp_dir}")
 
-        # 1. Create a store
-        print("1. Creating Sentinel store...")
-        store = await sentinel.Store.new(db_path)
-        print("✓ Store created successfully\n")
+        # Create a new Sentinel store
+        print("\n🏪 Creating Sentinel store...")
+        store = await sentinel.Store.new(temp_dir, "example_passphrase")
+        print("✅ Store created successfully")
 
-        # 2. Create collections
-        print("2. Creating collections...")
+        # Create collections
+        print("\n📚 Creating collections...")
         users = await store.collection("users")
         products = await store.collection("products")
         orders = await store.collection("orders")
-        print("✓ Collections created: users, products, orders\n")
+        print("✅ Collections created: users, products, orders")
 
-        # 3. Insert sample data
-        print("3. Inserting sample data...")
+        # Insert some user data
+        print("\n👤 Inserting user documents...")
+        await users.insert("user-001", {
+            "name": "Alice Johnson",
+            "email": "alice@example.com",
+            "age": 28,
+            "active": True,
+            "tags": ["customer", "premium"],
+            "preferences": {
+                "theme": "dark",
+                "notifications": True,
+                "language": "en"
+            }
+        })
 
-        # Users
-        user_data = [
-            {"id": "user_1", "name": "Alice Johnson", "email": "alice@example.com", "age": 30, "active": True},
-            {"id": "user_2", "name": "Bob Smith", "email": "bob@example.com", "age": 25, "active": True},
-            {"id": "user_3", "name": "Charlie Brown", "email": "charlie@example.com", "age": 35, "active": False},
-        ]
+        await users.insert("user-002", {
+            "name": "Bob Smith",
+            "email": "bob@example.com",
+            "age": 35,
+            "active": True,
+            "tags": ["customer"],
+            "preferences": {
+                "theme": "light",
+                "notifications": False,
+                "language": "en"
+            }
+        })
 
-        for user in user_data:
-            await users.insert(user["id"], user)
-        print(f"✓ Inserted {len(user_data)} users")
+        await users.insert("user-003", {
+            "name": "Charlie Brown",
+            "email": "charlie@example.com",
+            "age": 42,
+            "active": False,
+            "tags": ["customer", "inactive"],
+            "preferences": {
+                "theme": "light",
+                "notifications": True,
+                "language": "es"
+            }
+        })
+        print("✅ Users inserted successfully")
 
-        # Products
-        product_data = [
-            {"id": "prod_1", "name": "Laptop", "price": 999.99, "category": "electronics", "stock": 50},
-            {"id": "prod_2", "name": "Book", "price": 29.99, "category": "books", "stock": 100},
-            {"id": "prod_3", "name": "Coffee Mug", "price": 12.99, "category": "kitchen", "stock": 75},
-        ]
+        # Insert some product data
+        print("\n📦 Inserting product documents...")
+        await products.insert("product-001", {
+            "name": "Wireless Headphones",
+            "price": 199.99,
+            "category": "Electronics",
+            "in_stock": True,
+            "tags": ["audio", "wireless", "premium"],
+            "specifications": {
+                "battery_life": "30 hours",
+                "connectivity": "Bluetooth 5.0",
+                "weight": "250g"
+            }
+        })
 
-        for product in product_data:
-            await products.insert(product["id"], product)
-        print(f"✓ Inserted {len(product_data)} products")
+        await products.insert("product-002", {
+            "name": "Ergonomic Office Chair",
+            "price": 349.99,
+            "category": "Furniture",
+            "in_stock": True,
+            "tags": ["office", "ergonomic", "comfort"],
+            "specifications": {
+                "material": "Mesh",
+                "adjustable": True,
+                "weight_limit": "300 lbs"
+            }
+        })
+        print("✅ Products inserted successfully")
 
-        # Orders
-        order_data = [
-            {"id": "order_1", "user_id": "user_1", "product_id": "prod_1", "quantity": 1, "total": 999.99},
-            {"id": "order_2", "user_id": "user_2", "product_id": "prod_2", "quantity": 2, "total": 59.98},
-            {"id": "order_3", "user_id": "user_1", "product_id": "prod_3", "quantity": 3, "total": 38.97},
-        ]
+        # Insert some order data
+        print("\n🛒 Inserting order documents...")
+        await orders.insert("order-001", {
+            "user_id": "user-001",
+            "product_ids": ["product-001", "product-002"],
+            "total_amount": 549.98,
+            "status": "completed",
+            "created_at": "2024-01-15T10:30:00Z",
+            "shipping_address": {
+                "street": "123 Main St",
+                "city": "Anytown",
+                "state": "CA",
+                "zip": "12345"
+            }
+        })
 
-        for order in order_data:
-            await orders.insert(order["id"], order)
-        print(f"✓ Inserted {len(order_data)} orders\n")
+        await orders.insert("order-002", {
+            "user_id": "user-002",
+            "product_ids": ["product-001"],
+            "total_amount": 199.99,
+            "status": "pending",
+            "created_at": "2024-01-16T14:20:00Z",
+            "shipping_address": {
+                "street": "456 Oak Ave",
+                "city": "Somewhere",
+                "state": "NY",
+                "zip": "67890"
+            }
+        })
+        print("✅ Orders inserted successfully")
 
-        # 4. Basic CRUD operations
-        print("4. Basic CRUD operations...")
+        # Query operations
+        print("\n🔍 Performing queries...")
 
-        # Get a user
-        alice = await users.get("user_1")
-        print(f"✓ Retrieved user: {alice.data['name']} ({alice.data['email']})")
+        # Count documents in each collection
+        users_count = await users.count()
+        products_count = await products.count()
+        orders_count = await orders.count()
+        print(f"📊 Collection counts - Users: {users_count}, Products: {products_count}, Orders: {orders_count}")
 
-        # Update user
-        alice.data["age"] = 31
-        await users.update("user_1", alice.data)
-        print("✓ Updated Alice's age to 31")
+        # Get a specific user
+        print("\n👤 Retrieving user by ID...")
+        user = await users.get("user-001")
+        if user:
+            print(f"✅ Found user: {user.data['name']} ({user.data['email']})")
+            print(f"   Created: {user.created_at}")
+            print(f"   Version: {user.version}")
+            print(f"   Hash: {user.hash[:16]}...")
 
-        # Upsert new user
-        was_insert = await users.upsert("user_4", {"name": "Diana Wilson", "email": "diana@example.com", "age": 28, "active": True})
-        print(f"✓ Upserted Diana (was_insert: {was_insert})")
+        # Query with filters
+        print("\n🔍 Querying active users...")
+        qb = sentinel.QueryBuilder()
+        qb = qb.filter("active", "equals", True)
+        qb = qb.sort("age", "ascending")
 
-        # Delete inactive user
-        await users.delete("user_3")
-        print("✓ Deleted inactive user Charlie\n")
+        result = await users.query(qb)
+        documents = result.documents()
+        print(f"✅ Found {len(documents)} active users (sorted by age):")
+        for doc in documents:
+            print(f"   - {doc.data['name']} ({doc.data['age']} years old)")
 
-        # 5. Query operations
-        print("5. Query operations...")
+        # Query products by category
+        print("\n📦 Querying electronics products...")
+        qb = sentinel.QueryBuilder()
+        qb = qb.filter("category", "equals", "Electronics")
+        qb = qb.limit(5)
 
-        # Count documents
-        user_count = await users.count()
-        product_count = await products.count()
-        order_count = await orders.count()
-        print(f"✓ Document counts: {user_count} users, {product_count} products, {order_count} orders")
+        result = await products.query(qb)
+        documents = result.documents()
+        print(f"✅ Found {len(documents)} electronics products:")
+        for doc in documents:
+            print(f"   - {doc.data['name']}: ${doc.data['price']}")
 
-        # Query active users
-        active_users = await users.query(filters=[("active", "eq", True)])
-        print(f"✓ Found {len(active_users['documents'])} active users")
+        # Get multiple documents at once
+        print("\n📑 Bulk retrieving users...")
+        user_ids = ["user-001", "user-002", "user-999"]  # Last one doesn't exist
+        users_bulk = await users.get_many(user_ids)
+        print(f"✅ Bulk retrieved {len(users_bulk)} users:")
+        for i, user_doc in enumerate(users_bulk):
+            if user_doc:
+                print(f"   [{i}] {user_doc.data['name']}")
+            else:
+                print(f"   [{i}] Not found")
 
-        # Query expensive products
-        expensive_products = await users.query(
-            filters=[("price", "gte", 100.0)],
-            sort_by="price",
-            sort_order="desc"
+        # Update a document
+        print("\n📝 Updating user document...")
+        original_user = await users.get("user-001")
+        original_age = original_user.data['age'] if original_user else None
+
+        await users.update("user-001", {
+            "name": "Alice Johnson",
+            "email": "alice@example.com",
+            "age": 29,  # Birthday!
+            "active": True,
+            "tags": ["customer", "premium", "birthday"],
+            "preferences": {
+                "theme": "dark",
+                "notifications": True,
+                "language": "en"
+            }
+        })
+
+        updated_user = await users.get("user-001")
+        if updated_user:
+            print(f"✅ Updated user age from {original_age} to {updated_user.data['age']}")
+            print(f"   Updated timestamp: {updated_user.updated_at}")
+
+        # Upsert operation
+        print("\n🔄 Upserting document...")
+        was_insert = await users.upsert("user-new", {
+            "name": "New User",
+            "email": "new@example.com",
+            "age": 25,
+            "active": True,
+            "tags": ["customer"]
+        })
+        print(f"✅ Upsert result: {'INSERT' if was_insert else 'UPDATE'}")
+
+        # Test aggregation
+        print("\n📊 Aggregating user data...")
+        # Count active users
+        active_count = users.aggregate(
+            [("active", "equals", True)],
+            "count"
         )
-        print(f"✓ Found {len(expensive_products['documents'])} expensive products")
-
-        # Query with pagination
-        paginated_orders = await orders.query(limit=2, offset=0)
-        print(f"✓ Paginated query returned {len(paginated_orders['documents'])} orders (page 1)\n")
-
-        # 6. Bulk operations
-        print("6. Bulk operations...")
-
-        # Bulk insert more products
-        bulk_products = [
-            ("prod_4", {"name": "Headphones", "price": 79.99, "category": "electronics", "stock": 30}),
-            ("prod_5", {"name": "Notebook", "price": 4.99, "category": "stationery", "stock": 200}),
-        ]
-
-        await products.bulk_insert(bulk_products)
-        print(f"✓ Bulk inserted {len(bulk_products)} products")
-
-        # Get multiple products
-        product_ids = ["prod_1", "prod_4", "prod_nonexistent"]
-        retrieved_products = await products.get_many(product_ids)
-        found_count = sum(1 for p in retrieved_products if p is not None)
-        print(f"✓ Retrieved {found_count}/{len(product_ids)} requested products\n")
-
-        # 7. Aggregation operations
-        print("7. Aggregation operations...")
-
-        # Count all orders
-        total_orders = await orders.aggregate([], "count")
-        print(f"✓ Total orders: {total_orders}")
-
-        # Sum all order totals
-        total_revenue = await orders.aggregate([], "sum")
-        print(f"✓ Total revenue: ${total_revenue:.2f}")
-
-        # Average product price
-        avg_price = await products.aggregate([], "avg")
-        print(f"✓ Average product price: ${avg_price:.2f}")
-
-        # Count products by category
-        electronics_count = await products.aggregate([("category", "eq", "electronics")], "count")
-        print(f"✓ Electronics products: {electronics_count}\n")
-
-        # 8. Collection management
-        print("8. Collection management...")
+        print(f"✅ Active users count: {active_count}")
 
         # List all collections
+        print("\n📚 All collections in store:")
         collections = await store.list_collections()
-        print(f"✓ Collections in store: {', '.join(collections)}")
+        for collection_name in collections:
+            print(f"   - {collection_name}")
 
-        # Delete a collection
+        # Clean up - delete a collection
+        print("\n🗑️  Deleting 'orders' collection...")
         await store.delete_collection("orders")
         collections_after = await store.list_collections()
-        print(f"✓ Collections after deletion: {', '.join(collections_after)}\n")
+        print(f"✅ Collections after deletion: {collections_after}")
 
-        print("🎉 All Python binding examples completed successfully!")
-        print("\nCyberpath Sentinel provides:")
-        print("• Asynchronous document storage and retrieval")
-        print("• Rich querying with filtering, sorting, and pagination")
-        print("• Aggregation operations (count, sum, avg, min, max)")
-        print("• Bulk operations for performance")
-        print("• ACID-compliant transactions")
-        print("• Full type safety with Python objects")
+        # Crypto operations
+        print("\n🔐 Testing crypto functions...")
+        test_data = {"message": "Hello from Sentinel!", "timestamp": "2024-01-19"}
+        hash_result = await sentinel.hash_data_py(test_data)
+        print(f"✅ Data hash generated: {hash_result[:32]}...")
+        
+        # Note: In production, key generation and signing would use proper key management
+        # For this example, we just verify the hash function works
+        print("✅ Crypto functions available (sign_hash, verify_signature require proper key handling)")
+
+        print("\n🎉 Example completed successfully!")
+        print("=" * 50)
 
 
 if __name__ == "__main__":
