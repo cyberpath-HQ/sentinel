@@ -40,7 +40,7 @@ pub use sentinel_crypto::crypto_config::*;
 pub use store::Store;
 pub use verification::{VerificationMode, VerificationOptions};
 pub use metadata::{CollectionMetadata, MetadataVersion, StoreMetadata};
-pub use wal::{CollectionWalConfig, StoreWalConfig, WalFailureMode};
+pub use sentinel_wal::{CollectionWalConfig, StoreWalConfig, WalFailureMode};
 
 /// The current version of the Sentinel metadata format.
 pub const META_SENTINEL_VERSION: u32 = 1;
