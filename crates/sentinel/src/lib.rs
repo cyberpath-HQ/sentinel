@@ -43,10 +43,24 @@ pub use store::Store;
 pub use verification::{VerificationMode, VerificationOptions};
 pub use metadata::{CollectionMetadata, MetadataVersion, StoreMetadata};
 pub use sentinel_wal::{
-    CollectionWalConfig, StoreWalConfig, WalFailureMode, CompressionAlgorithm, WalFormat,
-    EntryType, LogEntry, WalDocumentOps, WalManager, WalConfig, WalError, WalVerificationIssue,
-    WalVerificationResult, WalRecoveryFailure, WalRecoveryResult, verify_wal_consistency,
-    recover_from_wal_force, recover_from_wal_safe
+    recover_from_wal_force,
+    recover_from_wal_safe,
+    verify_wal_consistency,
+    CollectionWalConfig,
+    CompressionAlgorithm,
+    EntryType,
+    LogEntry,
+    StoreWalConfig,
+    WalConfig,
+    WalDocumentOps,
+    WalError,
+    WalFailureMode,
+    WalFormat,
+    WalManager,
+    WalRecoveryFailure,
+    WalRecoveryResult,
+    WalVerificationIssue,
+    WalVerificationResult,
 };
 
 /// The current version of the Sentinel metadata format.
