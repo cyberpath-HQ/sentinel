@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-Automated API Synchronization Tool for Cyberpath Sentinel C/C++ Bindings
+API Synchronization Monitor for Cyberpath Sentinel C/C++ Bindings
 
-This script monitors changes to the core Sentinel library and automatically
-updates the C/C++ bindings to maintain compatibility.
+This script monitors API changes in the core Sentinel library and:
+- Detects additions/removals of public functions/structs
+- Automatically regenerates C headers via cbindgen
+- Provides reports on API changes
+- Flags breaking changes requiring manual intervention
+
+NOTE: This script ONLY handles header regeneration and API monitoring.
+It does NOT generate C wrapper implementations - those must be added manually.
 """
 
 import os
@@ -24,6 +30,16 @@ class APIChange:
     breaking: bool = False
 
 class APISynchronizer:
+    """
+    Monitors API changes and handles automatic parts of binding updates.
+
+    Capabilities:
+    - ✅ Detect API changes (functions, structs, enums, traits)
+    - ✅ Regenerate C headers automatically
+    - ✅ Copy headers to bindings directory
+    - ❌ Generate C wrapper implementations (manual)
+    - ❌ Handle complex type conversions (manual)
+    """
     def __init__(self, project_root: Path):
         self.project_root = project_root
         self.core_crate = project_root / "crates" / "sentinel"
@@ -129,7 +145,15 @@ class APISynchronizer:
         return signature.split()[0] if signature.split() else "unknown"
 
     def update_bindings(self, changes: List[APIChange]):
-        """Update C/C++ bindings based on API changes"""
+        """Update C/C++ bindings based on API changes
+
+        This method handles the AUTOMATIC parts:
+        - Header regeneration via cbindgen
+        - Header file copying
+        - Build verification
+
+        It does NOT generate C wrapper implementations.
+        """
         print(f"Processing {len(changes)} API changes...")
 
         breaking_changes = [c for c in changes if c.breaking]
@@ -137,11 +161,11 @@ class APISynchronizer:
             print("⚠️  BREAKING CHANGES DETECTED:")
             for change in breaking_changes:
                 print(f"  - {change.change_type.upper()} {change.item_type}: {change.name}")
-            print("\nManual intervention required for breaking changes!")
+            print("\n❌ Manual intervention required for breaking changes!")
+            print("   You need to update C wrapper functions in crates/sentinel-cxx/src/lib.rs")
             return False
 
-        # Regenerate C bindings
-        print("Regenerating C bindings...")
+        print("🔄 Regenerating C headers via cbindgen...")
         result = subprocess.run(
             ["cargo", "build", "--release"],
             cwd=str(self.cxx_crate),
@@ -149,13 +173,14 @@ class APISynchronizer:
         )
 
         if result.returncode != 0:
-            print(f"Error regenerating bindings: {result.stderr}")
+            print(f"❌ Error regenerating bindings: {result.stderr}")
             return False
 
         # Copy updated headers
         self._copy_headers()
 
-        print("✓ Bindings updated successfully")
+        print("✅ Headers updated automatically")
+        print("⚠️  REMINDER: C wrapper implementations must be added manually!")
         return True
 
     def _copy_headers(self):
@@ -198,9 +223,11 @@ class APISynchronizer:
         if breaking:
             report.append("- Manual review required for breaking changes")
             report.append("- Bindings NOT automatically updated")
+            report.append("- C wrapper implementations must be added manually")
         else:
-            report.append("- Bindings automatically regenerated")
+            report.append("- Headers automatically regenerated via cbindgen")
             report.append("- Headers updated in bindings directory")
+            report.append("- **C wrapper implementations still need manual addition**")
 
         return "\n".join(report)
 
@@ -231,7 +258,7 @@ def main():
         sys.exit(1)
 
     command = sys.argv[1]
-    project_root = Path(__file__).parent.parent.parent
+    project_root = Path(__file__).parent.parent
 
     sync = APISynchronizer(project_root)
 
