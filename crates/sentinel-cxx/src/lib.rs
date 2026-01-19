@@ -1381,6 +1381,94 @@ pub unsafe extern "C" fn sentinel_collection_count_async(
     0
 }
 
+/// Execute a query asynchronously
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_collection_query_async(
+    collection: *mut sentinel_collection_t,
+    query: *mut sentinel_query_t,
+    callback: DocumentCallback,
+    error_callback: ErrorCallback,
+    user_data: *mut c_char,
+) -> u64 {
+    if collection.is_null() || query.is_null() {
+        set_error("Collection and query cannot be null");
+        return 0;
+    }
+
+    if callback.is_none() || error_callback.is_none() {
+        set_error("Callbacks cannot be null for async operations");
+        return 0;
+    }
+
+    let collection_ref = unsafe { &*(collection as *mut Collection) };
+    let query_ref = unsafe { &*(query as *mut Query) };
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let user_data_usize = user_data as usize;
+    let callback_ptr = callback.map(|cb| cb as usize);
+    let error_callback_ptr = error_callback.map(|cb| cb as usize);
+
+    let rt = match RUNTIME.lock() {
+        Ok(rt) => rt,
+        Err(e) => {
+            set_error(format!("Failed to acquire runtime lock: {}", e));
+            return 0;
+        },
+    };
+
+    let query_clone = query_ref.clone();
+    rt.spawn(async move {
+        let result = collection_ref.query(query_clone).await;
+        match result {
+            Ok(query_result) => {
+                // For now, return total count as JSON string
+                let count = query_result.total_count.unwrap_or(0);
+                let json_str = serde_json::to_string(&count).unwrap_or_else(|_| "0".to_string());
+                let _ = tx.send(Ok(json_str));
+            },
+            Err(e) => {
+                let _ = tx.send(Err(e));
+            },
+        }
+    });
+
+    // Handle result in a separate thread to call callbacks
+    std::thread::spawn(move || {
+        let user_data = user_data_usize as *mut c_char;
+        if let Ok(result) = rx.recv() {
+            match result {
+                Ok(json_str) => {
+                    let cstr = match CString::new(json_str) {
+                        Ok(cstr) => cstr,
+                        Err(_) => return,
+                    };
+
+                    if let Some(cb_ptr) = callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, DocumentCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(0, cstr.into_raw(), user_data) };
+                        }
+                    }
+                },
+                Err(err) => {
+                    let err_cstr = match CString::new(err.to_string()) {
+                        Ok(cstr) => cstr,
+                        Err(_) => return,
+                    };
+                    if let Some(cb_ptr) = error_callback_ptr {
+                        let cb = unsafe { std::mem::transmute::<usize, ErrorCallback>(cb_ptr) };
+                        if let Some(cb) = cb {
+                            unsafe { cb(0, err_cstr.as_ptr(), user_data) };
+                        }
+                    }
+                },
+            }
+        }
+    });
+
+    0 // Return task ID
+}
+
 /// Create a new query builder
 /// Returns NULL on error
 #[unsafe(no_mangle)]
