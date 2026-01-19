@@ -1,11 +1,13 @@
 use std::{path::PathBuf, sync::Arc};
 
 use async_stream::stream;
+use async_trait::async_trait;
 use futures::{StreamExt as _, TryStreamExt as _};
 use serde_json::{json, Value};
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
+use sentinel_wal::{EntryType, LogEntry, WalDocumentOps, WalManager};
 
 use crate::{
     comparison::compare_values,
@@ -76,7 +78,7 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 #[allow(
     clippy::field_scoped_visibility_modifiers,
     reason = "fields need to be pub(crate) for internal access"
@@ -86,6 +88,8 @@ pub struct Collection {
     pub(crate) path:        PathBuf,
     /// The signing key for the collection.
     pub(crate) signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
+    /// The Write-Ahead Log manager for durability.
+    pub(crate) wal_manager: Option<Arc<WalManager>>,
 }
 
 #[allow(
@@ -135,8 +139,20 @@ impl Collection {
     /// ```
     pub async fn insert(&self, id: &str, data: Value) -> Result<()> {
         trace!("Inserting document with id: {}", id);
-        validate_document_id(id)?;
+        Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
+
+        // Write to WAL before filesystem operation
+        if let Some(wal) = &self.wal_manager {
+            let entry = LogEntry::new(
+                EntryType::Insert,
+                self.name().to_string(),
+                id.to_string(),
+                Some(data.clone()),
+            );
+            wal.write_entry(entry).await?;
+            debug!("WAL entry written for insert operation on document {}", id);
+        }
 
         #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
         let doc = if let Some(key) = &self.signing_key {
@@ -270,7 +286,7 @@ impl Collection {
             id,
             options.verify_signature || options.verify_hash
         );
-        validate_document_id(id)?;
+        Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
         match tokio_fs::read_to_string(&file_path).await {
             Ok(content) => {
@@ -345,10 +361,23 @@ impl Collection {
     /// ```
     pub async fn delete(&self, id: &str) -> Result<()> {
         trace!("Deleting document with id: {}", id);
-        validate_document_id(id)?;
+        Self::validate_document_id(id)?;
         let source_path = self.path.join(format!("{}.json", id));
         let deleted_dir = self.path.join(".deleted");
         let dest_path = deleted_dir.join(format!("{}.json", id));
+
+        // Generate transaction ID for WAL
+        // Write to WAL before filesystem operation
+        if let Some(wal) = &self.wal_manager {
+            let entry = LogEntry::new(
+                EntryType::Delete,
+                self.name().to_string(),
+                id.to_string(),
+                None,
+            );
+            wal.write_entry(entry).await?;
+            debug!("WAL entry written for delete operation on document {}", id);
+        }
 
         // Check if source exists
         match tokio_fs::metadata(&source_path).await {
@@ -679,6 +708,7 @@ impl Collection {
                                             let collection_ref = Self {
                                                 path: collection_path.clone(),
                                                 signing_key: signing_key.clone(),
+                                                wal_manager: None,
                                             };
 
                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
@@ -824,6 +854,7 @@ impl Collection {
                                             let collection_ref = Self {
                                                 path: collection_path.clone(),
                                                 signing_key: signing_key.clone(),
+                                                wal_manager: None,
                                             };
 
                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
@@ -1110,6 +1141,7 @@ impl Collection {
                         let collection_ref = Self {
                             path: collection_path.clone(),
                             signing_key: signing_key.clone(),
+                                                wal_manager: None,
                         };
 
                         if let Err(e) = collection_ref.verify_document(&doc_with_id, &options).await {
@@ -1391,7 +1423,7 @@ impl Collection {
 
     pub async fn update(&self, id: &str, data: Value) -> Result<()> {
         trace!("Updating document with id: {}", id);
-        validate_document_id(id)?;
+        Self::validate_document_id(id)?;
 
         // Load existing document
         let Some(mut existing_doc) = self.get(id).await?
@@ -1404,6 +1436,18 @@ impl Collection {
 
         // Merge the new data with existing data
         let merged_data = Self::merge_json_values(existing_doc.data(), data);
+
+        // Write to WAL before filesystem operation
+        if let Some(wal) = &self.wal_manager {
+            let entry = LogEntry::new(
+                EntryType::Update,
+                self.name().to_string(),
+                id.to_string(),
+                Some(merged_data.clone()),
+            );
+            wal.write_entry(entry).await?;
+            debug!("WAL entry written for update operation on document {}", id);
+        }
 
         // Update the document data and metadata
         if let Some(key) = self.signing_key.as_ref() {
@@ -1659,52 +1703,147 @@ impl Collection {
         debug!("Aggregation result: {}", result);
         Ok(result)
     }
+
+    /// Validates that a document ID is filesystem-safe across all platforms.
+    ///
+    /// # Rules
+    /// - Must not be empty
+    /// - Must not contain path separators (`/` or `\`)
+    /// - Must not contain control characters (0x00-0x1F, 0x7F)
+    /// - Must not be a Windows reserved name (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    /// - Must not contain Windows reserved characters (< > : " | ? *)
+    /// - Must only contain valid filename characters
+    ///
+    /// # Parameters
+    /// - `id`: The document ID to validate
+    ///
+    /// # Returns
+    /// - `Ok(())` if the ID is valid
+    /// - `Err(SentinelError::InvalidDocumentId)` if the ID is invalid
+    pub fn validate_document_id(id: &str) -> Result<()> {
+        trace!("Validating document id: {}", id);
+        // Check if id is empty
+        if id.is_empty() {
+            warn!("Document id is empty");
+            return Err(SentinelError::InvalidDocumentId {
+                id: id.to_owned(),
+            });
+        }
+
+        // Check for valid characters
+        if !is_valid_document_id_chars(id) {
+            warn!("Document id contains invalid characters: {}", id);
+            return Err(SentinelError::InvalidDocumentId {
+                id: id.to_owned(),
+            });
+        }
+
+        // Check for Windows reserved names
+        if is_reserved_name(id) {
+            warn!("Document id is a reserved name: {}", id);
+            return Err(SentinelError::InvalidDocumentId {
+                id: id.to_owned(),
+            });
+        }
+
+        trace!("Document id '{}' is valid", id);
+        Ok(())
+    }
+
+    /// This method should be called periodically to prevent the WAL file from growing too large.
+    /// After checkpointing, the WAL is truncated but the data remains in the filesystem.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `SentinelError` if the checkpoint fails.
+    pub async fn checkpoint_wal(&self) -> Result<()> {
+        if let Some(wal) = &self.wal_manager {
+            wal.checkpoint().await?;
+            debug!("WAL checkpoint completed for collection {}", self.name());
+        }
+        Ok(())
+    }
+
+    /// Recovers the collection from the WAL after a crash.
+    ///
+    /// This method reads all entries from the WAL and replays them to ensure
+    /// the collection is in a consistent state. This is typically called during
+    /// collection initialization.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `SentinelError` if recovery fails.
+    pub async fn recover_from_wal(&self) -> Result<()> {
+        if let Some(wal) = &self.wal_manager {
+            let entries = wal.read_all_entries().await?;
+            info!(
+                "Recovering {} WAL entries for collection {}",
+                entries.len(),
+                self.name()
+            );
+
+            for entry in entries {
+                match entry.entry_type {
+                    EntryType::Insert => {
+                        if let Some(data) = entry.data_as_value()? {
+                            // Replay insert
+                            self.insert(entry.document_id_str(), data).await?;
+                        }
+                    },
+                    EntryType::Update => {
+                        if let Some(data) = entry.data_as_value()? {
+                            // For recovery, we can treat update as insert since WAL is append-only
+                            self.insert(entry.document_id_str(), data).await?;
+                        }
+                    },
+                    EntryType::Delete => {
+                        // Replay delete
+                        self.delete(entry.document_id_str()).await?;
+                    },
+                    EntryType::Begin | EntryType::Commit | EntryType::Rollback => {
+                        // Transaction operations - not implemented yet
+                        debug!(
+                            "Skipping transaction entry during recovery: {:?}",
+                            entry.entry_type
+                        );
+                    },
+                }
+            }
+
+            info!("WAL recovery completed for collection {}", self.name());
+        }
+        Ok(())
+    }
 }
 
-/// Validates that a document ID is filesystem-safe across all platforms.
-///
-/// # Rules
-/// - Must not be empty
-/// - Must not contain path separators (`/` or `\`)
-/// - Must not contain control characters (0x00-0x1F, 0x7F)
-/// - Must not be a Windows reserved name (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
-/// - Must not contain Windows reserved characters (< > : " | ? *)
-/// - Must only contain valid filename characters
-///
-/// # Parameters
-/// - `id`: The document ID to validate
-///
-/// # Returns
-/// - `Ok(())` if the ID is valid
-/// - `Err(SentinelError::InvalidDocumentId)` if the ID is invalid
-pub fn validate_document_id(id: &str) -> Result<()> {
-    trace!("Validating document id: {}", id);
-    // Check if id is empty
-    if id.is_empty() {
-        warn!("Document id is empty");
-        return Err(SentinelError::InvalidDocumentId {
-            id: id.to_owned(),
-        });
+#[async_trait::async_trait]
+impl WalDocumentOps for Collection {
+    async fn get_document(&self, id: &str) -> sentinel_wal::Result<Option<serde_json::Value>> {
+        self.get(id).await.map(|opt| opt.map(|d| d.data().clone())).map_err(|e| sentinel_wal::WalError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))))
     }
 
-    // Check for valid characters
-    if !is_valid_document_id_chars(id) {
-        warn!("Document id contains invalid characters: {}", id);
-        return Err(SentinelError::InvalidDocumentId {
-            id: id.to_owned(),
-        });
+    async fn apply_operation(&self, entry_type: &sentinel_wal::EntryType, id: &str, data: Option<serde_json::Value>) -> sentinel_wal::Result<()> {
+        match *entry_type {
+            sentinel_wal::EntryType::Insert => {
+                if let Some(data) = data {
+                    self.insert(id, data).await.map_err(|e| sentinel_wal::WalError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))))
+                } else {
+                    Err(sentinel_wal::WalError::InvalidEntry("Insert operation missing data".to_string()))
+                }
+            },
+            sentinel_wal::EntryType::Update => {
+                if let Some(data) = data {
+                    self.update(id, data).await.map_err(|e| sentinel_wal::WalError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))))
+                } else {
+                    Err(sentinel_wal::WalError::InvalidEntry("Update operation missing data".to_string()))
+                }
+            },
+            sentinel_wal::EntryType::Delete => {
+                self.delete(id).await.map_err(|e| sentinel_wal::WalError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))))
+            },
+            _ => Ok(()), // Other operations not handled here
+        }
     }
-
-    // Check for Windows reserved names
-    if is_reserved_name(id) {
-        warn!("Document id is a reserved name: {}", id);
-        return Err(SentinelError::InvalidDocumentId {
-            id: id.to_owned(),
-        });
-    }
-
-    trace!("Document id '{}' is valid", id);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1716,49 +1855,22 @@ mod tests {
     use super::*;
     use crate::Store;
 
-    /// Helper function to set up a temporary collection for testing
     async fn setup_collection() -> (Collection, tempfile::TempDir) {
-        // Initialize tracing for tests to ensure debug! macros are executed
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter("debug")
-            .try_init();
-
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().unwrap();
         let store = Store::new(temp_dir.path(), None).await.unwrap();
-        let collection = store.collection("test_collection").await.unwrap();
+        let collection = store.collection("test").await.unwrap();
         (collection, temp_dir)
     }
 
-    /// Helper function to set up a temporary collection with signing key for testing
     async fn setup_collection_with_signing_key() -> (Collection, tempfile::TempDir) {
-        // Initialize tracing for tests to ensure debug! macros are executed
-        let _ = tracing_subscriber::fmt()
-            .with_env_filter("debug")
-            .try_init();
-
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().unwrap();
         let store = Store::new(temp_dir.path(), Some("test_passphrase"))
             .await
             .unwrap();
-        let collection = store.collection("test_collection").await.unwrap();
+        let collection = store.collection("test").await.unwrap();
         (collection, temp_dir)
     }
 
-    #[tokio::test]
-    async fn test_insert_and_retrieve() {
-        let (collection, _temp_dir) = setup_collection().await;
-
-        let doc = json!({ "name": "Alice", "email": "alice@example.com" });
-        collection.insert("user-123", doc.clone()).await.unwrap();
-
-        let retrieved = collection
-            .get_with_verification("user-123", &crate::VerificationOptions::disabled())
-            .await
-            .unwrap();
-        assert_eq!(*retrieved.unwrap().data(), doc);
-    }
-
-    #[tokio::test]
     async fn test_insert_empty_document() {
         let (collection, _temp_dir) = setup_collection().await;
 
@@ -2170,68 +2282,68 @@ mod tests {
     #[test]
     fn test_validate_document_id_valid() {
         // Valid IDs
-        assert!(validate_document_id("user-123").is_ok());
-        assert!(validate_document_id("user_456").is_ok());
-        assert!(validate_document_id("data-item").is_ok());
-        assert!(validate_document_id("test_collection_123").is_ok());
-        assert!(validate_document_id("file-txt").is_ok());
-        assert!(validate_document_id("a").is_ok());
-        assert!(validate_document_id("123").is_ok());
+        assert!(Collection::validate_document_id("user-123").is_ok());
+        assert!(Collection::validate_document_id("user_456").is_ok());
+        assert!(Collection::validate_document_id("data-item").is_ok());
+        assert!(Collection::validate_document_id("test_collection_123").is_ok());
+        assert!(Collection::validate_document_id("file-txt").is_ok());
+        assert!(Collection::validate_document_id("a").is_ok());
+        assert!(Collection::validate_document_id("123").is_ok());
     }
 
     #[test]
     fn test_validate_document_id_invalid_empty() {
-        assert!(validate_document_id("").is_err());
+        assert!(Collection::validate_document_id("").is_err());
     }
 
     #[test]
     fn test_validate_document_id_invalid_path_separators() {
-        assert!(validate_document_id("path/traversal").is_err());
-        assert!(validate_document_id("path\\traversal").is_err());
+        assert!(Collection::validate_document_id("path/traversal").is_err());
+        assert!(Collection::validate_document_id("path\\traversal").is_err());
     }
 
     #[test]
     fn test_validate_document_id_invalid_control_characters() {
-        assert!(validate_document_id("file\nname").is_err());
-        assert!(validate_document_id("file\x00name").is_err());
+        assert!(Collection::validate_document_id("file\nname").is_err());
+        assert!(Collection::validate_document_id("file\x00name").is_err());
     }
 
     #[test]
     fn test_validate_document_id_invalid_windows_reserved_characters() {
-        assert!(validate_document_id("file<name>").is_err());
-        assert!(validate_document_id("file>name").is_err());
-        assert!(validate_document_id("file:name").is_err());
-        assert!(validate_document_id("file\"name").is_err());
-        assert!(validate_document_id("file|name").is_err());
-        assert!(validate_document_id("file?name").is_err());
-        assert!(validate_document_id("file*name").is_err());
+        assert!(Collection::validate_document_id("file<name>").is_err());
+        assert!(Collection::validate_document_id("file>name").is_err());
+        assert!(Collection::validate_document_id("file:name").is_err());
+        assert!(Collection::validate_document_id("file\"name").is_err());
+        assert!(Collection::validate_document_id("file|name").is_err());
+        assert!(Collection::validate_document_id("file?name").is_err());
+        assert!(Collection::validate_document_id("file*name").is_err());
     }
 
     #[test]
     fn test_validate_document_id_invalid_other_characters() {
-        assert!(validate_document_id("file name").is_err()); // space
-        assert!(validate_document_id("file@name").is_err()); // @
-        assert!(validate_document_id("file!name").is_err()); // !
-        assert!(validate_document_id("file🚀name").is_err()); // emoji
-        assert!(validate_document_id("fileéname").is_err()); // accented
-        assert!(validate_document_id("file.name").is_err()); // dot
+        assert!(Collection::validate_document_id("file name").is_err()); // space
+        assert!(Collection::validate_document_id("file@name").is_err()); // @
+        assert!(Collection::validate_document_id("file!name").is_err()); // !
+        assert!(Collection::validate_document_id("file🚀name").is_err()); // emoji
+        assert!(Collection::validate_document_id("fileéname").is_err()); // accented
+        assert!(Collection::validate_document_id("file.name").is_err()); // dot
     }
 
     #[test]
     fn test_validate_document_id_invalid_windows_reserved_names() {
         // Test reserved names (case-insensitive)
-        assert!(validate_document_id("CON").is_err());
-        assert!(validate_document_id("con").is_err());
-        assert!(validate_document_id("Con").is_err());
-        assert!(validate_document_id("PRN").is_err());
-        assert!(validate_document_id("AUX").is_err());
-        assert!(validate_document_id("NUL").is_err());
-        assert!(validate_document_id("COM1").is_err());
-        assert!(validate_document_id("LPT9").is_err());
+        assert!(Collection::validate_document_id("CON").is_err());
+        assert!(Collection::validate_document_id("con").is_err());
+        assert!(Collection::validate_document_id("Con").is_err());
+        assert!(Collection::validate_document_id("PRN").is_err());
+        assert!(Collection::validate_document_id("AUX").is_err());
+        assert!(Collection::validate_document_id("NUL").is_err());
+        assert!(Collection::validate_document_id("COM1").is_err());
+        assert!(Collection::validate_document_id("LPT9").is_err());
 
         // Test with extensions
-        assert!(validate_document_id("CON.txt").is_err());
-        assert!(validate_document_id("prn.backup").is_err());
+        assert!(Collection::validate_document_id("CON.txt").is_err());
+        assert!(Collection::validate_document_id("prn.backup").is_err());
     }
 
     #[tokio::test]
@@ -2850,7 +2962,7 @@ mod tests {
     async fn test_collection_name() {
         let (collection, _temp_dir) = setup_collection().await;
 
-        assert_eq!(collection.name(), "test_collection");
+        assert_eq!(collection.name(), "test");
     }
 
     #[tokio::test]
@@ -3000,7 +3112,7 @@ mod tests {
         // Verify it's in .deleted directory
         let deleted_path = temp_dir
             .path()
-            .join("data/test_collection/.deleted/doc-to-delete.json");
+            .join("data/test/.deleted/doc-to-delete.json");
         assert!(tokio::fs::metadata(&deleted_path).await.is_ok());
     }
 

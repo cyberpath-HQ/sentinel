@@ -77,6 +77,13 @@ pub enum SentinelError {
         operation: String,
     },
 
+    /// WAL (Write-Ahead Logging) operations failed
+    #[error("WAL error: {source}")]
+    Wal {
+        #[from]
+        source: sentinel_wal::WalError,
+    },
+
     /// Configuration error
     #[error("Configuration error: {message}")]
     ConfigError {

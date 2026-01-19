@@ -5,12 +5,21 @@ use std::{
 
 use tokio::fs as tokio_fs;
 use tracing::{debug, error, trace, warn};
+use sentinel_wal::WalManager;
 
 use crate::{
     validation::{is_reserved_name, is_valid_name_chars},
     Collection,
+    CollectionMetadata,
     Result,
     SentinelError,
+    StoreMetadata,
+    COLLECTION_METADATA_FILE,
+    DATA_DIR,
+    KEYS_COLLECTION,
+    STORE_METADATA_FILE,
+    WAL_DIR,
+    WAL_FILE,
 };
 
 /// The top-level manager for document collections in Cyberpath Sentinel.
@@ -116,13 +125,29 @@ impl Store {
             "Store root directory created or already exists: {:?}",
             root_path
         );
+
+        // Load or create store metadata
+        let metadata_path = root_path.join(STORE_METADATA_FILE);
+        let _store_metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
+            debug!("Loading existing store metadata");
+            let content = tokio_fs::read_to_string(&metadata_path).await?;
+            serde_json::from_str(&content)?
+        }
+        else {
+            debug!("Creating new store metadata");
+            let metadata = StoreMetadata::new();
+            let content = serde_json::to_string_pretty(&metadata)?;
+            tokio_fs::write(&metadata_path, content).await?;
+            metadata
+        };
+
         let mut store = Self {
             root_path,
             signing_key: None,
         };
         if let Some(passphrase) = passphrase {
             debug!("Passphrase provided, handling signing key");
-            let keys_collection = store.collection(".keys").await?;
+            let keys_collection = store.collection(KEYS_COLLECTION).await?;
             if let Some(doc) = keys_collection
                 .get_with_verification("signing_key", &crate::VerificationOptions::disabled())
                 .await?
@@ -250,18 +275,53 @@ impl Store {
     pub async fn collection(&self, name: &str) -> Result<Collection> {
         trace!("Accessing collection: {}", name);
         validate_collection_name(name)?;
-        let path = self.root_path.join("data").join(name);
+        let path = self.root_path.join(DATA_DIR).join(name);
         tokio_fs::create_dir_all(&path).await.map_err(|e| {
             error!("Failed to create collection directory {:?}: {}", path, e);
             e
         })?;
         debug!("Collection directory ensured: {:?}", path);
+
+        // Load or create collection metadata
+        let metadata_path = path.join(COLLECTION_METADATA_FILE);
+        let metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
+            debug!("Loading existing collection metadata for {}", name);
+            let content = tokio_fs::read_to_string(&metadata_path).await?;
+            serde_json::from_str(&content)?
+        }
+        else {
+            debug!("Creating new collection metadata for {}", name);
+            let metadata = CollectionMetadata::new(name.to_string());
+            let content = serde_json::to_string_pretty(&metadata)?;
+            tokio_fs::write(&metadata_path, content).await?;
+            metadata
+        };
+
+        // Create WAL manager with config from metadata
+        let wal_path = path.join(WAL_DIR).join(WAL_FILE);
+        let wal_config = metadata.wal_config;
+        let wal_manager = Some(Arc::new(
+            WalManager::new(wal_path, wal_config.into()).await?,
+        ));
+
         trace!("Collection '{}' accessed successfully", name);
         Ok(Collection {
             path,
             signing_key: self.signing_key.clone(),
+            wal_manager,
         })
     }
+
+    /// Returns the root path of the store.
+    ///
+    /// This method provides access to the root directory path where the store
+    /// is located. This is useful for operations that need to access store-level
+    /// metadata files.
+    ///
+    /// # Returns
+    ///
+    /// Returns a reference to the `PathBuf` containing the store's root path.
+    pub fn root_path(&self) -> &PathBuf { &self.root_path }
 
     /// Deletes a collection and all its documents.
     ///
