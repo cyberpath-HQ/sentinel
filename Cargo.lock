@@ -1641,6 +1641,7 @@ dependencies = [
  "hex",
  "sentinel-crypto",
  "sentinel-dbms",
+ "sentinel-wal",
  "serde_json",
  "tempfile",
  "tokio",
