@@ -42,7 +42,12 @@ pub use sentinel_crypto::crypto_config::*;
 pub use store::Store;
 pub use verification::{VerificationMode, VerificationOptions};
 pub use metadata::{CollectionMetadata, MetadataVersion, StoreMetadata};
-pub use sentinel_wal::{CollectionWalConfig, StoreWalConfig, WalFailureMode};
+pub use sentinel_wal::{
+    CollectionWalConfig, StoreWalConfig, WalFailureMode, CompressionAlgorithm, WalFormat,
+    EntryType, LogEntry, WalDocumentOps, WalManager, WalConfig, WalError, WalVerificationIssue,
+    WalVerificationResult, WalRecoveryFailure, WalRecoveryResult, verify_wal_consistency,
+    recover_from_wal_force, recover_from_wal_safe
+};
 
 /// The current version of the Sentinel metadata format.
 pub const META_SENTINEL_VERSION: u32 = 1;
