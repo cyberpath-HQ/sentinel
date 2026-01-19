@@ -8,6 +8,8 @@ mod constants;
 mod document;
 /// Error types module.
 mod error;
+/// Event system module.
+mod events;
 /// Filtering utilities module.
 mod filtering;
 /// Metadata management module.
