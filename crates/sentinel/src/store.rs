@@ -67,8 +67,8 @@ pub struct Store {
     created_at:       chrono::DateTime<chrono::Utc>,
     /// When the store was last accessed.
     last_accessed_at: std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
-    /// Total operations performed across all collections.
-    total_operations: std::sync::atomic::AtomicU64,
+    /// Total size of all collections in bytes.
+    total_size_bytes: std::sync::atomic::AtomicU64,
 }
 
 impl Store {
@@ -154,7 +154,7 @@ impl Store {
             signing_key:      None,
             created_at:       now,
             last_accessed_at: std::sync::RwLock::new(now),
-            total_operations: std::sync::atomic::AtomicU64::new(0),
+            total_size_bytes: std::sync::atomic::AtomicU64::new(0),
         };
         if let Some(passphrase) = passphrase {
             debug!("Passphrase provided, handling signing key");
@@ -230,10 +230,9 @@ impl Store {
     /// Returns the last access timestamp of the store.
     pub fn last_accessed_at(&self) -> DateTime<Utc> { *self.last_accessed_at.read().unwrap() }
 
-    /// Returns the total number of operations performed across all collections.
-    pub fn total_operations(&self) -> u64 {
-        self.total_operations
-            .load(std::sync::atomic::Ordering::Relaxed)
+    /// Returns the total size of all collections in the store in bytes.
+    pub fn total_size_bytes(&self) -> u64 {
+        self.total_size_bytes.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Retrieves or creates a collection with the specified name.
@@ -332,8 +331,6 @@ impl Store {
 
         // Update store metadata
         *self.last_accessed_at.write().unwrap() = now;
-        self.total_operations
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         Ok(Collection {
             path,
@@ -343,7 +340,7 @@ impl Store {
             updated_at:         std::sync::RwLock::new(now),
             last_checkpoint_at: std::sync::RwLock::new(None),
             total_documents:    std::sync::atomic::AtomicU64::new(0),
-            total_operations:   std::sync::atomic::AtomicU64::new(0),
+            total_size_bytes:   std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -411,8 +408,6 @@ impl Store {
 
         // Update store metadata
         *self.last_accessed_at.write().unwrap() = chrono::Utc::now();
-        self.total_operations
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         Ok(())
     }
