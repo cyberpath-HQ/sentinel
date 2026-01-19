@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, mkdirSync, copyFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const nextRelease = process.env.NEXT_RELEASE_VERSION || process.argv[2];
-
 const isDryRun = process.argv.includes('--dry-run') || process.argv.includes('--dryRun') || process.env.DRY_RUN;
 
 if (!nextRelease) {
@@ -34,38 +33,33 @@ function section(name) {
   console.log(`${'='.repeat(60)}\n`);
 }
 
-  async function main() {
-    const workspaceRoot = join(__dirname, '..');
+async function main() {
+  const workspaceRoot = join(__dirname, '..');
 
-    section('Publishing Rust Crates to crates.io');
+  section('Publishing Rust Crates to crates.io');
 
-    const publishOpts = isDryRun ? { cwd: workspaceRoot, env: { ...process.env, CARGO_REGISTRY_TOKEN: '' } } : { cwd: workspaceRoot };
-    if (isDryRun) {
-      console.log('[DRY RUN] Would publish: cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml');
-      console.log('[DRY RUN] Would publish: cargo publish --manifest-path crates/sentinel/Cargo.toml');
-      console.log('[DRY RUN] Would publish: cargo publish --manifest-path crates/cli/Cargo.toml');
-    } else {
-      run('cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml', publishOpts);
-      run('cargo publish --manifest-path crates/sentinel/Cargo.toml', publishOpts);
-      run('cargo publish --manifest-path crates/cli/Cargo.toml', publishOpts);
-    }
+  if (isDryRun) {
+    console.log('[DRY RUN] Would publish Rust crates to crates.io');
+  } else {
+    run('cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml', { cwd: workspaceRoot });
+    run('cargo publish --manifest-path crates/sentinel/Cargo.toml', { cwd: workspaceRoot });
+    run('cargo publish --manifest-path crates/cli/Cargo.toml', { cwd: workspaceRoot });
+  }
 
-   section('Creating C/C++ Development Package');
+  section('Creating C/C++ Development Package');
 
-   const cxxBindings = join(workspaceRoot, 'bindings', 'cxx');
-   const distDir = join(workspaceRoot, 'dist');
+  const cxxBindings = join(workspaceRoot, 'bindings', 'cxx');
+  const distDir = join(workspaceRoot, 'dist');
   mkdirSync(distDir, { recursive: true });
 
   const packageName = `sentinel-cxx-dev-${nextRelease}`;
   const stagingDir = join(distDir, packageName);
   const libDir = join(stagingDir, 'lib');
 
-  // Clean staging directory
   run(`rm -rf ${stagingDir}`);
   mkdirSync(stagingDir, { recursive: true });
   mkdirSync(libDir, { recursive: true });
 
-  // Copy libraries for each target
   const targets = [
     { system: 'linux-x86_64', rustTarget: 'x86_64-unknown-linux-gnu', ext: '.so' },
     { system: 'macos-x86_64', rustTarget: 'x86_64-apple-darwin', ext: '.dylib' },
@@ -91,7 +85,6 @@ function section(name) {
     }
   }
 
-  // Copy header from one of the builds (headers should be the same)
   const headerSrc = join(workspaceRoot, 'target', 'x86_64-unknown-linux-gnu', 'release', 'sentinel-cxx.h');
   const includeDir = join(stagingDir, 'include');
   mkdirSync(includeDir, { recursive: true });
@@ -99,13 +92,11 @@ function section(name) {
     copyFileSync(headerSrc, join(includeDir, 'sentinel-cxx.h'));
   }
 
-  // Copy additional headers from bindings
   const bindingsInclude = join(cxxBindings, 'include');
   if (existsSync(bindingsInclude)) {
     run(`cp -r ${bindingsInclude}/* ${includeDir}/`, { cwd: workspaceRoot });
   }
 
-  // Copy cmake files
   const cmakeDir = join(stagingDir, 'cmake');
   mkdirSync(cmakeDir, { recursive: true });
   const bindingsCmake = join(cxxBindings, 'cmake');
@@ -113,7 +104,6 @@ function section(name) {
     run(`cp -r ${bindingsCmake}/* ${cmakeDir}/`, { cwd: workspaceRoot });
   }
 
-  // Copy examples
   const examplesDir = join(stagingDir, 'examples');
   mkdirSync(examplesDir, { recursive: true });
   const bindingsExamples = join(cxxBindings, 'examples');
@@ -121,7 +111,6 @@ function section(name) {
     run(`cp -r ${bindingsExamples}/* ${examplesDir}/`, { cwd: workspaceRoot });
   }
 
-  // Copy documentation and build files
   const filesToCopy = ['README.md', 'CMakeLists.txt'];
   for (const file of filesToCopy) {
     const src = join(cxxBindings, file);
@@ -130,7 +119,6 @@ function section(name) {
     }
   }
 
-  // Create zip
   const zipName = `${packageName}.zip`;
   const zipPath = join(distDir, zipName);
 
@@ -143,81 +131,62 @@ function section(name) {
 
   section('Building Python Wheel');
 
-    const wheelsDir = join(workspaceRoot, 'target', 'wheels');
-    const pythonBindings = join(workspaceRoot, 'bindings', 'python');
-    if (!existsSync(pythonBindings)) {
-      console.log('⚠️  bindings/python not found, skipping Python wheel');
-    } else if (!isDryRun) {
-      mkdirSync(wheelsDir, { recursive: true });
-      run(`maturin build --manifest-path ${join(workspaceRoot, 'crates', 'sentinel-python', 'Cargo.toml')} --release --out ${wheelsDir}`);
-    } else {
-      console.log('[DRY RUN] Would build Python wheel');
-    }
+  const wheelsDir = join(workspaceRoot, 'target', 'wheels');
+  const pythonBindings = join(workspaceRoot, 'bindings', 'python');
+
+  if (!existsSync(pythonBindings)) {
+    console.log('⚠️  bindings/python not found, skipping Python wheel');
+  } else {
+    mkdirSync(wheelsDir, { recursive: true });
+    run(`maturin build --manifest-path ${join(workspaceRoot, 'crates', 'sentinel-python', 'Cargo.toml')} --release --out ${wheelsDir}`);
+  }
 
   section('Publishing Python to PyPI');
 
-    if (isDryRun) {
-      console.log('[DRY RUN] Would upload Python wheel to PyPI');
-    } else if (process.env.TWINE_USERNAME && process.env.TWINE_PASSWORD) {
-      run(`twine upload ${wheelsDir}/*.whl --skip-existing --non-interactive`);
-    } else {
-      console.log('⚠️  TWINE_USERNAME or TWINE_PASSWORD not set, skipping PyPI upload');
-    }
-
-    section('Building Node.js Native Modules');
-
-    const jsBindings = join(workspaceRoot, 'bindings', 'js');
-    if (!existsSync(jsBindings)) {
-      console.log('⚠️  bindings/js not found, skipping Node.js native module');
-    } else if (isDryRun) {
-      console.log('[DRY RUN] Would build and publish Node.js native module');
-    } else {
-      run('npm ci', { cwd: jsBindings });
-      run(`cargo build --release -p sentinel-js`, { cwd: workspaceRoot });
-      run(`cp ${join(workspaceRoot, 'crates', 'sentinel-js', 'target', 'release', '*.node')} ${join(jsBindings, 'native')}/ 2>/dev/null || true`, { cwd: workspaceRoot });
-
-      section('Publishing Node.js Native to npm');
-
-      if (process.env.NPM_TOKEN) {
-        run('npm publish', { cwd: jsBindings });
-      } else {
-        console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
-      }
-    }
-
-    section('Building WASM Package');
-
-    const wasmBindings = join(workspaceRoot, 'bindings', 'wasm');
-    if (!existsSync(wasmBindings)) {
-      console.log('⚠️  bindings/wasm not found, skipping WASM package');
-    } else if (!isDryRun) {
-      run('wasm-pack build --release', { cwd: wasmBindings });
-    } else {
-      console.log('[DRY RUN] Would build WASM package');
-    }
-
-    section('Publishing WASM to npm');
-
-    if (!existsSync(wasmBindings)) {
-      console.log('⚠️  bindings/wasm not found, skipping WASM npm upload');
-    } else if (isDryRun) {
-      console.log('[DRY RUN] Would publish WASM package to npm');
-    } else if (process.env.NPM_TOKEN) {
-      run('npm publish', { cwd: wasmBindings });
-    } else {
-      console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
-    }
-
-    section(isDryRun ? 'Dry Run Complete!' : 'Release Complete!');
-
-    if (isDryRun) {
-      console.log('Dry run completed. No packages were published.');
-    } else {
-      console.log('Release completed successfully.');
-    }
+  if (!existsSync(pythonBindings)) {
+    console.log('⚠️  bindings/python not found, skipping PyPI upload');
+  } else if (isDryRun) {
+    console.log('[DRY RUN] Would upload Python wheel to PyPI');
+  } else if (process.env.TWINE_USERNAME && process.env.TWINE_PASSWORD) {
+    run(`twine upload ${wheelsDir}/*.whl --skip-existing --non-interactive`);
+  } else {
+    console.log('⚠️  TWINE_USERNAME or TWINE_PASSWORD not set, skipping PyPI upload');
   }
 
-  main().catch(error => {
-    console.error('Release failed:', error);
-    process.exit(1);
-  });
+  section('Building Node.js Native Modules');
+
+  const jsBindings = join(workspaceRoot, 'bindings', 'js');
+
+  if (!existsSync(jsBindings)) {
+    console.log('⚠️  bindings/js not found, skipping Node.js native module');
+  } else {
+    run('npm ci', { cwd: jsBindings });
+    run(`cargo build --release -p sentinel-js`, { cwd: workspaceRoot });
+    run(`cp ${join(workspaceRoot, 'crates', 'sentinel-js', 'target', 'release', '*.node')} ${join(jsBindings, 'native')}/ 2>/dev/null || true`, { cwd: workspaceRoot });
+  }
+
+  section('Publishing Node.js Native to npm');
+
+  if (!existsSync(jsBindings)) {
+    console.log('⚠️  bindings/js not found, skipping npm upload');
+  } else if (isDryRun) {
+    console.log('[DRY RUN] Would publish Node.js native module to npm');
+  } else if (process.env.NPM_TOKEN) {
+    run('npm publish', { cwd: jsBindings });
+  } else {
+    console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
+  }
+
+  section(isDryRun ? 'Dry Run Complete!' : 'Release Complete!');
+
+  if (isDryRun) {
+    console.log('Dry run completed. No packages were published.');
+  } else {
+    console.log('Release completed successfully.');
+  }
+}
+
+main().catch(error => {
+  console.error('Release failed:', error);
+  process.exit(1);
+});
