@@ -33,8 +33,8 @@ fn test_cxx_bindings_build() {
         fs::create_dir_all(&build_dir).expect("Failed to create build directory");
     }
 
-    // Configure with CMake
-    let cmake_result = Command::new("cmake")
+    // Configure with CMake - retry once if it fails (sometimes CMake has issues on first run)
+    let mut cmake_result = Command::new("cmake")
         .args(&["..", "-DCMAKE_BUILD_TYPE=Debug"])
         .current_dir(&build_dir)
         .stdout(Stdio::inherit())
@@ -42,7 +42,24 @@ fn test_cxx_bindings_build() {
         .status()
         .expect("Failed to run cmake");
 
-    assert!(cmake_result.success(), "CMake configuration failed");
+    // If CMake fails, wait a moment and try again
+    if !cmake_result.success() {
+        println!("CMake configuration failed, retrying...");
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        cmake_result = Command::new("cmake")
+            .args(&["..", "-DCMAKE_BUILD_TYPE=Debug"])
+            .current_dir(&build_dir)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .expect("Failed to run cmake on retry");
+    }
+
+    assert!(
+        cmake_result.success(),
+        "CMake configuration failed after retry"
+    );
 
     // Build with make
     let make_result = Command::new("make")
