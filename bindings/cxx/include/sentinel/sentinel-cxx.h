@@ -160,6 +160,29 @@ uint64_t sentinel_collection_count_async(struct sentinel_collection_t *collectio
                                          char *user_data);
 
 /**
+ * Execute a query asynchronously
+ */
+uint64_t sentinel_collection_query_async(struct sentinel_collection_t *collection,
+                                         struct sentinel_query_t *query,
+                                         DocumentCallback callback,
+                                         ErrorCallback error_callback,
+                                         char *user_data);
+
+/**
+ * Combine two queries with OR logic
+ * Creates a new query that matches either the left OR right query
+ */
+struct sentinel_query_t *sentinel_query_or(struct sentinel_query_t *left,
+                                           struct sentinel_query_t *right);
+
+/**
+ * Combine two queries with AND logic
+ * Creates a new query that matches both the left AND right query
+ */
+struct sentinel_query_t *sentinel_query_and(struct sentinel_query_t *left,
+                                            struct sentinel_query_t *right);
+
+/**
  * Create a new query builder
  * Returns NULL on error
  */
@@ -223,55 +246,36 @@ enum sentinel_error_t sentinel_query_builder_filter_ends_with(struct sentinel_qu
                                                               const char *suffix);
 
 /**
- * Add an in filter to a query (value must be in the provided JSON array)
+ * Add an in filter to a query (field value in array)
  */
 enum sentinel_error_t sentinel_query_builder_filter_in(struct sentinel_query_t *query,
                                                        const char *field,
                                                        const char *json_array);
 
 /**
- * Add an exists filter to a query
- * exists: 1 for field must exist, 0 for field must not exist
+ * Add an exists filter to a query (field exists or doesn't exist)
  */
 enum sentinel_error_t sentinel_query_builder_filter_exists(struct sentinel_query_t *query,
                                                            const char *field,
-                                                           uint32_t exists);
+                                                           uint32_t should_exist);
 
 /**
- * Combine two queries with OR logic
- * Creates a new query that matches either the left OR right query
- */
-struct sentinel_query_t *sentinel_query_or(struct sentinel_query_t *left,
-                                           struct sentinel_query_t *right);
-
-/**
- * Combine two queries with AND logic
- * Creates a new query that matches both the left AND right query
- */
-struct sentinel_query_t *sentinel_query_and(struct sentinel_query_t *left,
-                                             struct sentinel_query_t *right);
-
-/**
- * Add sorting to a query
- * field: field name to sort by
- * descending: 0 for ascending, non-zero for descending
+ * Set sorting for a query
+ * order: 0 = ascending, 1 = descending
  */
 enum sentinel_error_t sentinel_query_builder_sort(struct sentinel_query_t *query,
-                                                 const char *field,
-                                                 uint32_t descending);
+                                                  const char *field,
+                                                  uint32_t order);
 
 /**
- * Add limit to a query
- * limit: maximum number of results to return
+ * Set limit for a query
  */
-enum sentinel_error_t sentinel_query_builder_limit(struct sentinel_query_t *query,
-                                                  uint32_t limit);
+enum sentinel_error_t sentinel_query_builder_limit(struct sentinel_query_t *query, uint32_t limit);
 
 /**
- * Add offset to a query (skip first N results)
- * offset: number of results to skip
+ * Set offset for a query (for pagination)
  */
 enum sentinel_error_t sentinel_query_builder_offset(struct sentinel_query_t *query,
-                                                   uint32_t offset);
+                                                    uint32_t offset);
 
 #endif  /* SENTINEL_CXX_H */
