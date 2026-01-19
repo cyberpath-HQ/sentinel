@@ -143,10 +143,16 @@ function section(name) {
 
   section('Building Python Wheel');
 
-  const wheelsDir = join(workspaceRoot, 'target', 'wheels');
-  mkdirSync(wheelsDir, { recursive: true });
-
-  run(`maturin build --manifest-path ${join(workspaceRoot, 'crates', 'sentinel-python', 'Cargo.toml')} --release --out ${wheelsDir}`);
+    const wheelsDir = join(workspaceRoot, 'target', 'wheels');
+    const pythonBindings = join(workspaceRoot, 'bindings', 'python');
+    if (!existsSync(pythonBindings)) {
+      console.log('⚠️  bindings/python not found, skipping Python wheel');
+    } else if (!isDryRun) {
+      mkdirSync(wheelsDir, { recursive: true });
+      run(`maturin build --manifest-path ${join(workspaceRoot, 'crates', 'sentinel-python', 'Cargo.toml')} --release --out ${wheelsDir}`);
+    } else {
+      console.log('[DRY RUN] Would build Python wheel');
+    }
 
   section('Publishing Python to PyPI');
 
@@ -158,30 +164,43 @@ function section(name) {
       console.log('⚠️  TWINE_USERNAME or TWINE_PASSWORD not set, skipping PyPI upload');
     }
 
-  section('Building Node.js Native Modules');
+    section('Building Node.js Native Modules');
 
-  const jsBindings = join(workspaceRoot, 'bindings', 'js');
-  run('npm ci', { cwd: jsBindings });
-  run('npx @napi-rs/cli build --release', { cwd: jsBindings });
-
-  section('Publishing Node.js Native to npm');
-
-    if (isDryRun) {
-      console.log('[DRY RUN] Would publish Node.js native module to npm');
-    } else if (process.env.NPM_TOKEN) {
-      run('npm publish', { cwd: jsBindings });
+    const jsBindings = join(workspaceRoot, 'bindings', 'js');
+    if (!existsSync(jsBindings)) {
+      console.log('⚠️  bindings/js not found, skipping Node.js native module');
+    } else if (isDryRun) {
+      console.log('[DRY RUN] Would build and publish Node.js native module');
     } else {
-      console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
+      run('npm ci', { cwd: jsBindings });
+      run(`cargo build --release -p sentinel-js`, { cwd: workspaceRoot });
+      run(`cp ${join(workspaceRoot, 'crates', 'sentinel-js', 'target', 'release', '*.node')} ${join(jsBindings, 'native')}/ 2>/dev/null || true`, { cwd: workspaceRoot });
+
+      section('Publishing Node.js Native to npm');
+
+      if (process.env.NPM_TOKEN) {
+        run('npm publish', { cwd: jsBindings });
+      } else {
+        console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
+      }
     }
 
-  section('Building WASM Package');
+    section('Building WASM Package');
 
-  const wasmBindings = join(workspaceRoot, 'bindings', 'wasm');
-  run('wasm-pack build --release', { cwd: wasmBindings });
+    const wasmBindings = join(workspaceRoot, 'bindings', 'wasm');
+    if (!existsSync(wasmBindings)) {
+      console.log('⚠️  bindings/wasm not found, skipping WASM package');
+    } else if (!isDryRun) {
+      run('wasm-pack build --release', { cwd: wasmBindings });
+    } else {
+      console.log('[DRY RUN] Would build WASM package');
+    }
 
-  section('Publishing WASM to npm');
+    section('Publishing WASM to npm');
 
-    if (isDryRun) {
+    if (!existsSync(wasmBindings)) {
+      console.log('⚠️  bindings/wasm not found, skipping WASM npm upload');
+    } else if (isDryRun) {
       console.log('[DRY RUN] Would publish WASM package to npm');
     } else if (process.env.NPM_TOKEN) {
       run('npm publish', { cwd: wasmBindings });
@@ -189,17 +208,16 @@ function section(name) {
       console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
     }
 
-  section(isDryRun ? 'Dry Run Complete!' : 'Release Complete!');
+    section(isDryRun ? 'Dry Run Complete!' : 'Release Complete!');
 
-    console.log(isDryRun ? 'Dry run completed. No packages were published.' : 'Published:');
-  console.log('  ✓ Rust crates to crates.io');
-  console.log('  ✓ C/C++ development package ready');
-  console.log('  ✓ Python wheel to PyPI');
-  console.log('  ✓ Node.js native to npm');
-  console.log('  ✓ WASM package to npm');
-}
+    if (isDryRun) {
+      console.log('Dry run completed. No packages were published.');
+    } else {
+      console.log('Release completed successfully.');
+    }
+  }
 
-main().catch(error => {
-  console.error('Release failed:', error);
-  process.exit(1);
-});
+  main().catch(error => {
+    console.error('Release failed:', error);
+    process.exit(1);
+  });
