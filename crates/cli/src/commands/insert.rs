@@ -271,6 +271,7 @@ mod tests {
             path:        store_path.to_string_lossy().to_string(),
             passphrase:  None,
             signing_key: None,
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -310,6 +311,7 @@ mod tests {
             path:        store_path.to_string_lossy().to_string(),
             passphrase:  None,
             signing_key: None,
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -348,6 +350,7 @@ mod tests {
             path:        store_path.to_string_lossy().to_string(),
             passphrase:  None,
             signing_key: None,
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -386,6 +389,7 @@ mod tests {
             path:        store_path.to_string_lossy().to_string(),
             passphrase:  None,
             signing_key: None,
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -424,6 +428,7 @@ mod tests {
             path:        store_path.to_string_lossy().to_string(),
             passphrase:  None,
             signing_key: None,
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -453,6 +458,7 @@ mod tests {
             path:        store_path.to_string_lossy().to_string(),
             passphrase:  None,
             signing_key: None,
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -495,6 +501,7 @@ mod tests {
             path:        store_path.to_string_lossy().to_string(),
             passphrase:  None,
             signing_key: None,
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
@@ -536,6 +543,7 @@ mod tests {
             path:        store_path.to_string_lossy().to_string(),
             passphrase:  None,
             signing_key: None,
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 

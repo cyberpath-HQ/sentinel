@@ -255,9 +255,10 @@ mod tests {
 
         // Init store only
         let init_args = crate::commands::init::InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
+            ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 

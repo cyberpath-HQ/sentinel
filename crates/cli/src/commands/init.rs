@@ -6,13 +6,49 @@ use tracing::{error, info};
 pub struct InitArgs {
     /// Path to the store directory
     #[arg(short, long)]
-    pub path:        String,
+    pub path:                    String,
     /// Passphrase for encrypting the signing key
     #[arg(long)]
-    pub passphrase:  Option<String>,
+    pub passphrase:              Option<String>,
     /// Signing key to use (hex-encoded). If not provided, a new one is generated.
     #[arg(long)]
-    pub signing_key: Option<String>,
+    pub signing_key:             Option<String>,
+    /// Maximum WAL file size in bytes (default: 10MB)
+    #[arg(long)]
+    pub wal_max_file_size:       Option<u64>,
+    /// WAL file format: binary or json_lines (default: binary)
+    #[arg(long, value_enum)]
+    pub wal_format:              Option<String>,
+    /// WAL compression algorithm: zstd, lz4, brotli, deflate, gzip (default: zstd)
+    #[arg(long, value_enum)]
+    pub wal_compression:         Option<String>,
+    /// Maximum number of records per WAL file (default: 1000)
+    #[arg(long)]
+    pub wal_max_records:         Option<usize>,
+    /// WAL write mode: disabled, warn, strict (default: strict)
+    #[arg(long, value_enum)]
+    pub wal_write_mode:          Option<String>,
+    /// WAL verification mode: disabled, warn, strict (default: warn)
+    #[arg(long, value_enum)]
+    pub wal_verify_mode:         Option<String>,
+    /// Enable automatic document verification against WAL (default: false)
+    #[arg(long)]
+    pub wal_auto_verify:         Option<bool>,
+    /// Enable WAL-based recovery features (default: true)
+    #[arg(long)]
+    pub wal_enable_recovery:     Option<bool>,
+    /// Store-level WAL failure mode: disabled, warn, strict (default: strict)
+    #[arg(long, value_enum)]
+    pub wal_store_failure_mode:  Option<String>,
+    /// Enable automatic store-wide checkpoints (default: true)
+    #[arg(long)]
+    pub wal_auto_checkpoint:     Option<bool>,
+    /// Interval for automatic checkpoints in seconds (default: 300)
+    #[arg(long)]
+    pub wal_checkpoint_interval: Option<u64>,
+    /// Maximum WAL file size before forcing checkpoint in bytes (default: 100MB)
+    #[arg(long)]
+    pub wal_store_max_size:      Option<u64>,
 }
 
 /// Initialize a new Sentinel store at the specified path.
@@ -86,9 +122,14 @@ mod tests {
         let store_path = temp_dir.path().join("test_store");
 
         let args = InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
+            wal_max_file_size: None,
+            wal_format: None,
+            wal_compression: None,
+            wal_max_records: None,
+            ..Default::default()
         };
 
         let result = run(args).await;
@@ -113,9 +154,14 @@ mod tests {
         std::fs::write(&file_path, "not a dir").unwrap();
 
         let args = InitArgs {
-            path:        file_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: file_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
+            wal_max_file_size: None,
+            wal_format: None,
+            wal_compression: None,
+            wal_max_records: None,
+            ..Default::default()
         };
 
         let result = run(args).await;
@@ -136,9 +182,14 @@ mod tests {
         std::fs::create_dir(&store_path).unwrap();
 
         let args = InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
+            wal_max_file_size: None,
+            wal_format: None,
+            wal_compression: None,
+            wal_max_records: None,
+            ..Default::default()
         };
 
         let result = run(args).await;
@@ -156,9 +207,14 @@ mod tests {
         let store_path = temp_dir.path().join("nested").join("deep").join("store");
 
         let args = InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
+            wal_max_file_size: None,
+            wal_format: None,
+            wal_compression: None,
+            wal_max_records: None,
+            ..Default::default()
         };
 
         let result = run(args).await;
@@ -180,9 +236,14 @@ mod tests {
         let key_hex = sentinel_crypto::SigningKeyManager::export_key(&key);
 
         let args = InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  Some("test_passphrase".to_string()),
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: Some("test_passphrase".to_string()),
             signing_key: Some(key_hex),
+            wal_max_file_size: None,
+            wal_format: None,
+            wal_compression: None,
+            wal_max_records: None,
+            ..Default::default()
         };
 
         let result = run(args).await;
