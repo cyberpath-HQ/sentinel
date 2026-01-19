@@ -19,7 +19,7 @@ use sentinel_dbms::{
 use sentinel_crypto::{hash_data, sign_hash, verify_signature};
 
 #[pymodule]
-fn sentinel_python(_py: Python, m: &PyModule) -> PyResult<()> {
+fn sentinel(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyStore>()?;
     m.add_class::<PyCollection>()?;
     m.add_class::<PyDocument>()?;
@@ -988,7 +988,7 @@ mod tests {
         // Set PYTHONPATH to include the target directory
         let python_path = std::env::var("PYTHONPATH").unwrap_or_default();
         let new_python_path = if python_path.is_empty() {
-            target_dir.to_string_lossy().to_string()
+            target_dir.to_string_lossy().into_owned()
         }
         else {
             format!("{}:{}", target_dir.to_string_lossy(), python_path)
@@ -1047,7 +1047,7 @@ mod tests {
         // Set PYTHONPATH to include the target directory
         let python_path = std::env::var("PYTHONPATH").unwrap_or_default();
         let new_python_path = if python_path.is_empty() {
-            target_dir.to_string_lossy().to_string()
+            target_dir.to_string_lossy().into_owned()
         }
         else {
             format!("{}:{}", target_dir.to_string_lossy(), python_path)
