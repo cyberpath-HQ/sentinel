@@ -9,12 +9,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const nextRelease = process.env.NEXT_RELEASE_VERSION || process.argv[2];
 
+const isDryRun = process.argv.includes('--dry-run') || process.argv.includes('--dryRun');
+
 if (!nextRelease) {
   console.error('Error: NEXT_RELEASE_VERSION not set');
   process.exit(1);
 }
 
-console.log(`\n🚀 Starting release process for version ${nextRelease}\n`);
+console.log(`\n🚀 Starting release process for version ${nextRelease}${isDryRun ? ' (DRY RUN)' : ''}\n`);
 
 function run(cmd, options = {}) {
   console.log(`$ ${cmd}`);
@@ -32,14 +34,21 @@ function section(name) {
   console.log(`${'='.repeat(60)}\n`);
 }
 
-async function main() {
-  const workspaceRoot = join(__dirname, '..');
+  async function main() {
+    const workspaceRoot = join(__dirname, '..');
 
-   section('Publishing Rust Crates to crates.io');
+    section('Publishing Rust Crates to crates.io');
 
-   run('cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml', { cwd: workspaceRoot });
-   run('cargo publish --manifest-path crates/sentinel/Cargo.toml', { cwd: workspaceRoot });
-   run('cargo publish --manifest-path crates/cli/Cargo.toml', { cwd: workspaceRoot });
+    const publishOpts = isDryRun ? { cwd: workspaceRoot, env: { ...process.env, CARGO_REGISTRY_TOKEN: '' } } : { cwd: workspaceRoot };
+    if (isDryRun) {
+      console.log('[DRY RUN] Would publish: cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml');
+      console.log('[DRY RUN] Would publish: cargo publish --manifest-path crates/sentinel/Cargo.toml');
+      console.log('[DRY RUN] Would publish: cargo publish --manifest-path crates/cli/Cargo.toml');
+    } else {
+      run('cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml', publishOpts);
+      run('cargo publish --manifest-path crates/sentinel/Cargo.toml', publishOpts);
+      run('cargo publish --manifest-path crates/cli/Cargo.toml', publishOpts);
+    }
 
    section('Creating C/C++ Development Package');
 
@@ -141,11 +150,13 @@ async function main() {
 
   section('Publishing Python to PyPI');
 
-  if (process.env.TWINE_USERNAME && process.env.TWINE_PASSWORD) {
-    run(`twine upload ${wheelsDir}/*.whl --skip-existing --non-interactive`);
-  } else {
-    console.log('⚠️  TWINE_USERNAME or TWINE_PASSWORD not set, skipping PyPI upload');
-  }
+    if (isDryRun) {
+      console.log('[DRY RUN] Would upload Python wheel to PyPI');
+    } else if (process.env.TWINE_USERNAME && process.env.TWINE_PASSWORD) {
+      run(`twine upload ${wheelsDir}/*.whl --skip-existing --non-interactive`);
+    } else {
+      console.log('⚠️  TWINE_USERNAME or TWINE_PASSWORD not set, skipping PyPI upload');
+    }
 
   section('Building Node.js Native Modules');
 
@@ -155,11 +166,13 @@ async function main() {
 
   section('Publishing Node.js Native to npm');
 
-  if (process.env.NPM_TOKEN) {
-    run('npm publish', { cwd: jsBindings });
-  } else {
-    console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
-  }
+    if (isDryRun) {
+      console.log('[DRY RUN] Would publish Node.js native module to npm');
+    } else if (process.env.NPM_TOKEN) {
+      run('npm publish', { cwd: jsBindings });
+    } else {
+      console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
+    }
 
   section('Building WASM Package');
 
@@ -168,15 +181,17 @@ async function main() {
 
   section('Publishing WASM to npm');
 
-  if (process.env.NPM_TOKEN) {
-    run('npm publish', { cwd: wasmBindings });
-  } else {
-    console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
-  }
+    if (isDryRun) {
+      console.log('[DRY RUN] Would publish WASM package to npm');
+    } else if (process.env.NPM_TOKEN) {
+      run('npm publish', { cwd: wasmBindings });
+    } else {
+      console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
+    }
 
-  section('Release Complete!');
+  section(isDryRun ? 'Dry Run Complete!' : 'Release Complete!');
 
-  console.log('Published:');
+    console.log(isDryRun ? 'Dry run completed. No packages were published.' : 'Published:');
   console.log('  ✓ Rust crates to crates.io');
   console.log('  ✓ C/C++ development package ready');
   console.log('  ✓ Python wheel to PyPI');
