@@ -11,6 +11,7 @@ use sentinel_wal::{EntryType, LogEntry, WalDocumentOps, WalManager};
 use crate::{
     comparison::compare_values,
     constants::COLLECTION_METADATA_FILE,
+    events::{EventEmitter, StoreEvent},
     filtering::matches_filters,
     metadata::CollectionMetadata,
     projection::project_document,
@@ -101,6 +102,8 @@ pub struct Collection {
     pub(crate) total_documents:    std::sync::atomic::AtomicU64,
     /// Total size of all documents in bytes.
     pub(crate) total_size_bytes:   std::sync::atomic::AtomicU64,
+    /// Event sender for notifying the store of metadata changes.
+    pub(crate) event_sender:       Option<tokio::sync::mpsc::UnboundedSender<crate::events::StoreEvent>>,
 }
 
 #[allow(
@@ -270,6 +273,12 @@ impl Collection {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.total_size_bytes
             .fetch_add(json.len() as u64, std::sync::atomic::Ordering::Relaxed);
+
+        // Emit event to store
+        self.emit_event(crate::events::StoreEvent::DocumentInserted {
+            collection: self.name().to_string(),
+            size_bytes: json.len() as u64,
+        });
 
         // Save metadata to disk
         self.save_metadata().await?;
@@ -502,6 +511,17 @@ impl Collection {
 
                 // Save metadata to disk
                 self.save_metadata().await?;
+
+                // Emit event for metadata synchronization
+                if let Some(sender) = &self.event_sender {
+                    let event = StoreEvent::DocumentDeleted {
+                        collection: self.name().to_string(),
+                        size_bytes: file_size,
+                    };
+                    if let Err(e) = sender.send(event) {
+                        warn!("Failed to send DocumentDeleted event: {}", e);
+                    }
+                }
 
                 Ok(())
             },
@@ -823,6 +843,7 @@ impl Collection {
                                                 total_size_bytes: std::sync::atomic::AtomicU64::new(0),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
+                                                event_sender: None,
                                             };
 
                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
@@ -974,6 +995,7 @@ impl Collection {
                                                 total_size_bytes: std::sync::atomic::AtomicU64::new(0),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
+                                                event_sender: None,
                                             };
 
                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
@@ -1266,6 +1288,7 @@ impl Collection {
                                                 total_size_bytes: std::sync::atomic::AtomicU64::new(0),
                             signing_key: signing_key.clone(),
                                                 wal_manager: None,
+                                                event_sender: None,
                         };
 
                         if let Err(e) = collection_ref.verify_document(&doc_with_id, &options).await {
@@ -1617,6 +1640,18 @@ impl Collection {
 
         // Save metadata to disk
         self.save_metadata().await?;
+
+        // Emit event for metadata synchronization
+        if let Some(sender) = &self.event_sender {
+            let event = StoreEvent::DocumentUpdated {
+                collection: self.name().to_string(),
+                old_size_bytes: old_size,
+                new_size_bytes: new_size,
+            };
+            if let Err(e) = sender.send(event) {
+                warn!("Failed to send DocumentUpdated event: {}", e);
+            }
+        }
 
         Ok(())
     }
