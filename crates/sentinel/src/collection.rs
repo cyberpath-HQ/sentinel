@@ -92,6 +92,8 @@ pub struct Collection {
     pub(crate) signing_key:        Option<Arc<sentinel_crypto::SigningKey>>,
     /// The Write-Ahead Log manager for durability.
     pub(crate) wal_manager:        Option<Arc<WalManager>>,
+    /// WAL configuration for the collection.
+    pub(crate) wal_config:         sentinel_wal::CollectionWalConfig,
     /// When the collection was created.
     pub(crate) created_at:         chrono::DateTime<chrono::Utc>,
     /// When the collection was last updated.
@@ -99,9 +101,9 @@ pub struct Collection {
     /// When the collection was last checkpointed.
     pub(crate) last_checkpoint_at: std::sync::RwLock<Option<chrono::DateTime<chrono::Utc>>>,
     /// Total number of documents in the collection.
-    pub(crate) total_documents:    std::sync::atomic::AtomicU64,
+    pub(crate) total_documents:    std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Total size of all documents in bytes.
-    pub(crate) total_size_bytes:   std::sync::atomic::AtomicU64,
+    pub(crate) total_size_bytes:   std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Event sender for notifying the store of metadata changes.
     pub(crate) event_sender:       Option<tokio::sync::mpsc::UnboundedSender<crate::events::StoreEvent>>,
     /// Background task handle for processing internal events.
@@ -841,10 +843,11 @@ impl Collection {
                                                 created_at: chrono::Utc::now(),
                                                 updated_at: std::sync::RwLock::new(chrono::Utc::now()),
                                                 last_checkpoint_at: std::sync::RwLock::new(None),
-                                                total_documents: std::sync::atomic::AtomicU64::new(0),
-                                                total_size_bytes: std::sync::atomic::AtomicU64::new(0),
+                                                total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                                                total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
+                                                wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 event_sender: None,
                                                 event_task: None,
                                             };
@@ -994,10 +997,11 @@ impl Collection {
                                                 created_at: chrono::Utc::now(),
                                                 updated_at: std::sync::RwLock::new(chrono::Utc::now()),
                                                 last_checkpoint_at: std::sync::RwLock::new(None),
-                                                total_documents: std::sync::atomic::AtomicU64::new(0),
-                                                total_size_bytes: std::sync::atomic::AtomicU64::new(0),
+                                                total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                                                total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
+                                                wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 event_sender: None,
                                                 event_task: None,
                                             };
@@ -1288,10 +1292,11 @@ impl Collection {
                                                 created_at: chrono::Utc::now(),
                                                 updated_at: std::sync::RwLock::new(chrono::Utc::now()),
                                                 last_checkpoint_at: std::sync::RwLock::new(None),
-                                                total_documents: std::sync::atomic::AtomicU64::new(0),
-                                                total_size_bytes: std::sync::atomic::AtomicU64::new(0),
+                                                total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                                                total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                             signing_key: signing_key.clone(),
                                                 wal_manager: None,
+                                                wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 event_sender: None,
                                                 event_task: None,
                         };
@@ -1941,14 +1946,59 @@ impl Collection {
             return; // Already started
         }
 
-        // For now, collections don't have internal events to process,
-        // but this provides the infrastructure for future features like
-        // lazy indexing, background maintenance, or batched operations.
+        // Clone the counters and path for the background task
+        let total_documents = self.total_documents.clone();
+        let total_size_bytes = self.total_size_bytes.clone();
+        let path = self.path.clone();
+        let created_at = self.created_at;
+        let name = self.name().to_string();
+        let wal_config = self.wal_config.clone();
+
         let task = tokio::spawn(async move {
-            // Placeholder for future collection event processing
-            // This task runs indefinitely until aborted
+            // Debouncing: save metadata every 500 milliseconds if changed
+            let mut save_interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+            save_interval.tick().await; // First tick completes immediately
+
+            let mut last_document_count = total_documents.load(std::sync::atomic::Ordering::Relaxed);
+            let mut last_total_size_bytes = total_size_bytes.load(std::sync::atomic::Ordering::Relaxed);
+
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await; // Sleep for 1 hour
+                tokio::select! {
+                    // Periodic metadata save check
+                    _ = save_interval.tick() => {
+                        let current_document_count = total_documents.load(std::sync::atomic::Ordering::Relaxed);
+                        let current_total_size_bytes = total_size_bytes.load(std::sync::atomic::Ordering::Relaxed);
+
+                        if current_document_count != last_document_count || current_total_size_bytes != last_total_size_bytes {
+                            let metadata = CollectionMetadata {
+                                version: crate::META_SENTINEL_VERSION,
+                                name: name.clone(),
+                                created_at: created_at.timestamp() as u64,
+                                updated_at: chrono::Utc::now().timestamp() as u64,
+                                document_count: current_document_count,
+                                total_size_bytes: current_total_size_bytes,
+                                wal_config: wal_config.clone(),
+                            };
+
+                            let content = match serde_json::to_string_pretty(&metadata) {
+                                Ok(content) => content,
+                                Err(e) => {
+                                    error!("Failed to serialize collection metadata: {}", e);
+                                    continue;
+                                }
+                            };
+
+                            let metadata_path = path.join(crate::COLLECTION_METADATA_FILE);
+                            if let Err(e) = tokio::fs::write(&metadata_path, content).await {
+                                error!("Failed to save collection metadata in background task: {}", e);
+                            } else {
+                                trace!("Collection metadata saved successfully");
+                                last_document_count = current_document_count;
+                                last_total_size_bytes = current_total_size_bytes;
+                            }
+                        }
+                    }
+                }
             }
         });
 
