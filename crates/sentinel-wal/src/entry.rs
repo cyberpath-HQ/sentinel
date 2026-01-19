@@ -8,7 +8,7 @@ use tracing::trace;
 use crate::{Result, WalError};
 
 /// Fixed-size byte array for transaction ID (32 bytes)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixedBytes32([u8; 32]);
 
 impl Serialize for FixedBytes32 {
@@ -60,7 +60,7 @@ impl From<&[u8]> for FixedBytes32 {
 }
 
 /// Fixed-size byte array for collection/document ID (padded to multiple of 16, max 256)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixedBytes256(Vec<u8>);
 
 impl Serialize for FixedBytes256 {
@@ -110,7 +110,7 @@ impl From<&[u8]> for FixedBytes256 {
 }
 
 /// Types of WAL entries
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EntryType {
     /// Begin a transaction
     Begin,
@@ -127,7 +127,7 @@ pub enum EntryType {
 }
 
 /// A WAL log entry
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogEntry {
     /// Type of the entry
     pub entry_type:     EntryType,
