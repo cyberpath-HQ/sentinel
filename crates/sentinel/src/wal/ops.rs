@@ -139,9 +139,13 @@ impl CollectionWalOps for Collection {
     }
 
     async fn stream_wal_entries(&self) -> Result<Pin<Box<dyn Stream<Item = Result<LogEntry>> + Send>>> {
-        // For now, return empty stream. Full streaming implementation would require
-        // more complex lifetime management
-        Ok(Box::pin(futures::stream::empty()))
+        if let Some(wal) = &self.wal_manager {
+            let entries = wal.read_all_entries().await?;
+            let stream = futures::stream::iter(entries.into_iter().map(Ok));
+            Ok(Box::pin(stream))
+        } else {
+            Ok(Box::pin(futures::stream::empty()))
+        }
     }
 
     async fn verify_against_wal(&self) -> Result<WalVerificationResult> { self.verify_wal_consistency().await }
@@ -158,8 +162,18 @@ impl CollectionWalOps for Collection {
     }
 
     async fn wal_entries_count(&self) -> Result<usize> {
-        // For now, return 0 as we don't have a direct way to count entries
-        // This could be implemented by reading the WAL file and counting entries
-        Ok(0)
+        if let Some(wal) = &self.wal_manager {
+            let mut count = 0;
+            let stream = wal.stream_entries();
+            use futures::StreamExt;
+            futures::pin_mut!(stream);
+            while let Some(result) = stream.next().await {
+                result?; // Check for errors but don't need the entry
+                count += 1;
+            }
+            Ok(count)
+        } else {
+            Ok(0)
+        }
     }
 }
