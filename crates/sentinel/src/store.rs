@@ -4,13 +4,12 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use tokio::fs as tokio_fs;
-use tokio::sync::mpsc;
+use tokio::{fs as tokio_fs, sync::mpsc};
 use tracing::{debug, error, trace, warn};
 use sentinel_wal::WalManager;
 
 use crate::{
-    events::{StoreEvent},
+    events::StoreEvent,
     validation::{is_reserved_name, is_valid_name_chars},
     Collection,
     CollectionMetadata,
@@ -71,13 +70,15 @@ pub struct Store {
     /// When the store was last accessed.
     last_accessed_at: std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
     /// Total size of all collections in bytes.
-    total_size_bytes: std::sync::atomic::AtomicU64,
+    total_size_bytes: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Total number of documents across all collections.
-    total_documents:  std::sync::atomic::AtomicU64,
+    total_documents:  std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Total number of collections.
-    collection_count: std::sync::atomic::AtomicU64,
+    collection_count: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// WAL configuration for the store.
+    wal_config:       sentinel_wal::StoreWalConfig,
     /// Channel receiver for events from collections.
-    event_receiver:   mpsc::UnboundedReceiver<StoreEvent>,
+    event_receiver:   Option<mpsc::UnboundedReceiver<StoreEvent>>,
     /// Channel sender for collections to emit events.
     event_sender:     mpsc::UnboundedSender<StoreEvent>,
     /// Background task handle for processing events.
@@ -162,19 +163,26 @@ impl Store {
         };
 
         let now = chrono::Utc::now();
-        
+
         // Create event channel for collection synchronization
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-        
+
         let mut store = Self {
             root_path,
             signing_key: None,
             created_at: now,
             last_accessed_at: std::sync::RwLock::new(now),
-            total_size_bytes: std::sync::atomic::AtomicU64::new(store_metadata.total_size_bytes),
-            total_documents: std::sync::atomic::AtomicU64::new(store_metadata.total_documents),
-            collection_count: std::sync::atomic::AtomicU64::new(store_metadata.collection_count),
-            event_receiver,
+            total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
+                store_metadata.total_size_bytes,
+            )),
+            total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
+                store_metadata.total_documents,
+            )),
+            collection_count: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
+                store_metadata.collection_count,
+            )),
+            wal_config: store_metadata.wal_config,
+            event_receiver: Some(event_receiver),
             event_sender,
             event_task: None,
         };
@@ -243,10 +251,10 @@ impl Store {
             }
         }
         trace!("Store created successfully");
-        
+
         // Start background event processing task
         store.start_event_processor();
-        
+
         Ok(store)
     }
 
@@ -362,7 +370,9 @@ impl Store {
         // If this is a new collection, emit event (metadata will be saved by event handler)
         if is_new_collection {
             // Emit collection created event
-            let event = StoreEvent::CollectionCreated { name: name.to_string() };
+            let event = StoreEvent::CollectionCreated {
+                name: name.to_string(),
+            };
             let _ = self.event_sender.send(event);
         }
 
@@ -407,85 +417,107 @@ impl Store {
     pub fn root_path(&self) -> &PathBuf { &self.root_path }
 
     /// Returns a clone of the event sender for collections to emit events.
-    pub(crate) fn event_sender(&self) -> mpsc::UnboundedSender<StoreEvent> {
-        self.event_sender.clone()
-    }
+    pub(crate) fn event_sender(&self) -> mpsc::UnboundedSender<StoreEvent> { self.event_sender.clone() }
 
     /// Starts the background event processing task.
     fn start_event_processor(&mut self) {
-        let mut receiver = std::mem::replace(&mut self.event_receiver, mpsc::unbounded_channel().1);
-        let (event_tx, mut event_rx) = mpsc::unbounded_channel::<StoreEvent>();
-        
-        // Clone necessary data for the background task
+        if self.event_task.is_some() {
+            return; // Already started
+        }
+
+        // Take ownership of the event receiver
+        let Some(mut receiver) = self.event_receiver.take()
+        else {
+            warn!("Event receiver already taken");
+            return;
+        };
+
+        // Clone the counters and config for the background task
+        let total_size_bytes = self.total_size_bytes.clone();
+        let total_documents = self.total_documents.clone();
+        let collection_count = self.collection_count.clone();
+        let wal_config = self.wal_config.clone();
         let root_path = self.root_path.clone();
-        let signing_key = self.signing_key.clone();
         let created_at = self.created_at;
-        let mut total_size_bytes = self.total_size_bytes.load(std::sync::atomic::Ordering::Relaxed);
-        let mut total_documents = self.total_documents.load(std::sync::atomic::Ordering::Relaxed);
-        let mut collection_count = self.collection_count.load(std::sync::atomic::Ordering::Relaxed);
-        
+
         let task = tokio::spawn(async move {
-            while let Some(event) = event_rx.recv().await {
-                // Process the event
-                match event {
-                    StoreEvent::CollectionCreated { name } => {
-                        debug!("Processing collection created event: {}", name);
-                        collection_count += 1;
+            // Debouncing: save metadata every 5 seconds instead of after every event
+            let mut save_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+            save_interval.tick().await; // First tick completes immediately
+
+            loop {
+                tokio::select! {
+                    // Process events
+                    event = receiver.recv() => {
+                        match event {
+                            Some(StoreEvent::CollectionCreated { name }) => {
+                                debug!("Processing collection created event: {}", name);
+                                collection_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            }
+                            Some(StoreEvent::CollectionDeleted { name, document_count, total_size_bytes: event_size }) => {
+                                debug!("Processing collection deleted event: {} (docs: {}, size: {})",
+                                      name, document_count, event_size);
+                                collection_count.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                                total_documents.fetch_sub(document_count, std::sync::atomic::Ordering::Relaxed);
+                                total_size_bytes.fetch_sub(event_size, std::sync::atomic::Ordering::Relaxed);
+                            }
+                            Some(StoreEvent::DocumentInserted { collection, size_bytes }) => {
+                                debug!("Processing document inserted event: {} (size: {})", collection, size_bytes);
+                                total_documents.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                total_size_bytes.fetch_add(size_bytes, std::sync::atomic::Ordering::Relaxed);
+                            }
+                            Some(StoreEvent::DocumentUpdated { collection, old_size_bytes, new_size_bytes }) => {
+                                debug!("Processing document updated event: {} (old: {}, new: {})",
+                                      collection, old_size_bytes, new_size_bytes);
+                                total_size_bytes.fetch_sub(old_size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                total_size_bytes.fetch_add(new_size_bytes, std::sync::atomic::Ordering::Relaxed);
+                            }
+                            Some(StoreEvent::DocumentDeleted { collection, size_bytes }) => {
+                                debug!("Processing document deleted event: {} (size: {})", collection, size_bytes);
+                                total_documents.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                                total_size_bytes.fetch_sub(size_bytes, std::sync::atomic::Ordering::Relaxed);
+                            }
+                            None => {
+                                // Channel closed, exit
+                                break;
+                            }
+                        }
                     }
-                    StoreEvent::CollectionDeleted { name, document_count, total_size_bytes: event_size } => {
-                        debug!("Processing collection deleted event: {} (docs: {}, size: {})", 
-                              name, document_count, event_size);
-                        collection_count -= 1;
-                        total_documents -= document_count;
-                        total_size_bytes -= event_size;
+
+                    // Periodic metadata save
+                    _ = save_interval.tick() => {
+                        let metadata = StoreMetadata {
+                            version: META_SENTINEL_VERSION,
+                            created_at: created_at.timestamp() as u64,
+                            updated_at: chrono::Utc::now().timestamp() as u64,
+                            collection_count: collection_count.load(std::sync::atomic::Ordering::Relaxed),
+                            total_documents: total_documents.load(std::sync::atomic::Ordering::Relaxed),
+                            total_size_bytes: total_size_bytes.load(std::sync::atomic::Ordering::Relaxed),
+                            wal_config: wal_config.clone(),
+                        };
+
+                        let content = match serde_json::to_string_pretty(&metadata) {
+                            Ok(content) => content,
+                            Err(e) => {
+                                error!("Failed to serialize store metadata: {}", e);
+                                continue;
+                            }
+                        };
+
+                        let metadata_path = root_path.join(STORE_METADATA_FILE);
+                        if let Err(e) = tokio::fs::write(&metadata_path, content).await {
+                            error!("Failed to save store metadata in background task: {}", e);
+                        } else {
+                            trace!("Store metadata saved successfully");
+                        }
                     }
-                    StoreEvent::DocumentInserted { collection, size_bytes } => {
-                        debug!("Processing document inserted event: {} (size: {})", collection, size_bytes);
-                        total_documents += 1;
-                        total_size_bytes += size_bytes;
-                    }
-                    StoreEvent::DocumentUpdated { collection, old_size_bytes, new_size_bytes } => {
-                        debug!("Processing document updated event: {} (old: {}, new: {})", 
-                              collection, old_size_bytes, new_size_bytes);
-                        total_size_bytes -= old_size_bytes;
-                        total_size_bytes += new_size_bytes;
-                    }
-                    StoreEvent::DocumentDeleted { collection, size_bytes } => {
-                        debug!("Processing document deleted event: {} (size: {})", collection, size_bytes);
-                        total_documents -= 1;
-                        total_size_bytes -= size_bytes;
-                    }
-                }
-                
-                // Save updated metadata to disk
-                let metadata = StoreMetadata {
-                    version: META_SENTINEL_VERSION,
-                    created_at: created_at.timestamp() as u64,
-                    updated_at: chrono::Utc::now().timestamp() as u64,
-                    collection_count,
-                    total_documents,
-                    total_size_bytes,
-                    wal_config: sentinel_wal::StoreWalConfig::default(),
-                };
-                
-                let content = serde_json::to_string_pretty(&metadata).unwrap();
-                let metadata_path = root_path.join(STORE_METADATA_FILE);
-                if let Err(e) = tokio::fs::write(&metadata_path, content).await {
-                    error!("Failed to save store metadata in background task: {}", e);
                 }
             }
         });
-        
-        // Forward events from the main receiver to the background task
-        tokio::spawn(async move {
-            while let Some(event) = receiver.recv().await {
-                let _ = event_tx.send(event);
-            }
-        });
-        
+
         self.event_task = Some(task);
     }
-    
+
     /// Deletes a collection and all its documents.
     ///
     /// This method removes the entire collection directory and all documents within it.
@@ -552,8 +584,8 @@ impl Store {
         if let Some(metadata) = collection_metadata {
             // Emit collection deleted event (metadata will be saved by event handler)
             let event = StoreEvent::CollectionDeleted {
-                name: name.to_string(),
-                document_count: metadata.document_count,
+                name:             name.to_string(),
+                document_count:   metadata.document_count,
                 total_size_bytes: metadata.total_size_bytes,
             };
             let _ = self.event_sender.send(event);
@@ -627,58 +659,9 @@ impl Store {
         Ok(collections)
     }
 
-    /// Saves the store metadata to disk.
-    ///
-    /// This method updates the store's metadata file (.store.json) with the current
-    /// values of total_documents, total_size_bytes, and collection_count.
-    async fn save_store_metadata(&self) -> Result<()> {
-        use sentinel_wal::StoreWalConfig;
-
-        let metadata_path = self.root_path.join(STORE_METADATA_FILE);
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        let metadata = StoreMetadata {
-            version:          META_SENTINEL_VERSION,
-            created_at:       self.created_at.timestamp() as u64,
-            updated_at:       now,
-            collection_count: self
-                .collection_count
-                .load(std::sync::atomic::Ordering::Relaxed),
-            total_documents:  self
-                .total_documents
-                .load(std::sync::atomic::Ordering::Relaxed),
-            total_size_bytes: self
-                .total_size_bytes
-                .load(std::sync::atomic::Ordering::Relaxed),
-            wal_config:       StoreWalConfig::default(),
-        };
-
-        let content = serde_json::to_string_pretty(&metadata).map_err(|e| {
-            error!("Failed to serialize store metadata: {}", e);
-            e
-        })?;
-
-        tokio_fs::write(&metadata_path, content)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to write store metadata to {:?}: {}",
-                    metadata_path, e
-                );
-                e
-            })?;
-
-        debug!("Store metadata saved successfully");
-        Ok(())
-    }
-
-    pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) { 
-        self.signing_key = Some(Arc::new(key)); 
-    }
+    pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) { self.signing_key = Some(Arc::new(key)); }
 }
+
 /// - Must not be empty
 /// - Must not contain path separators (`/` or `\`)
 /// - Must not contain control characters (0x00-0x1F, 0x7F)
