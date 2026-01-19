@@ -47,4 +47,4 @@ Thumbs.db
 # API sync artifacts
 bindings/cxx/api_baseline.json
 bindings/cxx/api_changes.md
-bindings/js/*.node
+bindings/js/**/*.node
