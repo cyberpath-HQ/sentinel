@@ -1,49 +1,26 @@
 /**
- * Cyberpath Sentinel - JavaScript/TypeScript bindings
- * 
- * This module provides a unified API for both Node.js (native bindings) and
- * WebAssembly (browser) environments with full async/await support.
- * 
+ * Cyberpath Sentinel - JavaScript/TypeScript bindings for Node.js
+ *
+ * This module provides a unified API for Cyberpath Sentinel using native N-API bindings.
+ *
  * @module @cyberpath/sentinel
  */
 
 'use strict';
 
-let Store, Collection, Document, QueryBuilder, Operator, SortOrder, VerificationMode, VerificationOptions;
-let isWasm = false;
+const native = require('./native/sentinel_js.node');
 
-try {
-  const native = require('./index.node');
-  Store = native.Store;
-  Collection = native.Collection;
-  Document = native.Document;
-  QueryBuilder = native.QueryBuilder;
-  Operator = native.Operator;
-  SortOrder = native.SortOrder;
-  VerificationMode = native.VerificationMode;
-  VerificationOptions = native.VerificationOptions;
-} catch (e) {
-  try {
-    const wasm = require('./pkg/sentinel_wasm');
-    Store = wasm.Store;
-    Collection = wasm.Collection;
-    Document = wasm.Document;
-    QueryBuilder = wasm.QueryBuilder;
-    Operator = wasm.Operator;
-    SortOrder = wasm.SortOrder;
-    VerificationMode = wasm.VerificationMode;
-    VerificationOptions = wasm.VerificationOptions;
-    isWasm = true;
-  } catch (wasmError) {
-    throw new Error(
-      'Failed to load either native bindings (Node.js) or WASM module (browser). ' +
-      'Please ensure the appropriate bindings are built: ' +
-      'npm run build for Node.js or npm run build:wasm for WebAssembly.'
-    );
-  }
-}
+const Store = native.Store;
+const Collection = native.Collection;
+const Document = native.Document;
+const QueryBuilder = native.QueryBuilder;
+const Operator = native.Operator;
+const SortOrder = native.SortOrder;
+const VerificationMode = native.VerificationMode;
+const VerificationOptions = native.VerificationOptions;
 
-exports.isWasm = isWasm;
+exports.isWasm = false;
+exports.isNative = true;
 exports.Store = Store;
 exports.Collection = Collection;
 exports.Document = Document;

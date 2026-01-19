@@ -1,7 +1,7 @@
 {
   "name": "@cyberpath/sentinel",
   "version": "2.0.1",
-  "description": "JavaScript/TypeScript bindings for Cyberpath Sentinel DBMS - works in Node.js and browsers",
+  "description": "JavaScript/TypeScript bindings for Cyberpath Sentinel DBMS - Native N-API bindings for Node.js",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -14,14 +14,12 @@
   },
   "sideEffects": false,
   "scripts": {
-    "build": "napi build --release",
-    "build:debug": "napi build",
-    "build:wasm": "wasm-pack build --target web --out-dir pkg",
-    "build:wasm:node": "wasm-pack build --target nodejs --out-dir pkg-node",
-    "build:all": "npm run build && npm run build:wasm",
+    "build": "cargo build --release -p sentinel-js && cp crates/sentinel-js/target/release/*.node native/ 2>/dev/null || true",
+    "build:debug": "cargo build -p sentinel-js && cp crates/sentinel-js/target/debug/*.node native/ 2>/dev/null || true",
+    "postinstall": "node -e \"const fs = require('fs'); const path = require('path'); const ext = process.platform === 'win32' ? '.dll' : process.platform === 'darwin' ? '.dylib' : '.so'; const file = fs.readdirSync('native').find(f => f.endsWith(ext)); if(file) { const content = fs.readFileSync('native/' + file); fs.writeFileSync('dist/index.node', content); }\")",
     "bundle": "rollup -c rollup.config.js",
     "test": "ava",
-    "prepublishOnly": "npm run build && npm run build:wasm && npm run bundle",
+    "prepublishOnly": "npm run build && npm run bundle",
     "lint": "eslint . --ext .js,.ts",
     "fmt": "prettier --write ."
   },
@@ -32,10 +30,9 @@
     "json",
     "filesystem",
     "rust",
-    "wasm",
-    "webassembly",
-    "node",
-    "browser"
+    "napi",
+    "native",
+    "node"
   ],
   "author": "Emanuele (Ebalo) Balsamo <emanuele.balsamo@cyberpath-hq.com>",
   "license": "Apache-2.0",
@@ -46,14 +43,7 @@
   "engines": {
     "node": ">= 16"
   },
-  "napi": {
-    "binaryName": "sentinel"
-  },
-  "peerDependencies": {
-    "@cyberpath/sentinel-wasm": "^2.0.1"
-  },
   "devDependencies": {
-    "@napi-rs/cli": "^2.16.0",
     "@rollup/plugin-commonjs": "^25.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
     "@types/node": "^20.0.0",
