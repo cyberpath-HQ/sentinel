@@ -29,12 +29,18 @@ pub mod config;
 pub mod entry;
 pub mod error;
 pub mod manager;
+pub mod recovery;
+pub mod traits;
+pub mod verification;
 
 // Re-exports
 pub use error::WalError;
 pub use entry::{EntryType, FixedBytes256, FixedBytes32, LogEntry};
 pub use manager::{WalConfig, WalFormat, WalManager};
 pub use config::{CollectionWalConfig, StoreWalConfig, WalFailureMode};
+pub use traits::WalDocumentOps;
+pub use verification::{verify_wal_consistency, WalVerificationIssue, WalVerificationResult};
+pub use recovery::{recover_from_wal_force, recover_from_wal_safe, WalRecoveryFailure, WalRecoveryResult};
 pub use compression::*;
 pub use postcard;
 pub use cuid2;
