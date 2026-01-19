@@ -1,12 +1,11 @@
 use std::{path::PathBuf, sync::Arc};
 
 use async_stream::stream;
-use async_trait::async_trait;
 use futures::{StreamExt as _, TryStreamExt as _};
 use serde_json::{json, Value};
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 use sentinel_wal::{EntryType, LogEntry, WalDocumentOps, WalManager};
 
 use crate::{
@@ -1749,71 +1748,6 @@ impl Collection {
         trace!("Document id '{}' is valid", id);
         Ok(())
     }
-
-    /// This method should be called periodically to prevent the WAL file from growing too large.
-    /// After checkpointing, the WAL is truncated but the data remains in the filesystem.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` on success, or a `SentinelError` if the checkpoint fails.
-    pub async fn checkpoint_wal(&self) -> Result<()> {
-        if let Some(wal) = &self.wal_manager {
-            wal.checkpoint().await?;
-            debug!("WAL checkpoint completed for collection {}", self.name());
-        }
-        Ok(())
-    }
-
-    /// Recovers the collection from the WAL after a crash.
-    ///
-    /// This method reads all entries from the WAL and replays them to ensure
-    /// the collection is in a consistent state. This is typically called during
-    /// collection initialization.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` on success, or a `SentinelError` if recovery fails.
-    pub async fn recover_from_wal(&self) -> Result<()> {
-        if let Some(wal) = &self.wal_manager {
-            let entries = wal.read_all_entries().await?;
-            info!(
-                "Recovering {} WAL entries for collection {}",
-                entries.len(),
-                self.name()
-            );
-
-            for entry in entries {
-                match entry.entry_type {
-                    EntryType::Insert => {
-                        if let Some(data) = entry.data_as_value()? {
-                            // Replay insert
-                            self.insert(entry.document_id_str(), data).await?;
-                        }
-                    },
-                    EntryType::Update => {
-                        if let Some(data) = entry.data_as_value()? {
-                            // For recovery, we can treat update as insert since WAL is append-only
-                            self.insert(entry.document_id_str(), data).await?;
-                        }
-                    },
-                    EntryType::Delete => {
-                        // Replay delete
-                        self.delete(entry.document_id_str()).await?;
-                    },
-                    EntryType::Begin | EntryType::Commit | EntryType::Rollback => {
-                        // Transaction operations - not implemented yet
-                        debug!(
-                            "Skipping transaction entry during recovery: {:?}",
-                            entry.entry_type
-                        );
-                    },
-                }
-            }
-
-            info!("WAL recovery completed for collection {}", self.name());
-        }
-        Ok(())
-    }
 }
 
 #[async_trait::async_trait]
@@ -1850,7 +1784,6 @@ impl WalDocumentOps for Collection {
 mod tests {
     use serde_json::json;
     use tempfile::tempdir;
-    use tracing_subscriber;
 
     use super::*;
     use crate::Store;
@@ -1869,19 +1802,6 @@ mod tests {
             .unwrap();
         let collection = store.collection("test").await.unwrap();
         (collection, temp_dir)
-    }
-
-    async fn test_insert_empty_document() {
-        let (collection, _temp_dir) = setup_collection().await;
-
-        let doc = json!({});
-        collection.insert("empty", doc.clone()).await.unwrap();
-
-        let retrieved = collection
-            .get_with_verification("empty", &crate::VerificationOptions::disabled())
-            .await
-            .unwrap();
-        assert_eq!(*retrieved.unwrap().data(), doc);
     }
 
     #[tokio::test]
