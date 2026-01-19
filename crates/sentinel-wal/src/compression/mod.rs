@@ -13,7 +13,7 @@ pub use deflate::DeflateCompressor;
 pub use gzip::GzipCompressor;
 
 /// Compression algorithms available for WAL file rotation
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum CompressionAlgorithm {
     /// Zstandard compression: Best overall choice for WAL files.
     /// Provides excellent compression ratio (better than gzip) with fast compression/decompression
