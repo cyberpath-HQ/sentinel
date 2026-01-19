@@ -25,6 +25,8 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@nightly
       - run: npm ci
       - id: generate-token
         uses: actions/create-github-app-token@v2
