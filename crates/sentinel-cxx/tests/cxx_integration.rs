@@ -11,12 +11,11 @@ use std::{
 
 #[test]
 fn test_cxx_bindings_build() {
-    // Get the project root
-    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
+    // Get the project root (crates/sentinel-cxx -> language-interop)
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let project_root = manifest_dir
+        .parent().unwrap()  // crates
+        .parent().unwrap()  // language-interop
         .to_path_buf();
 
     let cxx_bindings_dir = project_root.join("bindings").join("cxx");
@@ -24,7 +23,8 @@ fn test_cxx_bindings_build() {
     // Ensure the bindings directory exists
     assert!(
         cxx_bindings_dir.exists(),
-        "C/C++ bindings directory not found"
+        "C/C++ bindings directory not found at {:?}",
+        cxx_bindings_dir
     );
 
     // Create build directory if it doesn't exist
@@ -75,24 +75,21 @@ fn test_cxx_bindings_build() {
         );
     }
 
-    // Async examples may or may not be built depending on CMake options
+    // Async examples should be built now
     let async_examples = vec!["c_async_example", "c_async_query_example"];
     for exe_name in async_examples {
         let exe_path = build_dir.join(exe_name);
-        if exe_path.exists() {
-            assert!(
-                exe_path.metadata().unwrap().permissions().readonly() == false,
-                "Executable {} is not executable",
-                exe_name
-            );
-            println!("✓ Async executable {} was built", exe_name);
-        }
-        else {
-            println!(
-                "⚠️  Async executable {} was not built (expected with async disabled)",
-                exe_name
-            );
-        }
+        assert!(
+            exe_path.exists(),
+            "Async executable {} was not built",
+            exe_name
+        );
+        assert!(
+            exe_path.metadata().unwrap().permissions().readonly() == false,
+            "Executable {} is not executable",
+            exe_name
+        );
+        println!("✓ Async executable {} was built", exe_name);
     }
 
     println!("✓ All C/C++ executables built successfully");
@@ -100,8 +97,10 @@ fn test_cxx_bindings_build() {
 
 #[test]
 fn test_cxx_examples_run() {
-    // Get the project root
+    // Get the project root (crates/sentinel-cxx -> project root)
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
         .parent()
         .unwrap()
         .parent()
@@ -129,28 +128,19 @@ fn test_cxx_examples_run() {
         "C complex query example",
     );
 
-    // Test async examples (only if built)
-    if build_dir.join("c_async_example").exists() {
-        run_example_test(&build_dir, "c_async_example", "C async example");
-    }
-    else {
-        println!("⚠️  Skipping C async example (not built)");
-    }
-
-    if build_dir.join("c_async_query_example").exists() {
-        run_example_test(&build_dir, "c_async_query_example", "C async query example");
-    }
-    else {
-        println!("⚠️  Skipping C async query example (not built)");
-    }
+    // Test async examples (should be built now)
+    run_example_test(&build_dir, "c_async_example", "C async example");
+    run_example_test(&build_dir, "c_async_query_example", "C async query example");
 
     println!("✓ All C/C++ examples ran successfully");
 }
 
 #[test]
 fn test_cxx_bindings_tests() {
-    // Get the project root
+    // Get the project root (crates/sentinel-cxx -> project root)
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
         .parent()
         .unwrap()
         .parent()
