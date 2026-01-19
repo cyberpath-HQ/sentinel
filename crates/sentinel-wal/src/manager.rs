@@ -74,7 +74,8 @@ impl WalManager {
     ///
     /// # Returns
     ///
-    /// Returns a `Result` containing the initialized `WalManager`, or a `WalError` if initialization fails.
+    /// Returns a `Result` containing the initialized `WalManager`, or a `WalError` if
+    /// initialization fails.
     ///
     /// # Errors
     ///
@@ -83,8 +84,9 @@ impl WalManager {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use sentinel_wal::{WalManager, WalConfig, WalFormat};
     /// use std::path::PathBuf;
+    ///
+    /// use sentinel_wal::{WalConfig, WalFormat, WalManager};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let config = WalConfig {
@@ -93,18 +95,18 @@ impl WalManager {
     ///     ..Default::default()
     /// };
     ///
-    /// let wal = WalManager::new(
-    ///     PathBuf::from("data/myapp.wal"),
-    ///     config
-    /// ).await?;
+    /// let wal = WalManager::new(PathBuf::from("data/myapp.wal"), config).await?;
     ///
     /// // WAL is now ready for writing entries
     /// # Ok(())
     /// # }
     /// ```
     pub async fn new(path: PathBuf, config: WalConfig) -> Result<Self> {
-        debug!("Creating WAL manager at {:?} with config: max_file_size={:?}, compression={:?}, max_records={:?}, format={:?}",
-               path, config.max_file_size, config.compression_algorithm, config.max_records_per_file, config.format);
+        debug!(
+            "Creating WAL manager at {:?} with config: max_file_size={:?}, compression={:?}, max_records={:?}, \
+             format={:?}",
+            path, config.max_file_size, config.compression_algorithm, config.max_records_per_file, config.format
+        );
 
         // Ensure the directory exists
         if let Some(parent) = path.parent() {
@@ -183,7 +185,10 @@ impl WalManager {
     /// # }
     /// ```
     pub async fn write_entry(&self, entry: LogEntry) -> Result<()> {
-        debug!("Writing WAL entry: {:?} in format {:?}", entry.entry_type, self.config.format);
+        debug!(
+            "Writing WAL entry: {:?} in format {:?}",
+            entry.entry_type, self.config.format
+        );
 
         let bytes = match self.config.format {
             WalFormat::Binary => {
@@ -205,7 +210,10 @@ impl WalManager {
         if let Some(max_size) = self.config.max_file_size {
             let current_size = tokio::fs::metadata(&self.path).await?.len();
             if current_size + entry_size > max_size {
-                debug!("File size limit reached ({} + {} > {}), rotating", current_size, entry_size, max_size);
+                debug!(
+                    "File size limit reached ({} + {} > {}), rotating",
+                    current_size, entry_size, max_size
+                );
                 self.rotate().await?;
             }
         }
@@ -214,7 +222,10 @@ impl WalManager {
         if let Some(max_records) = self.config.max_records_per_file {
             let count = *self.entries_count.lock().await;
             if count >= max_records {
-                debug!("Record limit reached ({} >= {}), rotating", count, max_records);
+                debug!(
+                    "Record limit reached ({} >= {}), rotating",
+                    count, max_records
+                );
                 self.rotate().await?;
             }
         }
@@ -231,7 +242,10 @@ impl WalManager {
 
     /// Compress a WAL file using the specified algorithm
     async fn compress_file(path: &PathBuf, alg: crate::CompressionAlgorithm) -> Result<()> {
-        debug!("Starting compression of WAL file {:?} with algorithm {:?}", path, alg);
+        debug!(
+            "Starting compression of WAL file {:?} with algorithm {:?}",
+            path, alg
+        );
 
         let input = tokio::fs::File::open(&path).await?;
         let compressed_path = match alg {
@@ -312,14 +326,18 @@ impl WalManager {
 
         // If compression is enabled, compress asynchronously
         if let Some(alg) = self.config.compression_algorithm {
-            debug!("Compression enabled with algorithm {:?}, starting async compression", alg);
+            debug!(
+                "Compression enabled with algorithm {:?}, starting async compression",
+                alg
+            );
             let path = new_path.clone();
             tokio::spawn(async move {
                 if let Err(e) = Self::compress_file(&path, alg).await {
                     tracing::error!("Failed to compress WAL file {}: {}", path.display(), e);
                 }
             });
-        } else {
+        }
+        else {
             trace!("Compression disabled, skipping compression step");
         }
 
@@ -340,7 +358,11 @@ impl WalManager {
 
     /// Parse entries from a buffer
     fn parse_entries_from_buffer(&self, buffer: &[u8]) -> Result<Vec<LogEntry>> {
-        debug!("Parsing {} bytes of WAL data in format {:?}", buffer.len(), self.config.format);
+        debug!(
+            "Parsing {} bytes of WAL data in format {:?}",
+            buffer.len(),
+            self.config.format
+        );
 
         match self.config.format {
             WalFormat::Binary => {
@@ -488,8 +510,9 @@ impl WalManager {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use sentinel_wal::{WalManager, WalConfig};
     /// use std::path::PathBuf;
+    ///
+    /// use sentinel_wal::{WalConfig, WalManager};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let config = WalConfig::default();
@@ -500,7 +523,8 @@ impl WalManager {
     ///
     /// println!("Found {} entries in WAL", entries.len());
     /// for entry in entries {
-    /// println!("Entry: {:?} on {} in collection {}",
+    ///     println!(
+    ///         "Entry: {:?} on {} in collection {}",
     ///         entry.entry_type,
     ///         entry.document_id_str(),
     ///         entry.collection_str()
@@ -526,7 +550,10 @@ impl WalManager {
             all_entries.extend(entries);
         }
         *self.entries_count.lock().await = all_entries.len();
-        info!("Recovery complete: loaded {} total entries", all_entries.len());
+        info!(
+            "Recovery complete: loaded {} total entries",
+            all_entries.len()
+        );
         Ok(all_entries)
     }
 
@@ -547,8 +574,9 @@ impl WalManager {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use sentinel_wal::{WalManager, WalConfig};
     /// use std::path::PathBuf;
+    ///
+    /// use sentinel_wal::{WalConfig, WalManager};
     /// use futures::StreamExt;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -569,7 +597,7 @@ impl WalManager {
     ///         },
     ///         Err(e) => {
     ///             eprintln!("Error reading entry: {}", e);
-    ///         }
+    ///         },
     ///     }
     /// }
     ///
@@ -672,8 +700,9 @@ impl WalManager {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use sentinel_wal::{WalManager, WalConfig, LogEntry, EntryType};
     /// use std::path::PathBuf;
+    ///
+    /// use sentinel_wal::{EntryType, LogEntry, WalConfig, WalManager};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let config = WalConfig::default();
@@ -684,7 +713,7 @@ impl WalManager {
     ///     EntryType::Insert,
     ///     "users".to_string(),
     ///     "user-123".to_string(),
-    ///     None
+    ///     None,
     /// );
     /// wal.write_entry(entry).await?;
     ///
@@ -709,9 +738,15 @@ impl WalManager {
 
         // Record checkpoint position (current file size)
         let checkpoint_position = self.size().await?;
-        debug!("Checkpoint created at position: {} bytes", checkpoint_position);
+        debug!(
+            "Checkpoint created at position: {} bytes",
+            checkpoint_position
+        );
 
-        info!("WAL checkpoint completed successfully at position {}", checkpoint_position);
+        info!(
+            "WAL checkpoint completed successfully at position {}",
+            checkpoint_position
+        );
         Ok(())
     }
 
@@ -733,15 +768,17 @@ impl WalManager {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use sentinel_wal::{WalManager, WalConfig};
     /// use std::path::PathBuf;
+    ///
+    /// use sentinel_wal::{WalConfig, WalManager};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let config = WalConfig {
     ///     max_file_size: Some(10 * 1024 * 1024), // 10MB
     ///     ..Default::default()
     /// };
-    /// let wal = WalManager::new(PathBuf::from("data/app.wal"), config.clone()).await?;
+    /// let wal =
+    ///     WalManager::new(PathBuf::from("data/app.wal"), config.clone()).await?;
     ///
     /// let size = wal.size().await?;
     /// println!("WAL file size: {} bytes", size);
@@ -759,5 +796,37 @@ impl WalManager {
         let size = metadata.len();
         trace!("WAL file size: {} bytes", size);
         Ok(size)
+    }
+
+    /// Get the number of entries in the WAL.
+    ///
+    /// This returns the count of entries that have been written to the WAL.
+    /// Note that this may not reflect the current state if entries have been
+    /// checkpointed or if the WAL has been rotated.
+    ///
+    /// # Returns
+    ///
+    /// Returns the number of entries written to the WAL.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use std::path::PathBuf;
+    ///
+    /// use sentinel_wal::{WalConfig, WalManager};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let wal = WalManager::new(PathBuf::from("data.wal"), WalConfig::default())
+    ///     .await?;
+    ///
+    /// let count = wal.entries_count().await?;
+    /// println!("WAL has {} entries", count);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn entries_count(&self) -> Result<usize> {
+        let count = *self.entries_count.lock().await;
+        trace!("WAL entries count: {}", count);
+        Ok(count)
     }
 }
