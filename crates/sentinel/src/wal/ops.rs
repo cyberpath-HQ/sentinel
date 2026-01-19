@@ -62,7 +62,7 @@ impl StoreWalOps for Store {
         let collections = self.list_collections().await?;
         for collection_name in collections {
             let collection = self.collection(&collection_name).await?;
-            collection.checkpoint_wal().await?;
+            CollectionWalOps::checkpoint_wal(&collection).await?;
         }
 
         debug!("Checkpoint completed for all collections");
