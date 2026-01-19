@@ -104,6 +104,8 @@ pub struct Collection {
     pub(crate) total_size_bytes:   std::sync::atomic::AtomicU64,
     /// Event sender for notifying the store of metadata changes.
     pub(crate) event_sender:       Option<tokio::sync::mpsc::UnboundedSender<crate::events::StoreEvent>>,
+    /// Background task handle for processing internal events.
+    pub(crate) event_task:         Option<tokio::task::JoinHandle<()>>,
 }
 
 #[allow(
@@ -844,6 +846,7 @@ impl Collection {
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
                                                 event_sender: None,
+                                                event_task: None,
                                             };
 
                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
@@ -996,6 +999,7 @@ impl Collection {
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
                                                 event_sender: None,
+                                                event_task: None,
                                             };
 
                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
@@ -1289,6 +1293,7 @@ impl Collection {
                             signing_key: signing_key.clone(),
                                                 wal_manager: None,
                                                 event_sender: None,
+                                                event_task: None,
                         };
 
                         if let Err(e) = collection_ref.verify_document(&doc_with_id, &options).await {
@@ -1925,6 +1930,38 @@ impl Collection {
 
         trace!("Document id '{}' is valid", id);
         Ok(())
+    }
+
+    /// Starts the background event processing task for this collection.
+    ///
+    /// This method spawns a background task that processes internal collection events
+    /// asynchronously. The task will automatically be aborted when the collection is dropped.
+    pub fn start_event_processor(&mut self) {
+        if self.event_task.is_some() {
+            return; // Already started
+        }
+
+        // For now, collections don't have internal events to process,
+        // but this provides the infrastructure for future features like
+        // lazy indexing, background maintenance, or batched operations.
+        let task = tokio::spawn(async move {
+            // Placeholder for future collection event processing
+            // This task runs indefinitely until aborted
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await; // Sleep for 1 hour
+            }
+        });
+
+        self.event_task = Some(task);
+    }
+}
+
+impl Drop for Collection {
+    fn drop(&mut self) {
+        // Abort the background event processing task if it exists
+        if let Some(task) = self.event_task.take() {
+            task.abort();
+        }
     }
 }
 
