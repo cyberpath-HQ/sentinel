@@ -170,7 +170,7 @@ endif()
 if(SENTINEL_CXX_BUILD_TESTS)
     enable_testing()
 
-    # C++ tests (disabled due to compilation issues)
+    # C++ tests - disabled due to compilation issues
     # add_executable(cpp_tests tests/cpp_tests.cpp)
     # target_link_libraries(cpp_tests PRIVATE sentinel-cxx)
     # add_test(NAME cpp_tests COMMAND cpp_tests)
