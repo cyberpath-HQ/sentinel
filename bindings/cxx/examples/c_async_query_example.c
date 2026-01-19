@@ -14,7 +14,7 @@ static const int TOTAL_ASYNC_TESTS = 6;
     do { \
         sentinel_error_t result = (func_call); \
         if (result != SENTINEL_OK) { \
-            const char* error = sentinel_get_last_error(); \
+            char* error = sentinel_get_last_error(); \
             fprintf(stderr, "Error at %s:%d: %s\n", __FILE__, __LINE__, error); \
             sentinel_string_free(error); \
             exit(1); \

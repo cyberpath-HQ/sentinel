@@ -169,6 +169,20 @@ uint64_t sentinel_collection_query_async(struct sentinel_collection_t *collectio
                                          char *user_data);
 
 /**
+ * Combine two queries with OR logic
+ * Creates a new query that matches either the left OR right query
+ */
+struct sentinel_query_t *sentinel_query_or(struct sentinel_query_t *left,
+                                           struct sentinel_query_t *right);
+
+/**
+ * Combine two queries with AND logic
+ * Creates a new query that matches both the left AND right query
+ */
+struct sentinel_query_t *sentinel_query_and(struct sentinel_query_t *left,
+                                            struct sentinel_query_t *right);
+
+/**
  * Create a new query builder
  * Returns NULL on error
  */
@@ -202,6 +216,48 @@ enum sentinel_error_t sentinel_query_builder_filter_less_than(struct sentinel_qu
 enum sentinel_error_t sentinel_query_builder_filter_contains(struct sentinel_query_t *query,
                                                              const char *field,
                                                              const char *substring);
+
+/**
+ * Add a greater or equal filter to a query
+ */
+enum sentinel_error_t sentinel_query_builder_filter_greater_or_equal(struct sentinel_query_t *query,
+                                                                     const char *field,
+                                                                     const char *json_value);
+
+/**
+ * Add a less or equal filter to a query
+ */
+enum sentinel_error_t sentinel_query_builder_filter_less_or_equal(struct sentinel_query_t *query,
+                                                                  const char *field,
+                                                                  const char *json_value);
+
+/**
+ * Add a starts with filter to a query (for string fields)
+ */
+enum sentinel_error_t sentinel_query_builder_filter_starts_with(struct sentinel_query_t *query,
+                                                                const char *field,
+                                                                const char *prefix);
+
+/**
+ * Add an ends with filter to a query (for string fields)
+ */
+enum sentinel_error_t sentinel_query_builder_filter_ends_with(struct sentinel_query_t *query,
+                                                              const char *field,
+                                                              const char *suffix);
+
+/**
+ * Add an in filter to a query (field value in array)
+ */
+enum sentinel_error_t sentinel_query_builder_filter_in(struct sentinel_query_t *query,
+                                                       const char *field,
+                                                       const char *json_array);
+
+/**
+ * Add an exists filter to a query (field exists or doesn't exist)
+ */
+enum sentinel_error_t sentinel_query_builder_filter_exists(struct sentinel_query_t *query,
+                                                           const char *field,
+                                                           uint32_t should_exist);
 
 /**
  * Set sorting for a query

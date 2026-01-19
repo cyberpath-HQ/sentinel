@@ -7,7 +7,7 @@
     do { \
         sentinel_error_t result = (func_call); \
         if (result != SENTINEL_OK) { \
-            const char* error = sentinel_get_last_error(); \
+            char* error = sentinel_get_last_error(); \
             fprintf(stderr, "Error at %s:%d: %s\n", __FILE__, __LINE__, error); \
             sentinel_string_free(error); \
             exit(1); \
@@ -17,7 +17,7 @@
 #define CHECK_NULL(ptr, msg) \
     do { \
         if (!(ptr)) { \
-            const char* error = sentinel_get_last_error(); \
+            char* error = sentinel_get_last_error(); \
             fprintf(stderr, "Error at %s:%d: %s - %s\n", __FILE__, __LINE__, msg, error ? error : "Unknown"); \
             if (error) sentinel_string_free(error); \
             exit(1); \

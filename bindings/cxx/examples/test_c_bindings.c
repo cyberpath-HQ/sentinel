@@ -10,7 +10,7 @@ int main() {
     sentinel_store_t* store = sentinel_store_new("./test_db", NULL);
     if (!store) {
         fprintf(stderr, "FAILED: Could not create store\n");
-        const char* error = sentinel_get_last_error();
+        char* error = sentinel_get_last_error();
         if (error) {
             fprintf(stderr, "Error: %s\n", error);
             sentinel_string_free(error);
@@ -24,7 +24,7 @@ int main() {
     sentinel_collection_t* collection = sentinel_store_collection(store, "test_collection");
     if (!collection) {
         fprintf(stderr, "FAILED: Could not create collection\n");
-        const char* error = sentinel_get_last_error();
+        char* error = sentinel_get_last_error();
         if (error) {
             fprintf(stderr, "Error: %s\n", error);
             sentinel_string_free(error);
@@ -40,7 +40,7 @@ int main() {
         "{\"message\": \"Hello from C bindings!\", \"timestamp\": 1234567890}");
     if (result != SENTINEL_OK) {
         fprintf(stderr, "FAILED: Could not insert document\n");
-        const char* error = sentinel_get_last_error();
+        char* error = sentinel_get_last_error();
         if (error) {
             fprintf(stderr, "Error: %s\n", error);
             sentinel_string_free(error);
@@ -56,7 +56,7 @@ int main() {
     char* doc_json = sentinel_collection_get(collection, "doc1");
     if (!doc_json) {
         fprintf(stderr, "FAILED: Could not retrieve document\n");
-        const char* error = sentinel_get_last_error();
+        char* error = sentinel_get_last_error();
         if (error) {
             fprintf(stderr, "Error: %s\n", error);
             sentinel_string_free(error);
