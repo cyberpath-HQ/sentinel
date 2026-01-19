@@ -23,6 +23,27 @@ pub enum WalFormat {
     JsonLines,
 }
 
+impl std::str::FromStr for WalFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "binary" => Ok(WalFormat::Binary),
+            "json_lines" => Ok(WalFormat::JsonLines),
+            _ => Err(format!("Invalid WAL format: {}", s)),
+        }
+    }
+}
+
+impl std::fmt::Display for WalFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WalFormat::Binary => write!(f, "binary"),
+            WalFormat::JsonLines => write!(f, "json_lines"),
+        }
+    }
+}
+
 /// Configuration for WAL manager
 #[derive(Debug, Clone)]
 pub struct WalConfig {
