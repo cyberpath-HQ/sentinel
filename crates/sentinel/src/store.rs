@@ -389,6 +389,9 @@ impl Store {
         Ok(collections)
     }
 
+    /// Returns the root path of the store.
+    pub fn root_path(&self) -> &Path { &self.root_path }
+
     pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) { self.signing_key = Some(Arc::new(key)); }
 }
 
