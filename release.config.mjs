@@ -74,11 +74,5 @@ export default {
           "gh workflow run release-python.yml --ref ${nextRelease.gitTag} && gh workflow run release-js.yml --ref ${nextRelease.gitTag} && gh workflow run release-wasm.yml --ref ${nextRelease.gitTag}",
       },
     ],
-    [
-      "@semantic-release/exec",
-      {
-        successCmd: "gh workflow run release-cxx.yml --ref ${nextRelease.gitTag} -f version=${nextRelease.version}",
-      },
-    ],
   ],
 };
