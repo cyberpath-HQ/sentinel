@@ -52,7 +52,7 @@ def get_platform_info():
 def build_bindings():
     """Build the C/C++ bindings"""
     script_dir = Path(__file__).parent
-    crate_dir = script_dir / ".." / "crates" / "sentinel-cxx"
+    workspace_dir = script_dir / ".."
     output_dir = script_dir / "cxx" / "dist"
 
     # Create output directory
@@ -60,24 +60,19 @@ def build_bindings():
 
     platform_info = get_platform_info()
 
-    # Build the Rust crate
+    # Build from workspace root to ensure proper linking
     cmd = [
         "cargo", "build",
         "--release",
-        "--manifest-path", str(crate_dir / "Cargo.toml"),
-        "--target", platform_info["rust_target"]
+        "--package", "sentinel-cxx"
     ]
 
-    run_command(cmd)
+    run_command(cmd, cwd=str(workspace_dir))
 
-    # Find the built library
-    target_dir = crate_dir / "target" / platform_info["rust_target"] / "release"
+    # Find the built library in workspace target directory
+    target_dir = workspace_dir / "target" / "release"
     lib_name = f"libsentinel_cxx{platform_info['extension']}"
-
-    if platform_info["system"] == "windows":
-        lib_path = target_dir / lib_name
-    else:
-        lib_path = target_dir / lib_name
+    lib_path = target_dir / lib_name
 
     if not lib_path.exists():
         raise FileNotFoundError(f"Built library not found: {lib_path}")
@@ -87,12 +82,12 @@ def build_bindings():
     shutil.copy2(lib_path, output_lib)
 
     # Generate and copy header file
-    header_path = crate_dir / "target" / "release" / "sentinel_cxx.h"
+    header_path = target_dir / "sentinel-cxx.h"
     if header_path.exists():
         shutil.copy2(header_path, output_dir / "sentinel.h")
     else:
         print("Warning: Header file not found, running cbindgen...")
-        run_command(["cargo", "build", "--release"], cwd=crate_dir)
+        run_command(["cargo", "build", "--release", "--package", "sentinel-cxx"], cwd=str(workspace_dir))
         if header_path.exists():
             shutil.copy2(header_path, output_dir / "sentinel.h")
 
