@@ -97,8 +97,8 @@ pub struct Collection {
     pub(crate) last_checkpoint_at: std::sync::RwLock<Option<chrono::DateTime<chrono::Utc>>>,
     /// Total number of documents in the collection.
     pub(crate) total_documents:   std::sync::atomic::AtomicU64,
-    /// Total operations performed on the collection.
-    pub(crate) total_operations:  std::sync::atomic::AtomicU64,
+    /// Total size of all documents in bytes.
+    pub(crate) total_size_bytes:  std::sync::atomic::AtomicU64,
 }
 
 #[allow(
@@ -129,9 +129,9 @@ impl Collection {
         self.total_documents.load(std::sync::atomic::Ordering::Relaxed)
     }
 
-    /// Returns the total number of operations performed on the collection.
-    pub fn total_operations(&self) -> u64 {
-        self.total_operations.load(std::sync::atomic::Ordering::Relaxed)
+    /// Returns the total size of all documents in the collection in bytes.
+    pub fn total_size_bytes(&self) -> u64 {
+        self.total_size_bytes.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Inserts a new document into the collection or overwrites an existing one.
@@ -208,7 +208,7 @@ impl Collection {
             e
         })?;
 
-        tokio_fs::write(&file_path, json).await.map_err(|e| {
+        tokio_fs::write(&file_path, &json).await.map_err(|e| {
             error!(
                 "Failed to write document {} to file {:?}: {}",
                 id, file_path, e
@@ -219,7 +219,8 @@ impl Collection {
 
         // Update metadata
         *self.updated_at.write().unwrap() = chrono::Utc::now();
-        self.total_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_documents.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_size_bytes.fetch_add(json.len() as u64, std::sync::atomic::Ordering::Relaxed);
 
         Ok(())
     }
@@ -420,7 +421,8 @@ impl Collection {
 
         // Check if source exists
         match tokio_fs::metadata(&source_path).await {
-            Ok(_) => {
+            Ok(metadata) => {
+                let file_size = metadata.len();
                 debug!("Document {} exists, moving to .deleted", id);
                 // Create .deleted directory if it doesn't exist
                 tokio_fs::create_dir_all(&deleted_dir).await.map_err(|e| {
@@ -441,7 +443,8 @@ impl Collection {
 
                 // Update metadata
                 *self.updated_at.write().unwrap() = chrono::Utc::now();
-                self.total_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.total_documents.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                self.total_size_bytes.fetch_sub(file_size, std::sync::atomic::Ordering::Relaxed);
 
                 Ok(())
             },
@@ -453,7 +456,6 @@ impl Collection {
 
                 // Update metadata even for not found (still an operation)
                 *self.updated_at.write().unwrap() = chrono::Utc::now();
-                self.total_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
                 Ok(())
             },
@@ -537,8 +539,7 @@ impl Collection {
     /// ```
     pub async fn count(&self) -> Result<usize> {
         trace!("Counting documents in collection: {}", self.name());
-        let ids: Vec<String> = self.list().try_collect().await?;
-        Ok(ids.len())
+        Ok(self.total_documents.load(std::sync::atomic::Ordering::Relaxed) as usize)
     }
 
     /// Performs bulk insert operations on multiple documents.
@@ -760,7 +761,7 @@ impl Collection {
                                                 updated_at: std::sync::RwLock::new(chrono::Utc::now()),
                                                 last_checkpoint_at: std::sync::RwLock::new(None),
                                                 total_documents: std::sync::atomic::AtomicU64::new(0),
-                                                total_operations: std::sync::atomic::AtomicU64::new(0),
+                                                total_size_bytes: std::sync::atomic::AtomicU64::new(0),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
                                             };
@@ -911,7 +912,7 @@ impl Collection {
                                                 updated_at: std::sync::RwLock::new(chrono::Utc::now()),
                                                 last_checkpoint_at: std::sync::RwLock::new(None),
                                                 total_documents: std::sync::atomic::AtomicU64::new(0),
-                                                total_operations: std::sync::atomic::AtomicU64::new(0),
+                                                total_size_bytes: std::sync::atomic::AtomicU64::new(0),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
                                             };
@@ -1203,7 +1204,7 @@ impl Collection {
                                                 updated_at: std::sync::RwLock::new(chrono::Utc::now()),
                                                 last_checkpoint_at: std::sync::RwLock::new(None),
                                                 total_documents: std::sync::atomic::AtomicU64::new(0),
-                                                total_operations: std::sync::atomic::AtomicU64::new(0),
+                                                total_size_bytes: std::sync::atomic::AtomicU64::new(0),
                             signing_key: signing_key.clone(),
                                                 wal_manager: None,
                         };
@@ -1525,12 +1526,18 @@ impl Collection {
             existing_doc.signature = String::new();
         }
 
-        // Save the updated document
+        // Get old file size before updating
         let file_path = self.path.join(format!("{}.json", id));
+        let old_size = tokio_fs::metadata(&file_path).await
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        // Save the updated document
         let json = serde_json::to_string_pretty(&existing_doc).map_err(|e| {
             error!("Failed to serialize updated document {} to JSON: {}", id, e);
             e
         })?;
+        let new_size = json.len() as u64;
         tokio_fs::write(&file_path, json).await.map_err(|e| {
             error!(
                 "Failed to write updated document {} to file {:?}: {}",
@@ -1543,7 +1550,8 @@ impl Collection {
 
         // Update metadata
         *self.updated_at.write().unwrap() = chrono::Utc::now();
-        self.total_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_size_bytes.fetch_sub(old_size, std::sync::atomic::Ordering::Relaxed);
+        self.total_size_bytes.fetch_add(new_size, std::sync::atomic::Ordering::Relaxed);
 
         Ok(())
     }
