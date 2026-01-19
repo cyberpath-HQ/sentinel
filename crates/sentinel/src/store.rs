@@ -4,14 +4,13 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use serde_json::Value;
 use tokio::fs as tokio_fs;
 use tokio::sync::mpsc;
 use tracing::{debug, error, trace, warn};
 use sentinel_wal::WalManager;
 
 use crate::{
-    events::{EventEmitter, StoreEvent},
+    events::{StoreEvent},
     validation::{is_reserved_name, is_valid_name_chars},
     Collection,
     CollectionMetadata,
@@ -81,6 +80,8 @@ pub struct Store {
     event_receiver:   mpsc::UnboundedReceiver<StoreEvent>,
     /// Channel sender for collections to emit events.
     event_sender:     mpsc::UnboundedSender<StoreEvent>,
+    /// Background task handle for processing events.
+    event_task:       Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Store {
@@ -175,6 +176,7 @@ impl Store {
             collection_count: std::sync::atomic::AtomicU64::new(store_metadata.collection_count),
             event_receiver,
             event_sender,
+            event_task: None,
         };
         if let Some(passphrase) = passphrase {
             debug!("Passphrase provided, handling signing key");
@@ -241,6 +243,10 @@ impl Store {
             }
         }
         trace!("Store created successfully");
+        
+        // Start background event processing task
+        store.start_event_processor();
+        
         Ok(store)
     }
 
@@ -353,12 +359,8 @@ impl Store {
             serde_json::from_str(&content)?
         };
 
-        // If this is a new collection, update store metadata and emit event
+        // If this is a new collection, emit event (metadata will be saved by event handler)
         if is_new_collection {
-            self.collection_count
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            self.save_store_metadata().await?;
-            
             // Emit collection created event
             let event = StoreEvent::CollectionCreated { name: name.to_string() };
             let _ = self.event_sender.send(event);
@@ -377,7 +379,7 @@ impl Store {
         // Update store metadata
         *self.last_accessed_at.write().unwrap() = now;
 
-        Ok(Collection {
+        let mut collection = Collection {
             path,
             signing_key: self.signing_key.clone(),
             wal_manager,
@@ -387,7 +389,10 @@ impl Store {
             total_documents: std::sync::atomic::AtomicU64::new(metadata.document_count),
             total_size_bytes: std::sync::atomic::AtomicU64::new(metadata.total_size_bytes),
             event_sender: Some(self.event_sender()),
-        })
+            event_task: None,
+        };
+        collection.start_event_processor();
+        Ok(collection)
     }
 
     /// Returns the root path of the store.
@@ -406,56 +411,81 @@ impl Store {
         self.event_sender.clone()
     }
 
-    /// Processes pending events from collections and updates store metadata.
-    ///
-    /// This method should be called periodically to process events emitted by
-    /// collections and update the store's metadata accordingly. It processes
-    /// all pending events in the queue.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Result<()>` indicating success or failure of processing events.
-    pub async fn process_events(&mut self) -> Result<()> {
-        trace!("Processing store events");
+    /// Starts the background event processing task.
+    fn start_event_processor(&mut self) {
+        let mut receiver = std::mem::replace(&mut self.event_receiver, mpsc::unbounded_channel().1);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel::<StoreEvent>();
         
-        while let Ok(event) = self.event_receiver.try_recv() {
-            match event {
-                StoreEvent::CollectionCreated { name } => {
-                    debug!("Processing collection created event: {}", name);
-                    self.collection_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Clone necessary data for the background task
+        let root_path = self.root_path.clone();
+        let signing_key = self.signing_key.clone();
+        let created_at = self.created_at;
+        let mut total_size_bytes = self.total_size_bytes.load(std::sync::atomic::Ordering::Relaxed);
+        let mut total_documents = self.total_documents.load(std::sync::atomic::Ordering::Relaxed);
+        let mut collection_count = self.collection_count.load(std::sync::atomic::Ordering::Relaxed);
+        
+        let task = tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                // Process the event
+                match event {
+                    StoreEvent::CollectionCreated { name } => {
+                        debug!("Processing collection created event: {}", name);
+                        collection_count += 1;
+                    }
+                    StoreEvent::CollectionDeleted { name, document_count, total_size_bytes: event_size } => {
+                        debug!("Processing collection deleted event: {} (docs: {}, size: {})", 
+                              name, document_count, event_size);
+                        collection_count -= 1;
+                        total_documents -= document_count;
+                        total_size_bytes -= event_size;
+                    }
+                    StoreEvent::DocumentInserted { collection, size_bytes } => {
+                        debug!("Processing document inserted event: {} (size: {})", collection, size_bytes);
+                        total_documents += 1;
+                        total_size_bytes += size_bytes;
+                    }
+                    StoreEvent::DocumentUpdated { collection, old_size_bytes, new_size_bytes } => {
+                        debug!("Processing document updated event: {} (old: {}, new: {})", 
+                              collection, old_size_bytes, new_size_bytes);
+                        total_size_bytes -= old_size_bytes;
+                        total_size_bytes += new_size_bytes;
+                    }
+                    StoreEvent::DocumentDeleted { collection, size_bytes } => {
+                        debug!("Processing document deleted event: {} (size: {})", collection, size_bytes);
+                        total_documents -= 1;
+                        total_size_bytes -= size_bytes;
+                    }
                 }
-                StoreEvent::CollectionDeleted { name, document_count, total_size_bytes } => {
-                    debug!("Processing collection deleted event: {} (docs: {}, size: {})", 
-                          name, document_count, total_size_bytes);
-                    self.collection_count.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                    self.total_documents.fetch_sub(document_count, std::sync::atomic::Ordering::Relaxed);
-                    self.total_size_bytes.fetch_sub(total_size_bytes, std::sync::atomic::Ordering::Relaxed);
-                }
-                StoreEvent::DocumentInserted { collection, size_bytes } => {
-                    debug!("Processing document inserted event: {} (size: {})", collection, size_bytes);
-                    self.total_documents.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    self.total_size_bytes.fetch_add(size_bytes, std::sync::atomic::Ordering::Relaxed);
-                }
-                StoreEvent::DocumentUpdated { collection, old_size_bytes, new_size_bytes } => {
-                    debug!("Processing document updated event: {} (old: {}, new: {})", 
-                          collection, old_size_bytes, new_size_bytes);
-                    self.total_size_bytes.fetch_sub(old_size_bytes, std::sync::atomic::Ordering::Relaxed);
-                    self.total_size_bytes.fetch_add(new_size_bytes, std::sync::atomic::Ordering::Relaxed);
-                }
-                StoreEvent::DocumentDeleted { collection, size_bytes } => {
-                    debug!("Processing document deleted event: {} (size: {})", collection, size_bytes);
-                    self.total_documents.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                    self.total_size_bytes.fetch_sub(size_bytes, std::sync::atomic::Ordering::Relaxed);
+                
+                // Save updated metadata to disk
+                let metadata = StoreMetadata {
+                    version: META_SENTINEL_VERSION,
+                    created_at: created_at.timestamp() as u64,
+                    updated_at: chrono::Utc::now().timestamp() as u64,
+                    collection_count,
+                    total_documents,
+                    total_size_bytes,
+                    wal_config: sentinel_wal::StoreWalConfig::default(),
+                };
+                
+                let content = serde_json::to_string_pretty(&metadata).unwrap();
+                let metadata_path = root_path.join(STORE_METADATA_FILE);
+                if let Err(e) = tokio::fs::write(&metadata_path, content).await {
+                    error!("Failed to save store metadata in background task: {}", e);
                 }
             }
-        }
+        });
         
-        // Save updated metadata to disk
-        self.save_store_metadata().await?;
+        // Forward events from the main receiver to the background task
+        tokio::spawn(async move {
+            while let Some(event) = receiver.recv().await {
+                let _ = event_tx.send(event);
+            }
+        });
         
-        Ok(())
+        self.event_task = Some(task);
     }
-
+    
     /// Deletes a collection and all its documents.
     ///
     /// This method removes the entire collection directory and all documents within it.
@@ -519,19 +549,8 @@ impl Store {
 
         // Update store metadata
         *self.last_accessed_at.write().unwrap() = chrono::Utc::now();
-        self.collection_count
-            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         if let Some(metadata) = collection_metadata {
-            self.total_documents.fetch_sub(
-                metadata.document_count,
-                std::sync::atomic::Ordering::Relaxed,
-            );
-            self.total_size_bytes.fetch_sub(
-                metadata.total_size_bytes,
-                std::sync::atomic::Ordering::Relaxed,
-            );
-            
-            // Emit collection deleted event
+            // Emit collection deleted event (metadata will be saved by event handler)
             let event = StoreEvent::CollectionDeleted {
                 name: name.to_string(),
                 document_count: metadata.document_count,
@@ -539,7 +558,6 @@ impl Store {
             };
             let _ = self.event_sender.send(event);
         }
-        self.save_store_metadata().await?;
 
         Ok(())
     }
@@ -657,12 +675,10 @@ impl Store {
         Ok(())
     }
 
-    pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) { self.signing_key = Some(Arc::new(key)); }
+    pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) { 
+        self.signing_key = Some(Arc::new(key)); 
+    }
 }
-
-/// Validates that a collection name is filesystem-safe across all platforms.
-///
-/// # Rules
 /// - Must not be empty
 /// - Must not contain path separators (`/` or `\`)
 /// - Must not contain control characters (0x00-0x1F, 0x7F)
@@ -743,6 +759,17 @@ fn validate_collection_name(name: &str) -> Result<()> {
 
     trace!("Collection name '{}' is valid", name);
     Ok(())
+}
+
+impl Drop for Store {
+    fn drop(&mut self) {
+        // Close the event channel to signal the background task to stop
+        // The receiver will be dropped when the task finishes
+        if let Some(task) = self.event_task.take() {
+            // We can't await here, but the task will be aborted when the runtime shuts down
+            task.abort();
+        }
+    }
 }
 
 #[cfg(test)]
