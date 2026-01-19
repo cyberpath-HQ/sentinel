@@ -3,9 +3,12 @@ use std::str::FromStr as _;
 use clap::Args;
 use sentinel_dbms::{
     futures::{pin_mut, StreamExt as _},
+    CollectionWalConfig,
+    CompressionAlgorithm,
     VerificationMode,
     VerificationOptions,
-    CollectionWalConfig, CompressionAlgorithm, WalFailureMode, WalFormat,
+    WalFailureMode,
+    WalFormat,
 };
 use tracing::{error, info};
 
@@ -14,47 +17,47 @@ use tracing::{error, info};
 pub struct ListArgs {
     /// Store path
     #[arg(short, long)]
-    pub store_path:       String,
+    pub store_path:          String,
     /// Collection name
     #[arg(short, long)]
-    pub collection:       String,
+    pub collection:          String,
     /// Passphrase for decrypting signing key
     #[arg(long)]
-    pub passphrase:       Option<String>,
+    pub passphrase:          Option<String>,
     /// Verify document signature (default: true)
     #[arg(long, default_value = "true")]
-    pub verify_signature: bool,
+    pub verify_signature:    bool,
     /// Verify document hash (default: true)
     #[arg(long, default_value = "true")]
-    pub verify_hash:      bool,
+    pub verify_hash:         bool,
     /// Signature verification mode: strict, warn, or silent (default: strict)
     #[arg(long, default_value = "strict")]
-    pub signature_mode:   String,
+    pub signature_mode:      String,
     /// How to handle documents with no signature: strict, warn, or silent (default: warn)
     #[arg(long, default_value = "warn")]
-    pub empty_sig_mode:   String,
+    pub empty_sig_mode:      String,
     /// Hash verification mode: strict, warn, or silent (default: strict)
     #[arg(long, default_value = "strict")]
-    pub hash_mode:        String,
+    pub hash_mode:           String,
     /// Maximum WAL file size in bytes for this collection (default: 10MB)
     #[arg(long)]
     pub wal_max_file_size:   Option<u64>,
     /// WAL file format for this collection: binary or json_lines (default: binary)
     #[arg(long)]
-    pub wal_format:          Option<String>,
+    pub wal_format:          Option<WalFormat>,
     /// WAL compression algorithm for this collection: zstd, lz4, brotli, deflate, gzip (default:
     /// zstd)
     #[arg(long)]
-    pub wal_compression:     Option<String>,
+    pub wal_compression:     Option<CompressionAlgorithm>,
     /// Maximum number of records per WAL file for this collection (default: 1000)
     #[arg(long)]
     pub wal_max_records:     Option<usize>,
     /// WAL write mode for this collection: disabled, warn, strict (default: strict)
     #[arg(long)]
-    pub wal_write_mode:      Option<String>,
+    pub wal_write_mode:      Option<WalFailureMode>,
     /// WAL verification mode for this collection: disabled, warn, strict (default: warn)
     #[arg(long)]
-    pub wal_verify_mode:     Option<String>,
+    pub wal_verify_mode:     Option<WalFailureMode>,
     /// Enable automatic document verification against WAL for this collection (default: false)
     #[arg(long)]
     pub wal_auto_verify:     Option<bool>,
@@ -382,63 +385,17 @@ fn build_collection_wal_config(args: &ListArgs) -> Option<CollectionWalConfig> {
         args.wal_enable_recovery.is_some()
     {
         Some(CollectionWalConfig {
-            write_mode:            args
-                .wal_write_mode
-                .as_ref()
-                .and_then(|s| parse_wal_failure_mode(s))
-                .unwrap_or(WalFailureMode::Strict),
-            verification_mode:     args
-                .wal_verify_mode
-                .as_ref()
-                .and_then(|s| parse_wal_failure_mode(s))
-                .unwrap_or(WalFailureMode::Warn),
+            write_mode:            args.wal_write_mode.unwrap_or(WalFailureMode::Strict),
+            verification_mode:     args.wal_verify_mode.unwrap_or(WalFailureMode::Warn),
             auto_verify:           args.wal_auto_verify.unwrap_or(false),
             enable_recovery:       args.wal_enable_recovery.unwrap_or(true),
             max_wal_size_bytes:    args.wal_max_file_size,
-            compression_algorithm: args
-                .wal_compression
-                .as_ref()
-                .and_then(|s| parse_compression_algorithm(s)),
+            compression_algorithm: args.wal_compression,
             max_records_per_file:  args.wal_max_records,
-            format:                args
-                .wal_format
-                .as_ref()
-                .and_then(|s| parse_wal_format(s))
-                .unwrap_or_default(),
+            format:                args.wal_format.unwrap_or_default(),
         })
     }
     else {
         None
-    }
-}
-
-/// Parse WAL failure mode from string
-fn parse_wal_failure_mode(s: &str) -> Option<WalFailureMode> {
-    match s.to_lowercase().as_str() {
-        "disabled" => Some(WalFailureMode::Disabled),
-        "warn" => Some(WalFailureMode::Warn),
-        "strict" => Some(WalFailureMode::Strict),
-        _ => None,
-    }
-}
-
-/// Parse compression algorithm from string
-fn parse_compression_algorithm(s: &str) -> Option<CompressionAlgorithm> {
-    match s.to_lowercase().as_str() {
-        "zstd" => Some(CompressionAlgorithm::Zstd),
-        "lz4" => Some(CompressionAlgorithm::Lz4),
-        "brotli" => Some(CompressionAlgorithm::Brotli),
-        "deflate" => Some(CompressionAlgorithm::Deflate),
-        "gzip" => Some(CompressionAlgorithm::Gzip),
-        _ => None,
-    }
-}
-
-/// Parse WAL format from string
-fn parse_wal_format(s: &str) -> Option<WalFormat> {
-    match s.to_lowercase().as_str() {
-        "binary" => Some(WalFormat::Binary),
-        "json_lines" => Some(WalFormat::JsonLines),
-        _ => None,
     }
 }
