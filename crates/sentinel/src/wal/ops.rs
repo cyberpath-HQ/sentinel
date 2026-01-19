@@ -24,6 +24,7 @@
 //!
 //! ```rust,no_run
 //! # use sentinel_dbms::{Store, Collection};
+//! # use futures::StreamExt;
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! # let store = Store::new("/tmp/store", None).await?;
 //! # let collection = store.collection("users").await?;
@@ -373,7 +374,7 @@ pub trait CollectionWalOps {
     /// if !result.failures.is_empty() {
     ///     println!("Recovery failures:");
     ///     for failure in &result.failures {
-    ///         println!("  - {}", failure);
+    ///         println!("  - {:?}", failure);
     ///     }
     /// }
     /// # Ok(())
