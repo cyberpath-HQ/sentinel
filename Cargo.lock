@@ -1636,6 +1636,7 @@ checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
 name = "sentinel-cli"
 version = "2.0.1"
 dependencies = [
+ "chrono",
  "clap",
  "hex",
  "sentinel-crypto",
