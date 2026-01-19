@@ -39,7 +39,7 @@ impl Document {
         debug!("Document {} created with hash: {}", id, hash);
         Ok(Self {
             id,
-            version: crate::META_SENTINEL_VERSION,
+            version: crate::DOCUMENT_SENTINEL_VERSION,
             created_at: now,
             updated_at: now,
             hash,
@@ -57,7 +57,7 @@ impl Document {
         debug!("Document {} created without signature, hash: {}", id, hash);
         Ok(Self {
             id,
-            version: crate::META_SENTINEL_VERSION,
+            version: crate::DOCUMENT_SENTINEL_VERSION,
             created_at: now,
             updated_at: now,
             hash,
@@ -119,7 +119,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(doc.id(), "test-id");
-        assert_eq!(doc.version(), crate::META_SENTINEL_VERSION);
+        assert_eq!(doc.version(), crate::DOCUMENT_SENTINEL_VERSION);
         assert_eq!(doc.data(), &data);
         assert!(!doc.hash().is_empty());
         assert!(!doc.signature().is_empty());
@@ -138,7 +138,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(doc.id(), "empty");
-        assert_eq!(doc.version(), crate::META_SENTINEL_VERSION);
+        assert_eq!(doc.version(), crate::DOCUMENT_SENTINEL_VERSION);
         assert!(doc.data().as_object().unwrap().is_empty());
     }
 
