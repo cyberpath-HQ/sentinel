@@ -1654,7 +1654,7 @@ impl Collection {
         // Emit event for metadata synchronization
         if let Some(sender) = &self.event_sender {
             let event = StoreEvent::DocumentUpdated {
-                collection: self.name().to_string(),
+                collection:     self.name().to_string(),
                 old_size_bytes: old_size,
                 new_size_bytes: new_size,
             };
@@ -1977,7 +1977,7 @@ impl Collection {
                                 updated_at: chrono::Utc::now().timestamp() as u64,
                                 document_count: current_document_count,
                                 total_size_bytes: current_total_size_bytes,
-                                wal_config: wal_config.clone(),
+                                wal_config: Some(wal_config.clone()),
                             };
 
                             let content = match serde_json::to_string_pretty(&metadata) {
