@@ -201,14 +201,17 @@ fn run_example_test(build_dir: &PathBuf, exe_name: &str, description: &str) {
         );
     }
 
-    println!("Running {}...", description);
-
-    let result = Command::new(&exe_path)
+    // Spawn the process to run the example
+    let mut child = Command::new(&exe_path)
         .current_dir(build_dir)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .status()
-        .unwrap_or_else(|e| panic!("Failed to run {}: {}", description, e));
+        .spawn()
+        .unwrap_or_else(|e| panic!("Failed to spawn {}: {}", description, e));
+
+    let result = child
+        .wait()
+        .unwrap_or_else(|e| panic!("Failed to wait for {}: {}", description, e));
 
     if !result.success() {
         panic!("{} failed with exit code {:?}", description, result.code());
