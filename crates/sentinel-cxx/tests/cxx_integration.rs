@@ -10,6 +10,15 @@ use std::{
 };
 
 #[test]
+fn test_cxx_bindings_integration() {
+    // Run build test first
+    test_cxx_bindings_build();
+
+    // Then run the other tests sequentially
+    test_cxx_bindings_tests();
+    test_cxx_examples_run();
+}
+
 fn test_cxx_bindings_build() {
     // Get the project root (crates/sentinel-cxx -> language-interop)
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -112,8 +121,6 @@ fn test_cxx_bindings_build() {
     println!("✓ All C/C++ executables built successfully");
 }
 
-#[serial_test::serial]
-#[test]
 fn test_cxx_examples_run() {
     // Get the project root (crates/sentinel-cxx -> project root)
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -151,8 +158,6 @@ fn test_cxx_examples_run() {
     println!("✓ All C/C++ examples ran successfully");
 }
 
-#[serial_test::serial]
-#[test]
 fn test_cxx_bindings_tests() {
     // Get the project root (crates/sentinel-cxx -> project root)
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -179,33 +184,33 @@ fn test_cxx_bindings_tests() {
 fn run_example_test(build_dir: &PathBuf, exe_name: &str, description: &str) {
     let exe_path = build_dir.join(exe_name);
 
-    // Wait for the executable to exist (with timeout)
-    let mut attempts = 0;
-    while !exe_path.exists() && attempts < 30 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        attempts += 1;
-    }
-
+    // The build test should have created all executables already
     if !exe_path.exists() {
         panic!(
-            "{} executable not found at {:?} after waiting - build test may have failed",
+            "{} executable not found at {:?} - build test may have failed",
             description, exe_path
         );
     }
 
-    // Now check again
-    if !exe_path.exists() {
-        panic!(
-            "{} executable still not found after build attempt at {:?}",
-            description, exe_path
-        );
-    }
+    // Small delay to ensure the executable is fully written and not locked
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Spawn the process to run the example
-    let mut child = Command::new(&exe_path)
+    let mut command = Command::new(&exe_path);
+    command
         .current_dir(build_dir)
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::inherit());
+
+    // Set library path for dynamic linking
+    if cfg!(target_os = "linux") {
+        let lib_path = build_dir.parent().unwrap().join("lib");
+        if lib_path.exists() {
+            command.env("LD_LIBRARY_PATH", lib_path);
+        }
+    }
+
+    let mut child = command
         .spawn()
         .unwrap_or_else(|e| panic!("Failed to spawn {}: {}", description, e));
 
