@@ -25,7 +25,7 @@ mod validation;
 /// Verification utilities module.
 mod verification;
 /// WAL (Write-Ahead Logging) operations module.
-mod wal;
+pub mod wal;
 
 // Re-export commonly used external crates for convenience
 pub use async_stream;
