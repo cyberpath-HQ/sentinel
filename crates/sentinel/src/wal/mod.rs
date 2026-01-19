@@ -5,5 +5,3 @@
 //! durability and enables crash recovery for the filesystem-backed database.
 
 pub mod ops;
-pub mod recovery;
-pub mod verification;
