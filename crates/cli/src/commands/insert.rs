@@ -5,52 +5,32 @@ use serde_json::Value;
 use tracing::{error, info};
 use sentinel_dbms::{CollectionWalConfig, CompressionAlgorithm, WalFailureMode, WalFormat};
 
+use crate::commands::WalArgs;
+
 /// Arguments for the insert command.
 #[derive(Args, Clone, Default)]
 pub struct InsertArgs {
     /// Store path
     #[arg(short, long)]
-    pub store_path:          String,
+    pub store_path: String,
     /// Collection name
     #[arg(short, long)]
-    pub collection:          String,
+    pub collection: String,
     /// Document ID (not used with --bulk)
     #[arg(short, long)]
-    pub id:                  Option<String>,
+    pub id:         Option<String>,
     /// JSON data (as string, not used with --bulk)
     #[arg(short, long)]
-    pub data:                Option<String>,
+    pub data:       Option<String>,
     /// Bulk insert from JSON file (format: {"id1": {...}, "id2": {...}})
     #[arg(short, long)]
-    pub bulk:                Option<String>,
+    pub bulk:       Option<String>,
     /// Passphrase for decrypting the signing key
     #[arg(long)]
-    pub passphrase:          Option<String>,
-    /// Maximum WAL file size in bytes for this collection (default: 10MB)
-    #[arg(long)]
-    pub wal_max_file_size:   Option<u64>,
-    /// WAL file format for this collection: binary or json_lines (default: binary)
-    #[arg(long)]
-    pub wal_format:          Option<WalFormat>,
-    /// WAL compression algorithm for this collection: zstd, lz4, brotli, deflate, gzip (default:
-    /// zstd)
-    #[arg(long)]
-    pub wal_compression:     Option<CompressionAlgorithm>,
-    /// Maximum number of records per WAL file for this collection (default: 1000)
-    #[arg(long)]
-    pub wal_max_records:     Option<usize>,
-    /// WAL write mode for this collection: disabled, warn, strict (default: strict)
-    #[arg(long)]
-    pub wal_write_mode:      Option<WalFailureMode>,
-    /// WAL verification mode for this collection: disabled, warn, strict (default: warn)
-    #[arg(long)]
-    pub wal_verify_mode:     Option<WalFailureMode>,
-    /// Enable automatic document verification against WAL for this collection (default: false)
-    #[arg(long)]
-    pub wal_auto_verify:     Option<bool>,
-    /// Enable WAL-based recovery features for this collection (default: true)
-    #[arg(long)]
-    pub wal_enable_recovery: Option<bool>,
+    pub passphrase: Option<String>,
+    /// WAL configuration options for this collection
+    #[command(flatten)]
+    pub wal:        WalArgs,
 }
 
 /// Insert a new document into a Sentinel collection.
@@ -70,68 +50,85 @@ pub struct InsertArgs {
 ///
 /// # Examples
 /// ```rust,no_run
-/// use sentinel_cli::commands::insert::{run, InsertArgs};
+/// use sentinel_cli::commands::{
+///     insert::{run, InsertArgs},
+///     WalArgs,
+/// };
 ///
 /// // Single document insert
 /// let args = InsertArgs {
-///     store_path:          "/tmp/my_store".to_string(),
-///     collection:          "users".to_string(),
-///     id:                  Some("user1".to_string()),
-///     data:                Some(r#"{"name": "Alice"}"#.to_string()),
-///     bulk:                None,
-///     passphrase:          None,
-///     wal_max_file_size:   None,
-///     wal_format:          None,
-///     wal_compression:     None,
-///     wal_max_records:     None,
-///     wal_write_mode:      None,
-///     wal_verify_mode:     None,
-///     wal_auto_verify:     None,
-///     wal_enable_recovery: None,
+///     store_path: "/tmp/my_store".to_string(),
+///     collection: "users".to_string(),
+///     id:         Some("user1".to_string()),
+///     data:       Some(r#"{"name": "Alice"}"#.to_string()),
+///     bulk:       None,
+///     passphrase: None,
+///     wal:        WalArgs::default(),
 /// };
-/// run(args).await?;
+/// run(args, &WalArgs::default()).await?;
 ///
 /// // Bulk insert
 /// let args = InsertArgs {
-///     store_path:          "/tmp/my_store".to_string(),
-///     collection:          "users".to_string(),
-///     id:                  None,
-///     data:                None,
-///     bulk:                Some("documents.json".to_string()),
-///     passphrase:          None,
-///     wal_max_file_size:   None,
-///     wal_format:          None,
-///     wal_compression:     None,
-///     wal_max_records:     None,
-///     wal_write_mode:      None,
-///     wal_verify_mode:     None,
-///     wal_auto_verify:     None,
-///     wal_enable_recovery: None,
+///     store_path: "/tmp/my_store".to_string(),
+///     collection: "users".to_string(),
+///     id:         None,
+///     data:       None,
+///     bulk:       Some("documents.json".to_string()),
+///     passphrase: None,
+///     wal:        WalArgs::default(),
 /// };
-/// run(args).await?;
+/// run(args, &WalArgs::default()).await?;
 /// ```
 
 /// Build CollectionWalConfig from CLI arguments
-fn build_collection_wal_config(args: &InsertArgs) -> Option<CollectionWalConfig> {
+fn build_collection_wal_config(args: &InsertArgs, global_wal: &WalArgs) -> Option<CollectionWalConfig> {
     // Only build config if any WAL options are provided
-    if args.wal_max_file_size.is_some() ||
-        args.wal_format.is_some() ||
-        args.wal_compression.is_some() ||
-        args.wal_max_records.is_some() ||
-        args.wal_write_mode.is_some() ||
-        args.wal_verify_mode.is_some() ||
-        args.wal_auto_verify.is_some() ||
-        args.wal_enable_recovery.is_some()
+    if args.wal.wal_max_file_size.is_some() ||
+        args.wal.wal_format.is_some() ||
+        args.wal.wal_compression.is_some() ||
+        args.wal.wal_max_records.is_some() ||
+        args.wal.wal_write_mode.is_some() ||
+        args.wal.wal_verify_mode.is_some() ||
+        args.wal.wal_auto_verify.is_some() ||
+        args.wal.wal_enable_recovery.is_some() ||
+        global_wal.wal_max_file_size.is_some() ||
+        global_wal.wal_format.is_some() ||
+        global_wal.wal_compression.is_some() ||
+        global_wal.wal_max_records.is_some() ||
+        global_wal.wal_write_mode.is_some() ||
+        global_wal.wal_verify_mode.is_some() ||
+        global_wal.wal_auto_verify.is_some() ||
+        global_wal.wal_enable_recovery.is_some()
     {
         Some(CollectionWalConfig {
-            write_mode:            args.wal_write_mode.unwrap_or(WalFailureMode::Strict),
-            verification_mode:     args.wal_verify_mode.unwrap_or(WalFailureMode::Warn),
-            auto_verify:           args.wal_auto_verify.unwrap_or(false),
-            enable_recovery:       args.wal_enable_recovery.unwrap_or(true),
-            max_wal_size_bytes:    args.wal_max_file_size,
-            compression_algorithm: args.wal_compression,
-            max_records_per_file:  args.wal_max_records,
-            format:                args.wal_format.unwrap_or_default(),
+            write_mode:            args
+                .wal
+                .wal_write_mode
+                .or(global_wal.wal_write_mode)
+                .unwrap_or(WalFailureMode::Strict),
+            verification_mode:     args
+                .wal
+                .wal_verify_mode
+                .or(global_wal.wal_verify_mode)
+                .unwrap_or(WalFailureMode::Warn),
+            auto_verify:           args
+                .wal
+                .wal_auto_verify
+                .or(global_wal.wal_auto_verify)
+                .unwrap_or(false),
+            enable_recovery:       args
+                .wal
+                .wal_enable_recovery
+                .or(global_wal.wal_enable_recovery)
+                .unwrap_or(true),
+            max_wal_size_bytes:    args.wal.wal_max_file_size.or(global_wal.wal_max_file_size),
+            compression_algorithm: args.wal.wal_compression.or(global_wal.wal_compression),
+            max_records_per_file:  args.wal.wal_max_records.or(global_wal.wal_max_records),
+            format:                args
+                .wal
+                .wal_format
+                .or(global_wal.wal_format)
+                .unwrap_or_default(),
         })
     }
     else {
@@ -139,14 +136,14 @@ fn build_collection_wal_config(args: &InsertArgs) -> Option<CollectionWalConfig>
     }
 }
 
-pub async fn run(args: InsertArgs) -> sentinel_dbms::Result<()> {
+pub async fn run(args: InsertArgs, global_wal: &WalArgs) -> sentinel_dbms::Result<()> {
     let store = sentinel_dbms::Store::new_with_config(
         &args.store_path,
         args.passphrase.as_deref(),
         sentinel_dbms::StoreWalConfig::default(),
     )
     .await?;
-    let wal_config = build_collection_wal_config(&args);
+    let wal_config = build_collection_wal_config(&args, global_wal);
     let coll = store
         .collection_with_config(&args.collection, wal_config)
         .await?;
@@ -364,23 +361,26 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  Some("doc1".to_string()),
-            data:                Some(r#"{"name": "Alice", "age": 30}"#.to_string()),
-            bulk:                None,
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         Some("doc1".to_string()),
+            data:       Some(r#"{"name": "Alice", "age": 30}"#.to_string()),
+            bulk:       None,
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(result.is_ok(), "Insert should succeed with valid data");
     }
 
@@ -412,23 +412,26 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  Some("doc1".to_string()),
-            data:                Some(r#"{"name": "Alice", "age": }"#.to_string()), // Invalid JSON
-            bulk:                None,
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         Some("doc1".to_string()),
+            data:       Some(r#"{"name": "Alice", "age": }"#.to_string()), // Invalid JSON
+            bulk:       None,
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(result.is_err(), "Insert should fail with invalid JSON");
     }
 
@@ -459,23 +462,26 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  None, // Missing ID
-            data:                Some(r#"{"name": "Alice"}"#.to_string()),
-            bulk:                None,
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None, // Missing ID
+            data:       Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk:       None,
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(result.is_err(), "Insert should fail without ID");
     }
 
@@ -506,23 +512,26 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  Some("doc1".to_string()),
-            data:                None, // Missing data
-            bulk:                None,
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         Some("doc1".to_string()),
+            data:       None, // Missing data
+            bulk:       None,
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(result.is_err(), "Insert should fail without data");
     }
 
@@ -544,23 +553,26 @@ mod tests {
         crate::commands::init::run(init_args).await.unwrap();
 
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "non_existent".to_string(),
-            id:                  Some("doc1".to_string()),
-            data:                Some(r#"{"name": "Alice"}"#.to_string()),
-            bulk:                None,
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "non_existent".to_string(),
+            id:         Some("doc1".to_string()),
+            data:       Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk:       None,
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(result.is_ok(), "Insert should create collection if needed");
     }
 
@@ -591,23 +603,26 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  Some("doc1".to_string()),
-            data:                Some("{}".to_string()),
-            bulk:                None,
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         Some("doc1".to_string()),
+            data:       Some("{}".to_string()),
+            bulk:       None,
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(
             result.is_ok(),
             "Insert should succeed with empty JSON object"
@@ -642,25 +657,28 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  Some("doc1".to_string()),
-            data:                Some(
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         Some("doc1".to_string()),
+            data:       Some(
                 r#"{"users": [{"name": "Alice"}, {"name": "Bob"}], "metadata": {"version": 1}}"#.to_string(),
             ),
-            bulk:                None,
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            bulk:       None,
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(result.is_ok(), "Insert should succeed with complex JSON");
     }
 
@@ -698,23 +716,26 @@ mod tests {
         std::fs::set_permissions(&collection_path, perms).unwrap();
 
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  Some("doc1".to_string()),
-            data:                Some(r#"{"name": "Alice"}"#.to_string()),
-            bulk:                None,
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         Some("doc1".to_string()),
+            data:       Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk:       None,
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(
             result.is_err(),
             "Insert should fail on read-only collection"
@@ -758,23 +779,26 @@ mod tests {
 
         // Test bulk insert via CLI
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  None,
-            data:                None,
-            bulk:                Some(json_file.to_string_lossy().to_string()),
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some(json_file.to_string_lossy().to_string()),
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(result.is_ok(), "Bulk insert should succeed");
 
         // Verify documents were inserted
@@ -802,23 +826,26 @@ mod tests {
 
         // Test bulk insert with non-existent file
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  None,
-            data:                None,
-            bulk:                Some("non_existent_file.json".to_string()),
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some("non_existent_file.json".to_string()),
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(
             result.is_err(),
             "Bulk insert should fail with invalid file path"
@@ -846,23 +873,26 @@ mod tests {
 
         // Test bulk insert with invalid JSON
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  None,
-            data:                None,
-            bulk:                Some(json_file.to_string_lossy().to_string()),
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some(json_file.to_string_lossy().to_string()),
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(result.is_err(), "Bulk insert should fail with invalid JSON");
     }
 
@@ -887,23 +917,26 @@ mod tests {
 
         // Test bulk insert with JSON array
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  None,
-            data:                None,
-            bulk:                Some(json_file.to_string_lossy().to_string()),
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some(json_file.to_string_lossy().to_string()),
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(result.is_err(), "Bulk insert should fail with JSON array");
     }
 
@@ -929,23 +962,26 @@ mod tests {
 
         // Test bulk insert into non-existent collection (should succeed - collection gets created)
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "non_existent_collection".to_string(),
-            id:                  None,
-            data:                None,
-            bulk:                Some(json_file.to_string_lossy().to_string()),
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "non_existent_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some(json_file.to_string_lossy().to_string()),
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(
             result.is_ok(),
             "Bulk insert should succeed - collection gets created automatically"
@@ -981,23 +1017,26 @@ mod tests {
 
         // Test bulk insert with invalid ID
         let args = InsertArgs {
-            store_path:          store_path.to_string_lossy().to_string(),
-            collection:          "test_collection".to_string(),
-            id:                  None,
-            data:                None,
-            bulk:                Some(json_file.to_string_lossy().to_string()),
-            passphrase:          None,
-            wal_max_file_size:   None,
-            wal_format:          None,
-            wal_compression:     None,
-            wal_max_records:     None,
-            wal_write_mode:      None,
-            wal_verify_mode:     None,
-            wal_auto_verify:     None,
-            wal_enable_recovery: None,
+            store_path: store_path.to_string_lossy().to_string(),
+            collection: "test_collection".to_string(),
+            id:         None,
+            data:       None,
+            bulk:       Some(json_file.to_string_lossy().to_string()),
+            passphrase: None,
+            wal:        WalArgs {
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
+            },
         };
 
-        let result = run(args).await;
+        let global_wal = WalArgs::default();
+        let result = run(args, &global_wal).await;
         assert!(
             result.is_err(),
             "Bulk insert should fail with invalid document ID"

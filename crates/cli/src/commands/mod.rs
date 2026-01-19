@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 /// Command handlers for the Sentinel CLI.
 ///
@@ -60,6 +60,42 @@ fn parse_key_derivation_algorithm(s: &str) -> Result<sentinel_dbms::KeyDerivatio
     }
 }
 
+/// Global WAL configuration arguments shared across all commands.
+#[derive(Args, Clone, Default)]
+pub struct WalArgs {
+    /// Maximum WAL file size in bytes for collections (default: 10MB)
+    #[arg(long, global = true)]
+    pub wal_max_file_size: Option<u64>,
+
+    /// WAL file format for collections: binary or json_lines (default: binary)
+    #[arg(long, global = true)]
+    pub wal_format: Option<sentinel_dbms::WalFormat>,
+
+    /// WAL compression algorithm for collections: zstd, lz4, brotli, deflate, gzip (default: zstd)
+    #[arg(long, global = true)]
+    pub wal_compression: Option<sentinel_dbms::CompressionAlgorithm>,
+
+    /// Maximum number of records per WAL file for collections (default: 1000)
+    #[arg(long, global = true)]
+    pub wal_max_records: Option<usize>,
+
+    /// WAL write mode for collections: disabled, warn, strict (default: strict)
+    #[arg(long, global = true)]
+    pub wal_write_mode: Option<sentinel_dbms::WalFailureMode>,
+
+    /// WAL verification mode for collections: disabled, warn, strict (default: warn)
+    #[arg(long, global = true)]
+    pub wal_verify_mode: Option<sentinel_dbms::WalFailureMode>,
+
+    /// Enable automatic document verification against WAL for collections (default: false)
+    #[arg(long, global = true)]
+    pub wal_auto_verify: Option<bool>,
+
+    /// Enable WAL-based recovery features for collections (default: true)
+    #[arg(long, global = true)]
+    pub wal_enable_recovery: Option<bool>,
+}
+
 /// The CLI for the Sentinel document DBMS.
 ///
 /// This CLI provides commands to interact with Sentinel stores, collections, and documents.
@@ -111,6 +147,9 @@ pub struct Cli {
     /// - pbkdf2 (widely supported for constrained environments)
     #[arg(long, value_name = "ALGORITHM", default_value = "argon2id", value_parser = ["argon2id", "pbkdf2"], global = true)]
     pub key_derivation_algorithm: String,
+
+    #[command(flatten)]
+    pub wal: WalArgs,
 }
 
 /// Enumeration of all available CLI commands.
@@ -225,12 +264,12 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         Commands::Init(args) => init::run(args).await,
         Commands::Generate(args) => generate::run(args).await,
         Commands::CreateCollection(args) => create_collection::run(args).await,
-        Commands::Insert(args) => insert::run(args).await,
-        Commands::Get(args) => get::run(args).await,
-        Commands::Update(args) => update::run(args).await,
-        Commands::Delete(args) => delete::run(args).await,
-        Commands::List(args) => list::run(args).await,
-        Commands::Query(args) => query::run(args).await,
+        Commands::Insert(args) => insert::run(args, &cli.wal).await,
+        Commands::Get(args) => get::run(args, &cli.wal).await,
+        Commands::Update(args) => update::run(args, &cli.wal).await,
+        Commands::Delete(args) => delete::run(args, &cli.wal).await,
+        Commands::List(args) => list::run(args, &cli.wal).await,
+        Commands::Query(args) => query::run(args, &cli.wal).await,
         Commands::Wal(args) => wal::run(args).await,
     }
 }
@@ -356,13 +395,14 @@ mod tests {
             ..Default::default()
         };
         let cli = Cli {
-            command:                  Commands::Init(args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Init(args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -383,13 +423,14 @@ mod tests {
             ..Default::default()
         };
         let init_cli = Cli {
-            command:                  Commands::Init(init_args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Init(init_args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
         run_command(init_cli).await.unwrap();
 
@@ -399,13 +440,14 @@ mod tests {
             ..Default::default()
         };
         let cli = Cli {
-            command:                  Commands::CreateCollection(args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::CreateCollection(args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -428,13 +470,14 @@ mod tests {
             ..Default::default()
         };
         let cli = Cli {
-            command:                  Commands::Init(args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "invalid".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Init(args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "invalid".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -458,13 +501,14 @@ mod tests {
             ..Default::default()
         };
         let init_cli = Cli {
-            command:                  Commands::Init(init_args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Init(init_args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
         run_command(init_cli).await.unwrap();
 
@@ -474,13 +518,14 @@ mod tests {
             ..Default::default()
         };
         let create_cli = Cli {
-            command:                  Commands::CreateCollection(create_args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::CreateCollection(create_args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
         run_command(create_cli).await.unwrap();
 
@@ -491,15 +536,17 @@ mod tests {
             data:       Some(r#"{"name": "Alice"}"#.to_string()),
             bulk:       None,
             passphrase: None,
+            wal:        WalArgs::default(),
         };
         let cli = Cli {
-            command:                  Commands::Insert(args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Insert(args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -523,13 +570,14 @@ mod tests {
             ..Default::default()
         };
         let init_cli = Cli {
-            command:                  Commands::Init(init_args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Init(init_args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
         run_command(init_cli).await.unwrap();
 
@@ -539,13 +587,14 @@ mod tests {
             ..Default::default()
         };
         let create_cli = Cli {
-            command:                  Commands::CreateCollection(create_args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::CreateCollection(create_args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
         run_command(create_cli).await.unwrap();
 
@@ -554,6 +603,7 @@ mod tests {
             collection:       "test_collection".to_string(),
             id:               "doc1".to_string(),
             passphrase:       None,
+            wal:              WalArgs::default(),
             verify_signature: false,
             verify_hash:      false,
             signature_mode:   "strict".to_string(),
@@ -561,13 +611,14 @@ mod tests {
             hash_mode:        "strict".to_string(),
         };
         let cli = Cli {
-            command:                  Commands::Get(args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Get(args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -591,13 +642,14 @@ mod tests {
             ..Default::default()
         };
         let init_cli = Cli {
-            command:                  Commands::Init(init_args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Init(init_args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
         run_command(init_cli).await.unwrap();
 
@@ -607,13 +659,14 @@ mod tests {
             ..Default::default()
         };
         let create_cli = Cli {
-            command:                  Commands::CreateCollection(create_args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::CreateCollection(create_args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
         run_command(create_cli).await.unwrap();
 
@@ -624,13 +677,14 @@ mod tests {
             data:       r#"{"name": "Bob"}"#.to_string(),
         };
         let cli = Cli {
-            command:                  Commands::Update(args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Update(args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -654,13 +708,14 @@ mod tests {
             ..Default::default()
         };
         let init_cli = Cli {
-            command:                  Commands::Init(init_args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Init(init_args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
         run_command(init_cli).await.unwrap();
 
@@ -670,13 +725,14 @@ mod tests {
             ..Default::default()
         };
         let create_cli = Cli {
-            command:                  Commands::CreateCollection(create_args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::CreateCollection(create_args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
         run_command(create_cli).await.unwrap();
 
@@ -686,13 +742,14 @@ mod tests {
             id:         "doc1".to_string(),
         };
         let cli = Cli {
-            command:                  Commands::Delete(args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Delete(args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -710,13 +767,14 @@ mod tests {
             }),
         };
         let cli = Cli {
-            command:                  Commands::Generate(args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "blake3".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Generate(args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "blake3".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -734,13 +792,14 @@ mod tests {
             }),
         };
         let cli = Cli {
-            command:                  Commands::Generate(args),
-            json:                     false,
-            verbose:                  0,
-            hash_algorithm:           "invalid".to_string(),
-            signature_algorithm:      "ed25519".to_string(),
-            encryption_algorithm:     "xchacha20poly1305".to_string(),
+            command: Commands::Generate(args),
+            json: false,
+            verbose: 0,
+            hash_algorithm: "invalid".to_string(),
+            signature_algorithm: "ed25519".to_string(),
+            encryption_algorithm: "xchacha20poly1305".to_string(),
             key_derivation_algorithm: "argon2id".to_string(),
+            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
