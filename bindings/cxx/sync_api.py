@@ -166,7 +166,7 @@ class APISynchronizer:
             return False
 
         print("🔄 Building C/C++ bindings via cbuild.py...")
-        cbuild_script = self.bindings_dir.parent / "cbuild.py"
+        cbuild_script = self.bindings_dir / "cbuild.py"
         result = subprocess.run(
             [sys.executable, str(cbuild_script)],
             cwd=str(self.project_root),
@@ -296,7 +296,7 @@ def main():
         sys.exit(1)
 
     command = sys.argv[1]
-    project_root = Path(__file__).parent.parent
+    project_root = Path(__file__).parent.parent.parent
 
     sync = APISynchronizer(project_root)
 

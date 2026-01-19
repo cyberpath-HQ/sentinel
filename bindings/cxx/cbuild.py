@@ -52,8 +52,8 @@ def get_platform_info():
 def build_bindings():
     """Build the C/C++ bindings"""
     script_dir = Path(__file__).parent
-    workspace_dir = script_dir / ".."
-    output_dir = script_dir / "cxx" / "dist"
+    workspace_dir = script_dir / ".." / ".."
+    output_dir = script_dir / "dist"
 
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
