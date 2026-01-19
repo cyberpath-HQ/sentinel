@@ -23,68 +23,71 @@ def run_command(cmd, cwd=None, check=True):
         sys.exit(1)
     return result
 
-def get_platform_info():
-    """Get platform-specific information"""
-    system = platform.system().lower()
-    machine = platform.machine().lower()
-
-    if system == "windows":
-        return {
-            "system": "windows",
-            "extension": ".dll",
-            "rust_target": "x86_64-pc-windows-msvc" if machine == "amd64" else f"{machine}-pc-windows-msvc"
-        }
-    elif system == "darwin":
-        return {
-            "system": "macos",
-            "extension": ".dylib",
-            "rust_target": "x86_64-apple-darwin" if machine == "x86_64" else "aarch64-apple-darwin"
-        }
-    elif system == "linux":
-        return {
-            "system": "linux",
+def get_all_target_infos():
+    """Get all target platform information from release.yml"""
+    return [
+        {
+            "system": "linux-x86_64",
             "extension": ".so",
-            "rust_target": f"{machine}-unknown-linux-gnu"
+            "rust_target": "x86_64-unknown-linux-gnu"
+        },
+        {
+            "system": "macos-x86_64",
+            "extension": ".dylib",
+            "rust_target": "x86_64-apple-darwin"
+        },
+        {
+            "system": "macos-aarch64",
+            "extension": ".dylib",
+            "rust_target": "aarch64-apple-darwin"
+        },
+        {
+            "system": "windows-x86_64",
+            "extension": ".dll",
+            "rust_target": "x86_64-pc-windows-gnu"
         }
-    else:
-        raise RuntimeError(f"Unsupported platform: {system}")
+    ]
 
 def build_bindings():
-    """Build the C/C++ bindings"""
+    """Build the C/C++ bindings for all targets"""
     script_dir = Path(__file__).parent
     workspace_dir = script_dir / ".." / ".."
 
-    platform_info = get_platform_info()
+    target_infos = get_all_target_infos()
 
-    # Build from workspace root to ensure proper linking
-    cmd = [
-        "cargo", "build",
-        "--release",
-        "--package", "sentinel-cxx"
-    ]
+    for target_info in target_infos:
+        print(f"\nBuilding for {target_info['system']} ({target_info['rust_target']})")
 
-    run_command(cmd, cwd=str(workspace_dir))
+        # Build from workspace root to ensure proper linking
+        cmd = [
+            "cargo", "build",
+            "--release",
+            "--target", target_info['rust_target'],
+            "--package", "sentinel-cxx"
+        ]
 
-    # Find the built libraries in workspace target directory
-    target_dir = workspace_dir / "target" / "release"
-    lib_name = f"libsentinel_cxx{platform_info['extension']}"
-    static_lib_name = "libsentinel_cxx.a"
-    header_name = "sentinel-cxx.h"
+        run_command(cmd, cwd=str(workspace_dir))
 
-    lib_path = target_dir / lib_name
-    static_lib_path = target_dir / static_lib_name
-    header_path = target_dir / header_name
+        # Find the built libraries in workspace target directory
+        target_dir = workspace_dir / "target" / target_info['rust_target'] / "release"
+        lib_name = f"libsentinel_cxx{target_info['extension']}"
+        static_lib_name = "libsentinel_cxx.a"
+        header_name = "sentinel-cxx.h"
 
-    if not lib_path.exists() and not static_lib_path.exists():
-        raise FileNotFoundError(f"No libraries found in {target_dir}")
+        lib_path = target_dir / lib_name
+        static_lib_path = target_dir / static_lib_name
+        header_path = target_dir / header_name
 
-    print(f"Built C/C++ bindings for {platform_info['system']}")
-    if lib_path.exists():
-        print(f"Dynamic library: {lib_path}")
-    if static_lib_path.exists():
-        print(f"Static library: {static_lib_path}")
-    if header_path.exists():
-        print(f"Header: {header_path}")
+        if not lib_path.exists() and not static_lib_path.exists():
+            raise FileNotFoundError(f"No libraries found in {target_dir}")
+
+        print(f"Built C/C++ bindings for {target_info['system']}")
+        if lib_path.exists():
+            print(f"Dynamic library: {lib_path}")
+        if static_lib_path.exists():
+            print(f"Static library: {static_lib_path}")
+        if header_path.exists():
+            print(f"Header: {header_path}")
 
 if __name__ == "__main__":
     build_bindings()
