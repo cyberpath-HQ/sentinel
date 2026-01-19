@@ -42,7 +42,7 @@ pub struct CollectionMetadata {
     /// Total size of all documents (bytes)
     pub total_size_bytes: u64,
     /// WAL configuration for this collection
-    pub wal_config:       CollectionWalConfig,
+    pub wal_config:       Option<CollectionWalConfig>,
 }
 
 impl CollectionMetadata {
@@ -60,7 +60,7 @@ impl CollectionMetadata {
             updated_at:       now,
             document_count:   0,
             total_size_bytes: 0,
-            wal_config:       CollectionWalConfig::default(),
+            wal_config:       None,
         }
     }
 
