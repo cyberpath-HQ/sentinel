@@ -57,16 +57,16 @@ pub async fn run(args: GenArgs) -> sentinel_dbms::Result<()> {
 pub async fn run_key(args: KeyArgs) -> sentinel_dbms::Result<()> {
     match args.key_type {
         KeyType::Signing => {
-            let key = sentinel_crypto::SigningKeyManager::generate_key();
-            let key_hex = sentinel_crypto::SigningKeyManager::export_key(&key);
+            let key = sentinel_dbms::SigningKeyManager::generate_key();
+            let key_hex = sentinel_dbms::SigningKeyManager::export_key(&key);
             #[allow(clippy::print_stdout, reason = "CLI output")]
             {
                 println!("{}", key_hex);
             }
         },
         KeyType::Encryption => {
-            let key = sentinel_crypto::EncryptionKeyManager::generate_key();
-            let key_hex = sentinel_crypto::EncryptionKeyManager::export_key(&key);
+            let key = sentinel_dbms::EncryptionKeyManager::generate_key();
+            let key_hex = sentinel_dbms::EncryptionKeyManager::export_key(&key);
             #[allow(clippy::print_stdout, reason = "CLI output")]
             {
                 println!("{}", key_hex);

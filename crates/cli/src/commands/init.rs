@@ -1,6 +1,6 @@
 use clap::Args;
 use tracing::{error, info};
-use sentinel_wal::{manager::WalFormat, CollectionWalConfig, CompressionAlgorithm, StoreWalConfig, WalFailureMode};
+use sentinel_dbms::{CollectionWalConfig, CompressionAlgorithm, StoreWalConfig, WalFailureMode, WalFormat};
 
 /// Arguments for the init command.
 #[derive(Args, Clone, Default)]
@@ -157,11 +157,11 @@ pub async fn run(args: InitArgs) -> sentinel_dbms::Result<()> {
         Ok(mut store) => {
             #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
             if let Some(hex) = &args.signing_key {
-                let key = sentinel_crypto::SigningKeyManager::import_key(hex)?;
+                let key = sentinel_dbms::SigningKeyManager::import_key(hex)?;
                 store.set_signing_key(key.clone());
                 if let Some(pass) = passphrase {
-                    let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(pass).await?;
-                    let encrypted = sentinel_crypto::encrypt_data(&key.to_bytes(), &encryption_key).await?;
+                    let (salt, encryption_key) = sentinel_dbms::derive_key_from_passphrase(pass).await?;
+                    let encrypted = sentinel_dbms::encrypt_data(&key.to_bytes(), &encryption_key).await?;
                     let salt_hex = hex::encode(&salt);
                     let keys_collection = store.collection(".keys").await?;
                     keys_collection

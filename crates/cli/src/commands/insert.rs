@@ -3,8 +3,7 @@ use clap::Args;
 use sentinel_dbms::futures::TryStreamExt;
 use serde_json::Value;
 use tracing::{error, info};
-use sentinel_dbms::CollectionWalConfig;
-use sentinel_wal::{manager::WalFormat, CompressionAlgorithm, WalFailureMode};
+use sentinel_dbms::{CollectionWalConfig, CompressionAlgorithm, WalFailureMode, WalFormat};
 
 /// Arguments for the insert command.
 #[derive(Args, Clone, Default)]
@@ -190,18 +189,13 @@ pub async fn run(args: InsertArgs) -> sentinel_dbms::Result<()> {
     let store = sentinel_dbms::Store::new_with_config(
         &args.store_path,
         args.passphrase.as_deref(),
-        sentinel_wal::StoreWalConfig::default(),
+        sentinel_dbms::StoreWalConfig::default(),
     )
     .await?;
     let wal_config = build_collection_wal_config(&args);
-    let coll = if let Some(config) = wal_config {
-        store
-            .collection_with_config(&args.collection, Some(config))
-            .await?
-    }
-    else {
-        store.collection(&args.collection).await?
-    };
+    let coll = store
+        .collection_with_config(&args.collection, wal_config)
+        .await?;
 
     if let Some(bulk_file) = args.bulk {
         insert_bulk_documents(coll, &args.store_path, &args.collection, bulk_file).await
@@ -800,8 +794,13 @@ mod tests {
         .unwrap();
 
         // Setup store and collection
-        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
-        let collection = store.collection("test_collection").await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config("test_collection", None)
+            .await
+            .unwrap();
 
         // Test bulk insert via CLI
         let args = InsertArgs {
@@ -839,8 +838,13 @@ mod tests {
         let store_path = temp_dir.path().join("test_store");
 
         // Setup store and collection
-        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
-        store.collection("test_collection").await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        store
+            .collection_with_config("test_collection", None)
+            .await
+            .unwrap();
 
         // Test bulk insert with non-existent file
         let args = InsertArgs {
@@ -878,8 +882,13 @@ mod tests {
         std::fs::write(&json_file, "invalid json content").unwrap();
 
         // Setup store and collection
-        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
-        store.collection("test_collection").await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        store
+            .collection_with_config("test_collection", None)
+            .await
+            .unwrap();
 
         // Test bulk insert with invalid JSON
         let args = InsertArgs {
@@ -914,8 +923,13 @@ mod tests {
         std::fs::write(&json_file, "[1, 2, 3]").unwrap();
 
         // Setup store and collection
-        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
-        store.collection("test_collection").await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        store
+            .collection_with_config("test_collection", None)
+            .await
+            .unwrap();
 
         // Test bulk insert with JSON array
         let args = InsertArgs {
@@ -955,7 +969,9 @@ mod tests {
         .unwrap();
 
         // Setup store but not collection
-        sentinel_dbms::Store::new(&store_path, None).await.unwrap();
+        sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Test bulk insert into non-existent collection (should succeed - collection gets created)
         let args = InsertArgs {
@@ -1001,8 +1017,13 @@ mod tests {
         .unwrap();
 
         // Setup store and collection
-        let store = sentinel_dbms::Store::new(&store_path, None).await.unwrap();
-        let _collection = store.collection("test_collection").await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config("test_collection", None)
+            .await
+            .unwrap();
 
         // Test bulk insert with invalid ID
         let args = InsertArgs {

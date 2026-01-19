@@ -26,36 +26,36 @@ mod update;
 mod wal;
 
 /// Parse hash algorithm string to enum
-fn parse_hash_algorithm(s: &str) -> Result<sentinel_crypto::HashAlgorithmChoice, String> {
+fn parse_hash_algorithm(s: &str) -> Result<sentinel_dbms::HashAlgorithmChoice, String> {
     match s {
-        "blake3" => Ok(sentinel_crypto::HashAlgorithmChoice::Blake3),
+        "blake3" => Ok(sentinel_dbms::HashAlgorithmChoice::Blake3),
         _ => Err(format!("Invalid hash algorithm: {}", s)),
     }
 }
 
 /// Parse signature algorithm string to enum
-fn parse_signature_algorithm(s: &str) -> Result<sentinel_crypto::SignatureAlgorithmChoice, String> {
+fn parse_signature_algorithm(s: &str) -> Result<sentinel_dbms::SignatureAlgorithmChoice, String> {
     match s {
-        "ed25519" => Ok(sentinel_crypto::SignatureAlgorithmChoice::Ed25519),
+        "ed25519" => Ok(sentinel_dbms::SignatureAlgorithmChoice::Ed25519),
         _ => Err(format!("Invalid signature algorithm: {}", s)),
     }
 }
 
 /// Parse encryption algorithm string to enum
-fn parse_encryption_algorithm(s: &str) -> Result<sentinel_crypto::EncryptionAlgorithmChoice, String> {
+fn parse_encryption_algorithm(s: &str) -> Result<sentinel_dbms::EncryptionAlgorithmChoice, String> {
     match s {
-        "xchacha20poly1305" => Ok(sentinel_crypto::EncryptionAlgorithmChoice::XChaCha20Poly1305),
-        "aes256gcmsiv" => Ok(sentinel_crypto::EncryptionAlgorithmChoice::Aes256GcmSiv),
-        "ascon128" => Ok(sentinel_crypto::EncryptionAlgorithmChoice::Ascon128),
+        "xchacha20poly1305" => Ok(sentinel_dbms::EncryptionAlgorithmChoice::XChaCha20Poly1305),
+        "aes256gcmsiv" => Ok(sentinel_dbms::EncryptionAlgorithmChoice::Aes256GcmSiv),
+        "ascon128" => Ok(sentinel_dbms::EncryptionAlgorithmChoice::Ascon128),
         _ => Err(format!("Invalid encryption algorithm: {}", s)),
     }
 }
 
 /// Parse key derivation algorithm string to enum
-fn parse_key_derivation_algorithm(s: &str) -> Result<sentinel_crypto::KeyDerivationAlgorithmChoice, String> {
+fn parse_key_derivation_algorithm(s: &str) -> Result<sentinel_dbms::KeyDerivationAlgorithmChoice, String> {
     match s {
-        "argon2id" => Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Argon2id),
-        "pbkdf2" => Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Pbkdf2),
+        "argon2id" => Ok(sentinel_dbms::KeyDerivationAlgorithmChoice::Argon2id),
+        "pbkdf2" => Ok(sentinel_dbms::KeyDerivationAlgorithmChoice::Pbkdf2),
         _ => Err(format!("Invalid key derivation algorithm: {}", s)),
     }
 }
@@ -204,16 +204,16 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         }
     })?;
 
-    let config = sentinel_crypto::CryptoConfig {
+    let config = sentinel_dbms::CryptoConfig {
         hash_algorithm:           hash_alg,
         signature_algorithm:      sig_alg,
         encryption_algorithm:     enc_alg,
         key_derivation_algorithm: kd_alg,
     };
 
-    if let Err(err) = sentinel_crypto::set_global_crypto_config(config.clone()).await {
+    if let Err(err) = sentinel_dbms::set_global_crypto_config(config.clone()).await {
         // If already set, check if it's the same config
-        let current = sentinel_crypto::get_global_crypto_config().await?;
+        let current = sentinel_dbms::get_global_crypto_config().await?;
         if current != config {
             return Err(sentinel_dbms::SentinelError::ConfigError {
                 message: format!("Crypto config already set with different values: {}", err),

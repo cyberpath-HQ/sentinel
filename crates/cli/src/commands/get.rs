@@ -1,8 +1,14 @@
 use std::str::FromStr as _;
 
 use clap::Args;
-use sentinel_dbms::{CollectionWalConfig, VerificationMode, VerificationOptions};
-use sentinel_wal::{manager::WalFormat, CompressionAlgorithm, WalFailureMode};
+use sentinel_dbms::{
+    CollectionWalConfig,
+    CompressionAlgorithm,
+    VerificationMode,
+    VerificationOptions,
+    WalFailureMode,
+    WalFormat,
+};
 use tracing::{error, info, warn};
 
 /// Arguments for get command.
@@ -211,18 +217,11 @@ pub async fn run(args: GetArgs) -> sentinel_dbms::Result<()> {
     let store = sentinel_dbms::Store::new_with_config(
         &store_path,
         args.passphrase.as_deref(),
-        sentinel_wal::StoreWalConfig::default(),
+        sentinel_dbms::StoreWalConfig::default(),
     )
     .await?;
     let wal_config = build_collection_wal_config(&args);
-    let coll = if let Some(config) = wal_config {
-        store
-            .collection_with_config(collection, Some(config))
-            .await?
-    }
-    else {
-        store.collection(collection).await?
-    };
+    let coll = store.collection_with_config(collection, wal_config).await?;
 
     let id = &args.id;
     let verification_options = args.to_verification_options().map_err(|e| {
@@ -306,15 +305,23 @@ mod tests {
         // Capture stdout for testing
         {
             let args = GetArgs {
-                store_path:       store_path.to_string_lossy().to_string(),
-                collection:       "test_collection".to_string(),
-                id:               "doc1".to_string(),
-                passphrase:       None,
-                verify_signature: false,
-                verify_hash:      false,
-                signature_mode:   "strict".to_string(),
-                empty_sig_mode:   "warn".to_string(),
-                hash_mode:        "strict".to_string(),
+                store_path:          store_path.to_string_lossy().to_string(),
+                collection:          "test_collection".to_string(),
+                id:                  "doc1".to_string(),
+                passphrase:          None,
+                verify_signature:    false,
+                verify_hash:         false,
+                signature_mode:      "strict".to_string(),
+                empty_sig_mode:      "warn".to_string(),
+                hash_mode:           "strict".to_string(),
+                wal_max_file_size:   None,
+                wal_format:          None,
+                wal_compression:     None,
+                wal_max_records:     None,
+                wal_write_mode:      None,
+                wal_verify_mode:     None,
+                wal_auto_verify:     None,
+                wal_enable_recovery: None,
             };
 
             // Since run prints to stdout, we need to capture it
@@ -350,15 +357,23 @@ mod tests {
             .unwrap();
 
         let args = GetArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            id:               "non_existent".to_string(),
-            passphrase:       None,
-            verify_signature: true,
-            verify_hash:      true,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  "non_existent".to_string(),
+            passphrase:          None,
+            verify_signature:    true,
+            verify_hash:         true,
+            signature_mode:      "strict".to_string(),
+            empty_sig_mode:      "warn".to_string(),
+            hash_mode:           "strict".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -386,15 +401,23 @@ mod tests {
         crate::commands::init::run(init_args).await.unwrap();
 
         let args = GetArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "non_existent".to_string(),
-            id:               "doc1".to_string(),
-            passphrase:       None,
-            verify_signature: true,
-            verify_hash:      true,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "non_existent".to_string(),
+            id:                  "doc1".to_string(),
+            passphrase:          None,
+            verify_signature:    true,
+            verify_hash:         true,
+            signature_mode:      "strict".to_string(),
+            empty_sig_mode:      "warn".to_string(),
+            hash_mode:           "strict".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -426,15 +449,23 @@ mod tests {
             .unwrap();
 
         let args = GetArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            id:               "".to_string(),
-            passphrase:       None,
-            verify_signature: true,
-            verify_hash:      true,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  "".to_string(),
+            passphrase:          None,
+            verify_signature:    true,
+            verify_hash:         true,
+            signature_mode:      "strict".to_string(),
+            empty_sig_mode:      "warn".to_string(),
+            hash_mode:           "strict".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -485,15 +516,23 @@ mod tests {
         std::fs::set_permissions(&collection_path, perms).unwrap();
 
         let args = GetArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            id:               "doc1".to_string(),
-            passphrase:       None,
-            verify_signature: true,
-            verify_hash:      true,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  "doc1".to_string(),
+            passphrase:          None,
+            verify_signature:    true,
+            verify_hash:         true,
+            signature_mode:      "strict".to_string(),
+            empty_sig_mode:      "warn".to_string(),
+            hash_mode:           "strict".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -515,15 +554,23 @@ mod tests {
         let store_path = temp_dir.path().join("test_store");
 
         let args = GetArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            id:               "doc1".to_string(),
-            passphrase:       None,
-            verify_signature: true,
-            verify_hash:      false,
-            signature_mode:   "invalid".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  "doc1".to_string(),
+            passphrase:          None,
+            verify_signature:    true,
+            verify_hash:         false,
+            signature_mode:      "invalid".to_string(),
+            empty_sig_mode:      "warn".to_string(),
+            hash_mode:           "strict".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;

@@ -5,6 +5,7 @@ use sentinel_dbms::{
     futures::{pin_mut, StreamExt as _},
     VerificationMode,
     VerificationOptions,
+    CollectionWalConfig, CompressionAlgorithm, WalFailureMode, WalFormat,
 };
 use serde_json::Value;
 use tracing::{error, info};
@@ -56,6 +57,31 @@ pub struct QueryArgs {
     /// Output format: json or table
     #[arg(long, default_value = "json")]
     pub format:           String,
+    /// Maximum WAL file size in bytes for this collection (default: 10MB)
+    #[arg(long)]
+    pub wal_max_file_size:   Option<u64>,
+    /// WAL file format for this collection: binary or json_lines (default: binary)
+    #[arg(long)]
+    pub wal_format:          Option<String>,
+    /// WAL compression algorithm for this collection: zstd, lz4, brotli, deflate, gzip (default:
+    /// zstd)
+    #[arg(long)]
+    pub wal_compression:     Option<String>,
+    /// Maximum number of records per WAL file for this collection (default: 1000)
+    #[arg(long)]
+    pub wal_max_records:     Option<usize>,
+    /// WAL write mode for this collection: disabled, warn, strict (default: strict)
+    #[arg(long)]
+    pub wal_write_mode:      Option<String>,
+    /// WAL verification mode for this collection: disabled, warn, strict (default: warn)
+    #[arg(long)]
+    pub wal_verify_mode:     Option<String>,
+    /// Enable automatic document verification against WAL for this collection (default: false)
+    #[arg(long)]
+    pub wal_auto_verify:     Option<bool>,
+    /// Enable WAL-based recovery features for this collection (default: true)
+    #[arg(long)]
+    pub wal_enable_recovery: Option<bool>,
 }
 
 impl QueryArgs {
@@ -81,6 +107,80 @@ impl QueryArgs {
             empty_signature_mode,
             hash_verification_mode,
         })
+    }
+
+    /// Build collection WAL config from CLI arguments.
+    fn build_collection_wal_config(&self) -> Option<CollectionWalConfig> {
+        // Only build config if any WAL options are provided
+        if self.wal_max_file_size.is_some() ||
+            self.wal_format.is_some() ||
+            self.wal_compression.is_some() ||
+            self.wal_max_records.is_some() ||
+            self.wal_write_mode.is_some() ||
+            self.wal_verify_mode.is_some() ||
+            self.wal_auto_verify.is_some() ||
+            self.wal_enable_recovery.is_some()
+        {
+            Some(CollectionWalConfig {
+                write_mode:            self
+                    .wal_write_mode
+                    .as_ref()
+                    .and_then(|s| parse_wal_failure_mode(s))
+                    .unwrap_or(WalFailureMode::Strict),
+                verification_mode:     self
+                    .wal_verify_mode
+                    .as_ref()
+                    .and_then(|s| parse_wal_failure_mode(s))
+                    .unwrap_or(WalFailureMode::Warn),
+                auto_verify:           self.wal_auto_verify.unwrap_or(false),
+                enable_recovery:       self.wal_enable_recovery.unwrap_or(true),
+                max_wal_size_bytes:    self.wal_max_file_size,
+                compression_algorithm: self
+                    .wal_compression
+                    .as_ref()
+                    .and_then(|s| parse_compression_algorithm(s)),
+                max_records_per_file:  self.wal_max_records,
+                format:                self
+                    .wal_format
+                    .as_ref()
+                    .and_then(|s| parse_wal_format(s))
+                    .unwrap_or_default(),
+            })
+        }
+        else {
+            None
+        }
+    }
+}
+
+/// Parse WAL failure mode from string
+fn parse_wal_failure_mode(s: &str) -> Option<WalFailureMode> {
+    match s.to_lowercase().as_str() {
+        "disabled" => Some(WalFailureMode::Disabled),
+        "warn" => Some(WalFailureMode::Warn),
+        "strict" => Some(WalFailureMode::Strict),
+        _ => None,
+    }
+}
+
+/// Parse compression algorithm from string
+fn parse_compression_algorithm(s: &str) -> Option<CompressionAlgorithm> {
+    match s.to_lowercase().as_str() {
+        "zstd" => Some(CompressionAlgorithm::Zstd),
+        "lz4" => Some(CompressionAlgorithm::Lz4),
+        "brotli" => Some(CompressionAlgorithm::Brotli),
+        "deflate" => Some(CompressionAlgorithm::Deflate),
+        "gzip" => Some(CompressionAlgorithm::Gzip),
+        _ => None,
+    }
+}
+
+/// Parse WAL format from string
+fn parse_wal_format(s: &str) -> Option<WalFormat> {
+    match s.to_lowercase().as_str() {
+        "binary" => Some(WalFormat::Binary),
+        "json_lines" => Some(WalFormat::JsonLines),
+        _ => None,
     }
 }
 
@@ -130,8 +230,14 @@ pub async fn run(args: QueryArgs) -> sentinel_dbms::Result<()> {
         "Querying documents in collection '{}' in store {}",
         collection, store_path
     );
-    let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
-    let coll = store.collection(&collection).await?;
+    let store = sentinel_dbms::Store::new_with_config(
+        &store_path,
+        args.passphrase.as_deref(),
+        sentinel_dbms::StoreWalConfig::default(),
+    )
+    .await?;
+    let wal_config = args.build_collection_wal_config();
+    let coll = store.collection_with_config(&collection, wal_config).await?;
 
     let verification_options = args.to_verification_options().map_err(|e| {
         sentinel_dbms::SentinelError::ConfigError {
@@ -521,20 +627,28 @@ mod tests {
 
         // Test query command on empty collection
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec![],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec![],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -559,20 +673,28 @@ mod tests {
 
         // Test query command with table format
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec![],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "table".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec![],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "table".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -591,20 +713,28 @@ mod tests {
 
         // Test query command with table format on empty collection
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec![],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "table".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec![],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "table".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -772,20 +902,28 @@ mod tests {
         let store_path = temp_dir.path().join("test_store");
 
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec![],
-            sort:             Some("name:invalid".to_string()),
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec![],
+            sort:               Some("name:invalid".to_string()),
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         // This should fail due to invalid sort order
@@ -814,20 +952,28 @@ mod tests {
 
         // Test query with greater than filter
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec!["age>25".to_string()],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec!["age>25".to_string()],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -856,20 +1002,28 @@ mod tests {
 
         // Test query with less than filter
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec!["age<30".to_string()],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec!["age<30".to_string()],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -898,20 +1052,28 @@ mod tests {
 
         // Test query with contains filter
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec!["name~Ali".to_string()],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec!["name~Ali".to_string()],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -940,20 +1102,28 @@ mod tests {
 
         // Test query with starts with filter
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec!["name^Al".to_string()],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec!["name^Al".to_string()],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -982,20 +1152,28 @@ mod tests {
 
         // Test query with ends with filter
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec!["name$ce".to_string()],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec!["name$ce".to_string()],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -1028,20 +1206,28 @@ mod tests {
 
         // Test query with in filter
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec!["city in:NYC,LA".to_string()],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec!["city in:NYC,LA".to_string()],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -1073,20 +1259,28 @@ mod tests {
 
         // Test query with exists true filter
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec!["email exists:true".to_string()],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec!["email exists:true".to_string()],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -1111,20 +1305,28 @@ mod tests {
 
         // Test query with invalid format
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec![],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "invalid".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   false,
+            verify_hash:        false,
+            signature_mode:     "strict".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec![],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "invalid".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -1137,20 +1339,28 @@ mod tests {
         let store_path = temp_dir.path().join("test_store");
 
         let args = QueryArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            passphrase:       None,
-            verify_signature: true,
-            verify_hash:      false,
-            signature_mode:   "invalid".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-            filter:           vec![],
-            sort:             None,
-            limit:            None,
-            offset:           None,
-            project:          None,
-            format:           "json".to_string(),
+            store_path:         store_path.to_string_lossy().to_string(),
+            collection:         "test_collection".to_string(),
+            passphrase:         None,
+            verify_signature:   true,
+            verify_hash:        false,
+            signature_mode:     "invalid".to_string(),
+            empty_sig_mode:     "warn".to_string(),
+            hash_mode:          "strict".to_string(),
+            filter:             vec![],
+            sort:               None,
+            limit:              None,
+            offset:             None,
+            project:            None,
+            format:             "json".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
