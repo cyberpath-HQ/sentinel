@@ -16,22 +16,23 @@ name = "sentinel_wasm"
 crate-type = ["cdylib"]
 
 [dependencies]
-sentinel-dbms = { path = "../sentinel" }
 wasm-bindgen = { version = "0.2.87", features = ["serde-serialize"] }
-wasm-bindgen-futures = "0.4.37"
 js-sys = "0.3.64"
 web-sys = { version = "0.3.64", features = [
   "console",
 ] }
-tokio = { version = "1.49.0", features = ["full"] }
 serde = { version = "1.0.228", features = ["derive"] }
-serde-wasm-bindgen = "0.6.5"
 serde_json = "1.0.149"
-futures = "0.3.31"
-getrandom = { version = "0.2", features = ["js"] }
+chrono = { version = "0.4.43", features = ["serde"] }
+sha2 = "0.10"
+hex = "0.4.3"
+base64 = "0.22"
 
 [lints]
 workspace = true
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
 
 [profile.release]
 opt-level = 3
