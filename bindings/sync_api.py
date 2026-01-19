@@ -165,16 +165,20 @@ class APISynchronizer:
             print("   You need to update C wrapper functions in crates/sentinel-cxx/src/lib.rs")
             return False
 
-        print("🔄 Regenerating C headers via cbindgen...")
+        print("🔄 Building C/C++ bindings via cbuild.py...")
+        cbuild_script = self.bindings_dir.parent / "cbuild.py"
         result = subprocess.run(
-            ["cargo", "build", "--release"],
-            cwd=str(self.cxx_crate),
+            [sys.executable, str(cbuild_script)],
+            cwd=str(self.project_root),
             capture_output=True, text=True
         )
 
         if result.returncode != 0:
-            print(f"❌ Error regenerating bindings: {result.stderr}")
+            print(f"❌ Error building bindings: {result.stderr}")
             return False
+
+        # Copy libraries to bindings/cxx/lib
+        self._copy_libraries()
 
         # Copy updated headers
         self._copy_headers()
@@ -193,6 +197,40 @@ class APISynchronizer:
             import shutil
             shutil.copy2(header_src, header_dst)
             print(f"Copied header: {header_src} -> {header_dst}")
+
+    def _copy_libraries(self):
+        """Copy built libraries to bindings/cxx/lib directory"""
+        import platform
+        import shutil
+
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+
+        if system == "windows":
+            lib_name = "sentinel_cxx.dll"
+            rust_target = "x86_64-pc-windows-msvc" if machine == "amd64" else f"{machine}-pc-windows-msvc"
+        elif system == "darwin":
+            lib_name = "libsentinel_cxx.dylib"
+            rust_target = "x86_64-apple-darwin" if machine == "x86_64" else "aarch64-apple-darwin"
+        elif system == "linux":
+            lib_name = "libsentinel_cxx.so"
+            rust_target = f"{machine}-unknown-linux-gnu"
+        else:
+            print(f"Warning: Unsupported platform {system}, skipping library copy")
+            return
+
+        # Source library from cbuild.py output
+        lib_src = self.bindings_dir / "dist" / lib_name
+
+        # Destination in bindings/cxx/lib
+        lib_dst = self.bindings_dir / "lib" / lib_name
+
+        if lib_src.exists():
+            lib_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(lib_src, lib_dst)
+            print(f"Copied library: {lib_src} -> {lib_dst}")
+        else:
+            print(f"Warning: Built library not found at {lib_src}")
 
     def generate_report(self, changes: List[APIChange]) -> str:
         """Generate a report of API changes"""
