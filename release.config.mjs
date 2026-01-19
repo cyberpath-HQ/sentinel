@@ -55,36 +55,18 @@ export default {
     [
       "@semantic-release/exec",
       {
-        publishCmd:
-          "cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml && cargo publish --manifest-path crates/sentinel/Cargo.toml && cargo publish --manifest-path crates/cli/Cargo.toml",
-      },
-    ],
-    // Python package publishing to PyPI using maturin
-    [
-      "@semantic-release/exec",
-      {
-        publishCmd: [
-          "echo 'Building Python package with maturin...'",
-          "maturin build --manifest-path crates/sentinel-python/Cargo.toml --release --out target/wheels",
-          "echo 'Publishing to PyPI...'",
-          "twine upload target/wheels/*.whl --skip-existing --non-interactive || twine upload target/wheels/*.whl",
-        ].join(" && "),
+        publishCmd: "node scripts/release.mjs ${nextRelease.version}",
       },
     ],
     [
       "@semantic-release/github",
       {
         assets: [
-          { path: "sentinel-cxx-dev-*.zip", label: "C/C++ Development Package" },
+          { path: "dist/sentinel-cxx-dev-${nextRelease.version}.zip", label: "C/C++ Development Package" },
           { path: "target/wheels/*.whl", label: "Python Wheel Package" },
+          { path: "bindings/js/*.node", label: "Node.js Native Binary" },
+          { path: "bindings/wasm/pkg/*.tgz", label: "WebAssembly Package" },
         ],
-      },
-    ],
-    [
-      "@semantic-release/exec",
-      {
-        successCmd:
-          "gh workflow run release-python.yml --ref ${nextRelease.gitTag} && gh workflow run release-js.yml --ref ${nextRelease.gitTag} && gh workflow run release-wasm.yml --ref ${nextRelease.gitTag}",
       },
     ],
   ],
