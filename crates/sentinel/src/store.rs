@@ -376,13 +376,14 @@ impl Store {
             let _ = self.event_sender.send(event);
         }
 
-        // Get collection-specific WAL config or use default
-        let collection_wal_config = self
-            .wal_config
-            .collection_configs
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| self.wal_config.default_collection_config.clone());
+        // Get collection WAL config: prefer metadata's config, fall back to store-derived
+        let collection_wal_config = metadata.wal_config.unwrap_or_else(|| {
+            self.wal_config
+                .collection_configs
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| self.wal_config.default_collection_config.clone())
+        });
 
         // Create WAL manager with collection config
         let wal_path = path.join(WAL_DIR).join(WAL_FILE);
