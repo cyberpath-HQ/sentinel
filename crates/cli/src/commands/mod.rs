@@ -22,6 +22,8 @@ mod list;
 mod query;
 /// Update command module.
 mod update;
+/// WAL command module.
+mod wal;
 
 /// Parse hash algorithm string to enum
 fn parse_hash_algorithm(s: &str) -> Result<sentinel_crypto::HashAlgorithmChoice, String> {
@@ -152,6 +154,11 @@ pub enum Commands {
     ///
     /// Allows complex querying with filters, sorting, pagination, and projection.
     Query(query::QueryArgs),
+    /// WAL (Write-Ahead Logging) management operations.
+    ///
+    /// Provides commands for checkpointing, verification, recovery, and configuration
+    /// of WAL files for collections and the entire store.
+    Wal(wal::WalArgs),
 }
 
 /// Execute the specified CLI command.
@@ -224,6 +231,7 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
         Commands::Delete(args) => delete::run(args).await,
         Commands::List(args) => list::run(args).await,
         Commands::Query(args) => query::run(args).await,
+        Commands::Wal(args) => wal::run(args).await,
     }
 }
 
