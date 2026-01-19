@@ -53,10 +53,6 @@ def build_bindings():
     """Build the C/C++ bindings"""
     script_dir = Path(__file__).parent
     workspace_dir = script_dir / ".." / ".."
-    output_dir = script_dir / "dist"
-
-    # Create output directory
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     platform_info = get_platform_info()
 
@@ -69,31 +65,26 @@ def build_bindings():
 
     run_command(cmd, cwd=str(workspace_dir))
 
-    # Find the built library in workspace target directory
+    # Find the built libraries in workspace target directory
     target_dir = workspace_dir / "target" / "release"
     lib_name = f"libsentinel_cxx{platform_info['extension']}"
+    static_lib_name = "libsentinel_cxx.a"
+    header_name = "sentinel-cxx.h"
+
     lib_path = target_dir / lib_name
+    static_lib_path = target_dir / static_lib_name
+    header_path = target_dir / header_name
 
-    if not lib_path.exists():
-        raise FileNotFoundError(f"Built library not found: {lib_path}")
-
-    # Copy library to output directory
-    output_lib = output_dir / lib_name
-    shutil.copy2(lib_path, output_lib)
-
-    # Generate and copy header file
-    header_path = target_dir / "sentinel-cxx.h"
-    if header_path.exists():
-        shutil.copy2(header_path, output_dir / "sentinel.h")
-    else:
-        print("Warning: Header file not found, running cbindgen...")
-        run_command(["cargo", "build", "--release", "--package", "sentinel-cxx"], cwd=str(workspace_dir))
-        if header_path.exists():
-            shutil.copy2(header_path, output_dir / "sentinel.h")
+    if not lib_path.exists() and not static_lib_path.exists():
+        raise FileNotFoundError(f"No libraries found in {target_dir}")
 
     print(f"Built C/C++ bindings for {platform_info['system']}")
-    print(f"Library: {output_lib}")
-    print(f"Header: {output_dir / 'sentinel.h'}")
+    if lib_path.exists():
+        print(f"Dynamic library: {lib_path}")
+    if static_lib_path.exists():
+        print(f"Static library: {static_lib_path}")
+    if header_path.exists():
+        print(f"Header: {header_path}")
 
 if __name__ == "__main__":
     build_bindings()

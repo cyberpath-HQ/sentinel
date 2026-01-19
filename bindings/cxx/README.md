@@ -46,8 +46,8 @@ cd <repository>/language-interop
 cargo build --release
 
 # Build C/C++ bindings
-cd bindings
-./build-cxx.sh
+cd bindings/cxx
+python3 cbuild.py
 
 # Alternative: Build with CMake
 cd bindings/cxx
@@ -449,7 +449,7 @@ The C/C++ bindings have been tested and verified to compile successfully:
 
 ```bash
 # Build verification
-cd bindings && ./build-cxx.sh
+cd bindings/cxx && python3 cbuild.py
 
 # Test C bindings compilation
 cd bindings/cxx/examples
@@ -757,7 +757,7 @@ The C/C++ bindings are automatically synchronized with core library changes thro
 cd project-root
 git pull
 cargo build --release
-cd bindings && ./build-cxx.sh
+cd bindings/cxx && python3 cbuild.py
 
 # Recompile applications
 make clean && make
@@ -790,8 +790,8 @@ gcc -I/path/to/project/bindings/cxx/include/sentinel ...
 #### Compilation Errors
 ```bash
 # Clean rebuild
-cd bindings && rm -rf cxx/lib cxx/include/sentinel-cxx.h
-./build-cxx.sh
+cd bindings/cxx && rm -rf lib include/sentinel/sentinel-cxx.h
+python3 cbuild.py
 
 # Check Rust toolchain
 rustc --version && cargo --version

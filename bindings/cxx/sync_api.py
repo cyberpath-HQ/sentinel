@@ -207,30 +207,43 @@ class APISynchronizer:
         machine = platform.machine().lower()
 
         if system == "windows":
-            lib_name = "sentinel_cxx.dll"
-            rust_target = "x86_64-pc-windows-msvc" if machine == "amd64" else f"{machine}-pc-windows-msvc"
+            dyn_lib_name = "sentinel_cxx.dll"
+            static_lib_name = "sentinel_cxx.lib"
         elif system == "darwin":
-            lib_name = "libsentinel_cxx.dylib"
-            rust_target = "x86_64-apple-darwin" if machine == "x86_64" else "aarch64-apple-darwin"
+            dyn_lib_name = "libsentinel_cxx.dylib"
+            static_lib_name = "libsentinel_cxx.a"
         elif system == "linux":
-            lib_name = "libsentinel_cxx.so"
-            rust_target = f"{machine}-unknown-linux-gnu"
+            dyn_lib_name = "libsentinel_cxx.so"
+            static_lib_name = "libsentinel_cxx.a"
         else:
             print(f"Warning: Unsupported platform {system}, skipping library copy")
             return
 
-        # Source library from cbuild.py output
-        lib_src = self.bindings_dir / "dist" / lib_name
+        # Source libraries from workspace target directory
+        target_dir = self.project_root / "target" / "release"
+        dyn_lib_src = target_dir / dyn_lib_name
+        static_lib_src = target_dir / static_lib_name
 
         # Destination in bindings/cxx/lib
-        lib_dst = self.bindings_dir / "lib" / lib_name
+        dyn_lib_dst = self.bindings_dir / "lib" / dyn_lib_name
+        static_lib_dst = self.bindings_dir / "lib" / static_lib_name
 
-        if lib_src.exists():
-            lib_dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(lib_src, lib_dst)
-            print(f"Copied library: {lib_src} -> {lib_dst}")
-        else:
-            print(f"Warning: Built library not found at {lib_src}")
+        copied = False
+
+        if dyn_lib_src.exists():
+            dyn_lib_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dyn_lib_src, dyn_lib_dst)
+            print(f"Copied dynamic library: {dyn_lib_src} -> {dyn_lib_dst}")
+            copied = True
+
+        if static_lib_src.exists():
+            static_lib_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(static_lib_src, static_lib_dst)
+            print(f"Copied static library: {static_lib_src} -> {static_lib_dst}")
+            copied = True
+
+        if not copied:
+            print(f"Warning: No libraries found in {target_dir}")
 
     def generate_report(self, changes: List[APIChange]) -> str:
         """Generate a report of API changes"""
