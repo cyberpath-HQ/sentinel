@@ -20,10 +20,18 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
         let count = collection.wal_entries_count().await?;
 
         info!("WAL Statistics for collection '{}':", collection_name);
-        println!("  Size: {} bytes ({:.2} MB)", size, size as f64 / (1024.0 * 1024.0));
+        println!(
+            "  Size: {} bytes ({:.2} MB)",
+            size,
+            size as f64 / (1024.0 * 1024.0)
+        );
         println!("  Entries: {}", count);
-        println!("  Average entry size: {} bytes", if count > 0 { size / count as u64 } else { 0 });
-    } else {
+        println!(
+            "  Average entry size: {} bytes",
+            if count > 0 { size / count as u64 } else { 0 }
+        );
+    }
+    else {
         info!("WAL Statistics for all collections:");
 
         let collections = store.list_collections().await?;
@@ -32,7 +40,10 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
 
         for collection_name in collections {
             if let Ok(collection) = store.collection(&collection_name).await {
-                if let (Ok(size), Ok(count)) = (collection.wal_size().await, collection.wal_entries_count().await) {
+                if let (Ok(size), Ok(count)) = (
+                    collection.wal_size().await,
+                    collection.wal_entries_count().await,
+                ) {
                     total_size += size;
                     total_entries += count;
 
@@ -41,7 +52,12 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
             }
         }
 
-        println!("  Total: {} bytes ({:.2} MB), {} entries", total_size, total_size as f64 / (1024.0 * 1024.0), total_entries);
+        println!(
+            "  Total: {} bytes ({:.2} MB), {} entries",
+            total_size,
+            total_size as f64 / (1024.0 * 1024.0),
+            total_entries
+        );
     }
 
     Ok(())

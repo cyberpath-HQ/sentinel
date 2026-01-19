@@ -15,7 +15,10 @@ pub async fn run(store_path: String, collection: Option<String>, _args: RecoverA
 
     if let Some(collection_name) = collection {
         let collection = store.collection(&collection_name).await?;
-        info!("Recovering data from WAL for collection '{}'...", collection_name);
+        info!(
+            "Recovering data from WAL for collection '{}'...",
+            collection_name
+        );
 
         let result = collection.recover_from_wal().await?;
         info!("Recovery completed for collection '{}'", collection_name);
@@ -28,12 +31,16 @@ pub async fn run(store_path: String, collection: Option<String>, _args: RecoverA
                 error!("    - {:?}", failure);
             }
         }
-    } else {
+    }
+    else {
         info!("Recovering data from WAL for all collections...");
         let recovery_stats = store.recover_all_collections().await?;
 
         let total_operations: usize = recovery_stats.values().sum();
-        info!("Recovery completed for {} collections", recovery_stats.len());
+        info!(
+            "Recovery completed for {} collections",
+            recovery_stats.len()
+        );
         info!("  Total operations recovered: {}", total_operations);
 
         for (collection_name, count) in recovery_stats {
