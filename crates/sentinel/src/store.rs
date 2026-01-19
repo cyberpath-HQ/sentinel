@@ -10,8 +10,10 @@ use sentinel_wal::{WalConfig, WalManager};
 use crate::{
     validation::{is_reserved_name, is_valid_name_chars},
     Collection,
+    CollectionMetadata,
     Result,
     SentinelError,
+    StoreMetadata,
 };
 
 /// The top-level manager for document collections in Cyberpath Sentinel.
@@ -117,6 +119,21 @@ impl Store {
             "Store root directory created or already exists: {:?}",
             root_path
         );
+
+        // Load or create store metadata
+        let metadata_path = root_path.join(".store.json");
+        let _store_metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
+            debug!("Loading existing store metadata");
+            let content = tokio_fs::read_to_string(&metadata_path).await?;
+            serde_json::from_str(&content)?
+        } else {
+            debug!("Creating new store metadata");
+            let metadata = StoreMetadata::new();
+            let content = serde_json::to_string_pretty(&metadata)?;
+            tokio_fs::write(&metadata_path, content).await?;
+            metadata
+        };
+
         let mut store = Self {
             root_path,
             signing_key: None,
@@ -257,10 +274,28 @@ impl Store {
             e
         })?;
         debug!("Collection directory ensured: {:?}", path);
+
+        // Load or create collection metadata
+        let metadata_path = path.join(".metadata.json");
+        let metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
+            debug!("Loading existing collection metadata for {}", name);
+            let content = tokio_fs::read_to_string(&metadata_path).await?;
+            serde_json::from_str(&content)?
+        } else {
+            debug!("Creating new collection metadata for {}", name);
+            let metadata = CollectionMetadata::new(name.to_string());
+            let content = serde_json::to_string_pretty(&metadata)?;
+            tokio_fs::write(&metadata_path, content).await?;
+            metadata
+        };
+
+        // Create WAL manager with config from metadata
         let wal_path = path.join(".wal").join("transactions.wal");
+        let wal_config = metadata.wal_config;
         let wal_manager = Some(Arc::new(
-            WalManager::new(wal_path, WalConfig::default()).await?,
+            WalManager::new(wal_path, wal_config).await?,
         ));
+
         trace!("Collection '{}' accessed successfully", name);
         Ok(Collection {
             path,
