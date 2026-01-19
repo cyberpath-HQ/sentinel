@@ -44,3 +44,5 @@ pub use sentinel_wal::{CollectionWalConfig, StoreWalConfig, WalFailureMode};
 
 /// The current version of the Sentinel metadata format.
 pub const META_SENTINEL_VERSION: u32 = 1;
+/// The current version of the Sentinel document format.
+pub const DOCUMENT_SENTINEL_VERSION: u32 = 1;
