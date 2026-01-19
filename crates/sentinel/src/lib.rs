@@ -38,7 +38,20 @@ pub use constants::*;
 pub use document::Document;
 pub use error::{Result, SentinelError};
 pub use query::{Aggregation, Filter, Operator, Query, QueryBuilder, QueryResult, SortOrder};
-pub use sentinel_crypto::crypto_config::*;
+pub use sentinel_crypto::{
+    crypto_config::*,
+    derive_key_from_passphrase,
+    encrypt_data,
+    hash_data,
+    sign_hash,
+    verify_signature,
+    CryptoError,
+    EncryptionKeyManager,
+    Signature,
+    SigningKey,
+    SigningKeyManager,
+    VerifyingKey,
+};
 pub use store::Store;
 pub use verification::{VerificationMode, VerificationOptions};
 pub use metadata::{CollectionMetadata, MetadataVersion, StoreMetadata};
