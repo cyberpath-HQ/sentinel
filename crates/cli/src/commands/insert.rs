@@ -3,28 +3,55 @@ use clap::Args;
 use sentinel_dbms::futures::TryStreamExt;
 use serde_json::Value;
 use tracing::{error, info};
+use sentinel_dbms::CollectionWalConfig;
+use sentinel_wal::{manager::WalFormat, CompressionAlgorithm, WalFailureMode};
 
 /// Arguments for the insert command.
 #[derive(Args, Clone, Default)]
 pub struct InsertArgs {
     /// Store path
     #[arg(short, long)]
-    pub store_path: String,
+    pub store_path:          String,
     /// Collection name
     #[arg(short, long)]
-    pub collection: String,
+    pub collection:          String,
     /// Document ID (not used with --bulk)
     #[arg(short, long)]
-    pub id:         Option<String>,
+    pub id:                  Option<String>,
     /// JSON data (as string, not used with --bulk)
     #[arg(short, long)]
-    pub data:       Option<String>,
+    pub data:                Option<String>,
     /// Bulk insert from JSON file (format: {"id1": {...}, "id2": {...}})
     #[arg(short, long)]
-    pub bulk:       Option<String>,
+    pub bulk:                Option<String>,
     /// Passphrase for decrypting the signing key
     #[arg(long)]
-    pub passphrase: Option<String>,
+    pub passphrase:          Option<String>,
+    /// Maximum WAL file size in bytes for this collection (default: 10MB)
+    #[arg(long)]
+    pub wal_max_file_size:   Option<u64>,
+    /// WAL file format for this collection: binary or json_lines (default: binary)
+    #[arg(long)]
+    pub wal_format:          Option<String>,
+    /// WAL compression algorithm for this collection: zstd, lz4, brotli, deflate, gzip (default:
+    /// zstd)
+    #[arg(long)]
+    pub wal_compression:     Option<String>,
+    /// Maximum number of records per WAL file for this collection (default: 1000)
+    #[arg(long)]
+    pub wal_max_records:     Option<usize>,
+    /// WAL write mode for this collection: disabled, warn, strict (default: strict)
+    #[arg(long)]
+    pub wal_write_mode:      Option<String>,
+    /// WAL verification mode for this collection: disabled, warn, strict (default: warn)
+    #[arg(long)]
+    pub wal_verify_mode:     Option<String>,
+    /// Enable automatic document verification against WAL for this collection (default: false)
+    #[arg(long)]
+    pub wal_auto_verify:     Option<bool>,
+    /// Enable WAL-based recovery features for this collection (default: true)
+    #[arg(long)]
+    pub wal_enable_recovery: Option<bool>,
 }
 
 /// Insert a new document into a Sentinel collection.
@@ -48,29 +75,133 @@ pub struct InsertArgs {
 ///
 /// // Single document insert
 /// let args = InsertArgs {
-///     store_path: "/tmp/my_store".to_string(),
-///     collection: "users".to_string(),
-///     id:         Some("user1".to_string()),
-///     data:       Some(r#"{"name": "Alice"}"#.to_string()),
-///     bulk:       None,
-///     passphrase: None,
+///     store_path:          "/tmp/my_store".to_string(),
+///     collection:          "users".to_string(),
+///     id:                  Some("user1".to_string()),
+///     data:                Some(r#"{"name": "Alice"}"#.to_string()),
+///     bulk:                None,
+///     passphrase:          None,
+///     wal_max_file_size:   None,
+///     wal_format:          None,
+///     wal_compression:     None,
+///     wal_max_records:     None,
+///     wal_write_mode:      None,
+///     wal_verify_mode:     None,
+///     wal_auto_verify:     None,
+///     wal_enable_recovery: None,
 /// };
 /// run(args).await?;
 ///
 /// // Bulk insert
 /// let args = InsertArgs {
-///     store_path: "/tmp/my_store".to_string(),
-///     collection: "users".to_string(),
-///     id:         None,
-///     data:       None,
-///     bulk:       Some("documents.json".to_string()),
-///     passphrase: None,
+///     store_path:          "/tmp/my_store".to_string(),
+///     collection:          "users".to_string(),
+///     id:                  None,
+///     data:                None,
+///     bulk:                Some("documents.json".to_string()),
+///     passphrase:          None,
+///     wal_max_file_size:   None,
+///     wal_format:          None,
+///     wal_compression:     None,
+///     wal_max_records:     None,
+///     wal_write_mode:      None,
+///     wal_verify_mode:     None,
+///     wal_auto_verify:     None,
+///     wal_enable_recovery: None,
 /// };
 /// run(args).await?;
 /// ```
+
+/// Build CollectionWalConfig from CLI arguments
+fn build_collection_wal_config(args: &InsertArgs) -> Option<CollectionWalConfig> {
+    // Only build config if any WAL options are provided
+    if args.wal_max_file_size.is_some() ||
+        args.wal_format.is_some() ||
+        args.wal_compression.is_some() ||
+        args.wal_max_records.is_some() ||
+        args.wal_write_mode.is_some() ||
+        args.wal_verify_mode.is_some() ||
+        args.wal_auto_verify.is_some() ||
+        args.wal_enable_recovery.is_some()
+    {
+        Some(CollectionWalConfig {
+            write_mode:            args
+                .wal_write_mode
+                .as_ref()
+                .and_then(|s| parse_wal_failure_mode(s))
+                .unwrap_or(WalFailureMode::Strict),
+            verification_mode:     args
+                .wal_verify_mode
+                .as_ref()
+                .and_then(|s| parse_wal_failure_mode(s))
+                .unwrap_or(WalFailureMode::Warn),
+            auto_verify:           args.wal_auto_verify.unwrap_or(false),
+            enable_recovery:       args.wal_enable_recovery.unwrap_or(true),
+            max_wal_size_bytes:    args.wal_max_file_size,
+            compression_algorithm: args
+                .wal_compression
+                .as_ref()
+                .and_then(|s| parse_compression_algorithm(s)),
+            max_records_per_file:  args.wal_max_records,
+            format:                args
+                .wal_format
+                .as_ref()
+                .and_then(|s| parse_wal_format(s))
+                .unwrap_or_default(),
+        })
+    }
+    else {
+        None
+    }
+}
+
+/// Parse WAL failure mode from string
+fn parse_wal_failure_mode(s: &str) -> Option<WalFailureMode> {
+    match s.to_lowercase().as_str() {
+        "disabled" => Some(WalFailureMode::Disabled),
+        "warn" => Some(WalFailureMode::Warn),
+        "strict" => Some(WalFailureMode::Strict),
+        _ => None,
+    }
+}
+
+/// Parse compression algorithm from string
+fn parse_compression_algorithm(s: &str) -> Option<CompressionAlgorithm> {
+    match s.to_lowercase().as_str() {
+        "zstd" => Some(CompressionAlgorithm::Zstd),
+        "lz4" => Some(CompressionAlgorithm::Lz4),
+        "brotli" => Some(CompressionAlgorithm::Brotli),
+        "deflate" => Some(CompressionAlgorithm::Deflate),
+        "gzip" => Some(CompressionAlgorithm::Gzip),
+        _ => None,
+    }
+}
+
+/// Parse WAL format from string
+fn parse_wal_format(s: &str) -> Option<WalFormat> {
+    match s.to_lowercase().as_str() {
+        "binary" => Some(WalFormat::Binary),
+        "json_lines" => Some(WalFormat::JsonLines),
+        _ => None,
+    }
+}
+
 pub async fn run(args: InsertArgs) -> sentinel_dbms::Result<()> {
-    let store = sentinel_dbms::Store::new(&args.store_path, args.passphrase.as_deref()).await?;
-    let coll = store.collection(&args.collection).await?;
+    let store = sentinel_dbms::Store::new_with_config(
+        &args.store_path,
+        args.passphrase.as_deref(),
+        sentinel_wal::StoreWalConfig::default(),
+    )
+    .await?;
+    let wal_config = build_collection_wal_config(&args);
+    let coll = if let Some(config) = wal_config {
+        store
+            .collection_with_config(&args.collection, Some(config))
+            .await?
+    }
+    else {
+        store.collection(&args.collection).await?
+    };
 
     if let Some(bulk_file) = args.bulk {
         insert_bulk_documents(coll, &args.store_path, &args.collection, bulk_file).await
@@ -268,8 +399,8 @@ mod tests {
 
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
             ..Default::default()
         };
@@ -285,12 +416,20 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         Some("doc1".to_string()),
-            data:       Some(r#"{"name": "Alice", "age": 30}"#.to_string()),
-            bulk:       None,
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  Some("doc1".to_string()),
+            data:                Some(r#"{"name": "Alice", "age": 30}"#.to_string()),
+            bulk:                None,
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -308,8 +447,8 @@ mod tests {
 
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
             ..Default::default()
         };
@@ -325,12 +464,20 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         Some("doc1".to_string()),
-            data:       Some(r#"{"name": "Alice", "age": }"#.to_string()), // Invalid JSON
-            bulk:       None,
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  Some("doc1".to_string()),
+            data:                Some(r#"{"name": "Alice", "age": }"#.to_string()), // Invalid JSON
+            bulk:                None,
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -347,8 +494,8 @@ mod tests {
 
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
             ..Default::default()
         };
@@ -364,12 +511,20 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         None, // Missing ID
-            data:       Some(r#"{"name": "Alice"}"#.to_string()),
-            bulk:       None,
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  None, // Missing ID
+            data:                Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk:                None,
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -386,8 +541,8 @@ mod tests {
 
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
             ..Default::default()
         };
@@ -403,12 +558,20 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         Some("doc1".to_string()),
-            data:       None, // Missing data
-            bulk:       None,
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  Some("doc1".to_string()),
+            data:                None, // Missing data
+            bulk:                None,
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -425,20 +588,28 @@ mod tests {
 
         // Init store only
         let init_args = crate::commands::init::InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
             ..Default::default()
         };
         crate::commands::init::run(init_args).await.unwrap();
 
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "non_existent".to_string(),
-            id:         Some("doc1".to_string()),
-            data:       Some(r#"{"name": "Alice"}"#.to_string()),
-            bulk:       None,
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "non_existent".to_string(),
+            id:                  Some("doc1".to_string()),
+            data:                Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk:                None,
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -455,8 +626,8 @@ mod tests {
 
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
             ..Default::default()
         };
@@ -472,12 +643,20 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         Some("doc1".to_string()),
-            data:       Some("{}".to_string()),
-            bulk:       None,
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  Some("doc1".to_string()),
+            data:                Some("{}".to_string()),
+            bulk:                None,
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -498,8 +677,8 @@ mod tests {
 
         // Init store and collection
         let init_args = crate::commands::init::InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
             ..Default::default()
         };
@@ -515,14 +694,22 @@ mod tests {
             .unwrap();
 
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         Some("doc1".to_string()),
-            data:       Some(
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  Some("doc1".to_string()),
+            data:                Some(
                 r#"{"users": [{"name": "Alice"}, {"name": "Bob"}], "metadata": {"version": 1}}"#.to_string(),
             ),
-            bulk:       None,
-            passphrase: None,
+            bulk:                None,
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -540,8 +727,8 @@ mod tests {
 
         // Setup: init store and create collection
         let init_args = crate::commands::init::InitArgs {
-            path:        store_path.to_string_lossy().to_string(),
-            passphrase:  None,
+            path: store_path.to_string_lossy().to_string(),
+            passphrase: None,
             signing_key: None,
             ..Default::default()
         };
@@ -563,12 +750,20 @@ mod tests {
         std::fs::set_permissions(&collection_path, perms).unwrap();
 
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         Some("doc1".to_string()),
-            data:       Some(r#"{"name": "Alice"}"#.to_string()),
-            bulk:       None,
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  Some("doc1".to_string()),
+            data:                Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk:                None,
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -610,12 +805,20 @@ mod tests {
 
         // Test bulk insert via CLI
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         None,
-            data:       None,
-            bulk:       Some(json_file.to_string_lossy().to_string()),
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  None,
+            data:                None,
+            bulk:                Some(json_file.to_string_lossy().to_string()),
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -641,12 +844,20 @@ mod tests {
 
         // Test bulk insert with non-existent file
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         None,
-            data:       None,
-            bulk:       Some("non_existent_file.json".to_string()),
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  None,
+            data:                None,
+            bulk:                Some("non_existent_file.json".to_string()),
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -672,12 +883,20 @@ mod tests {
 
         // Test bulk insert with invalid JSON
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         None,
-            data:       None,
-            bulk:       Some(json_file.to_string_lossy().to_string()),
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  None,
+            data:                None,
+            bulk:                Some(json_file.to_string_lossy().to_string()),
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -700,12 +919,20 @@ mod tests {
 
         // Test bulk insert with JSON array
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         None,
-            data:       None,
-            bulk:       Some(json_file.to_string_lossy().to_string()),
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  None,
+            data:                None,
+            bulk:                Some(json_file.to_string_lossy().to_string()),
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -732,12 +959,20 @@ mod tests {
 
         // Test bulk insert into non-existent collection (should succeed - collection gets created)
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "non_existent_collection".to_string(),
-            id:         None,
-            data:       None,
-            bulk:       Some(json_file.to_string_lossy().to_string()),
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "non_existent_collection".to_string(),
+            id:                  None,
+            data:                None,
+            bulk:                Some(json_file.to_string_lossy().to_string()),
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -771,12 +1006,20 @@ mod tests {
 
         // Test bulk insert with invalid ID
         let args = InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         None,
-            data:       None,
-            bulk:       Some(json_file.to_string_lossy().to_string()),
-            passphrase: None,
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  None,
+            data:                None,
+            bulk:                Some(json_file.to_string_lossy().to_string()),
+            passphrase:          None,
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;

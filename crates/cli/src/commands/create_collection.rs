@@ -1,5 +1,7 @@
 use clap::Args;
 use tracing::{error, info};
+use sentinel_dbms::CollectionWalConfig;
+use sentinel_wal::{manager::WalFormat, CompressionAlgorithm, WalFailureMode};
 
 /// Arguments for the create-collection command.
 #[derive(Args, Clone, Default)]
@@ -17,20 +19,20 @@ pub struct CreateCollectionArgs {
     #[arg(long)]
     pub wal_max_file_size:   Option<u64>,
     /// WAL file format for this collection: binary or json_lines (default: binary)
-    #[arg(long, value_enum)]
+    #[arg(long)]
     pub wal_format:          Option<String>,
     /// WAL compression algorithm for this collection: zstd, lz4, brotli, deflate, gzip (default:
     /// zstd)
-    #[arg(long, value_enum)]
+    #[arg(long)]
     pub wal_compression:     Option<String>,
     /// Maximum number of records per WAL file for this collection (default: 1000)
     #[arg(long)]
     pub wal_max_records:     Option<usize>,
     /// WAL write mode for this collection: disabled, warn, strict (default: strict)
-    #[arg(long, value_enum)]
+    #[arg(long)]
     pub wal_write_mode:      Option<String>,
     /// WAL verification mode for this collection: disabled, warn, strict (default: warn)
-    #[arg(long, value_enum)]
+    #[arg(long)]
     pub wal_verify_mode:     Option<String>,
     /// Enable automatic document verification against WAL for this collection (default: false)
     #[arg(long)]
@@ -64,12 +66,76 @@ pub struct CreateCollectionArgs {
 /// };
 /// run(args).await?;
 /// ```
+
+/// Build CollectionWalConfig from CLI arguments
+fn build_collection_wal_config(args: &CreateCollectionArgs) -> CollectionWalConfig {
+    CollectionWalConfig {
+        write_mode:            args
+            .wal_write_mode
+            .as_ref()
+            .and_then(|s| parse_wal_failure_mode(s))
+            .unwrap_or(WalFailureMode::Strict),
+        verification_mode:     args
+            .wal_verify_mode
+            .as_ref()
+            .and_then(|s| parse_wal_failure_mode(s))
+            .unwrap_or(WalFailureMode::Warn),
+        auto_verify:           args.wal_auto_verify.unwrap_or(false),
+        enable_recovery:       args.wal_enable_recovery.unwrap_or(true),
+        max_wal_size_bytes:    args.wal_max_file_size,
+        compression_algorithm: args
+            .wal_compression
+            .as_ref()
+            .and_then(|s| parse_compression_algorithm(s)),
+        max_records_per_file:  args.wal_max_records,
+        format:                args
+            .wal_format
+            .as_ref()
+            .and_then(|s| parse_wal_format(s))
+            .unwrap_or_default(),
+    }
+}
+
+/// Parse WAL failure mode from string
+fn parse_wal_failure_mode(s: &str) -> Option<WalFailureMode> {
+    match s.to_lowercase().as_str() {
+        "disabled" => Some(WalFailureMode::Disabled),
+        "warn" => Some(WalFailureMode::Warn),
+        "strict" => Some(WalFailureMode::Strict),
+        _ => None,
+    }
+}
+
+/// Parse compression algorithm from string
+fn parse_compression_algorithm(s: &str) -> Option<CompressionAlgorithm> {
+    match s.to_lowercase().as_str() {
+        "zstd" => Some(CompressionAlgorithm::Zstd),
+        "lz4" => Some(CompressionAlgorithm::Lz4),
+        "brotli" => Some(CompressionAlgorithm::Brotli),
+        "deflate" => Some(CompressionAlgorithm::Deflate),
+        "gzip" => Some(CompressionAlgorithm::Gzip),
+        _ => None,
+    }
+}
+
+/// Parse WAL format from string
+fn parse_wal_format(s: &str) -> Option<WalFormat> {
+    match s.to_lowercase().as_str() {
+        "binary" => Some(WalFormat::Binary),
+        "json_lines" => Some(WalFormat::JsonLines),
+        _ => None,
+    }
+}
+
 pub async fn run(args: CreateCollectionArgs) -> sentinel_dbms::Result<()> {
+    let wal_config = build_collection_wal_config(&args);
     let store_path = args.store_path;
     let name = args.name;
     info!("Creating collection '{}' in store {}", name, store_path);
+    // For create_collection, we need to open the store with its existing config
+    // and then create the collection with the specified WAL config
     let store = sentinel_dbms::Store::new(&store_path, args.passphrase.as_deref()).await?;
-    match store.collection(&name).await {
+    match store.collection_with_config(&name, Some(wal_config)).await {
         Ok(_) => {
             info!("Collection '{}' created successfully", name);
             Ok(())

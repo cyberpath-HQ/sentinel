@@ -1,4 +1,6 @@
 use clap::Args;
+use sentinel_dbms::CollectionWalConfig;
+use sentinel_wal::{manager::WalFormat, CompressionAlgorithm, WalFailureMode};
 use tracing::{error, info};
 
 /// Arguments for the delete command.
@@ -6,13 +8,38 @@ use tracing::{error, info};
 pub struct DeleteArgs {
     /// Store path
     #[arg(short, long)]
-    pub store_path: String,
+    pub store_path:          String,
     /// Collection name
     #[arg(short, long)]
-    pub collection: String,
+    pub collection:          String,
     /// Document ID
     #[arg(short, long)]
-    pub id:         String,
+    pub id:                  String,
+    /// Maximum WAL file size in bytes for this collection (default: 10MB)
+    #[arg(long)]
+    pub wal_max_file_size:   Option<u64>,
+    /// WAL file format for this collection: binary or json_lines (default: binary)
+    #[arg(long)]
+    pub wal_format:          Option<String>,
+    /// WAL compression algorithm for this collection: zstd, lz4, brotli, deflate, gzip (default:
+    /// zstd)
+    #[arg(long)]
+    pub wal_compression:     Option<String>,
+    /// Maximum number of records per WAL file for this collection (default: 1000)
+    #[arg(long)]
+    pub wal_max_records:     Option<usize>,
+    /// WAL write mode for this collection: disabled, warn, strict (default: strict)
+    #[arg(long)]
+    pub wal_write_mode:      Option<String>,
+    /// WAL verification mode for this collection: disabled, warn, strict (default: warn)
+    #[arg(long)]
+    pub wal_verify_mode:     Option<String>,
+    /// Enable automatic document verification against WAL for this collection (default: false)
+    #[arg(long)]
+    pub wal_auto_verify:     Option<bool>,
+    /// Enable WAL-based recovery features for this collection (default: true)
+    #[arg(long)]
+    pub wal_enable_recovery: Option<bool>,
 }
 
 /// Delete a document from a Sentinel collection.
@@ -31,13 +58,97 @@ pub struct DeleteArgs {
 /// use sentinel_cli::commands::delete::{run, DeleteArgs};
 ///
 /// let args = DeleteArgs {
-///     store_path: "/tmp/my_store".to_string(),
-///     collection: "users".to_string(),
-///     id:         "user1".to_string(),
+///     store_path:          "/tmp/my_store".to_string(),
+///     collection:          "users".to_string(),
+///     id:                  "user1".to_string(),
+///     wal_max_file_size:   None,
+///     wal_format:          None,
+///     wal_compression:     None,
+///     wal_max_records:     None,
+///     wal_write_mode:      None,
+///     wal_verify_mode:     None,
+///     wal_auto_verify:     None,
+///     wal_enable_recovery: None,
 /// };
 /// run(args).await?;
 /// ```
+
+/// Build CollectionWalConfig from CLI arguments
+fn build_collection_wal_config(args: &DeleteArgs) -> Option<CollectionWalConfig> {
+    // Only build config if any WAL options are provided
+    if args.wal_max_file_size.is_some() ||
+        args.wal_format.is_some() ||
+        args.wal_compression.is_some() ||
+        args.wal_max_records.is_some() ||
+        args.wal_write_mode.is_some() ||
+        args.wal_verify_mode.is_some() ||
+        args.wal_auto_verify.is_some() ||
+        args.wal_enable_recovery.is_some()
+    {
+        Some(CollectionWalConfig {
+            write_mode:            args
+                .wal_write_mode
+                .as_ref()
+                .and_then(|s| parse_wal_failure_mode(s))
+                .unwrap_or(WalFailureMode::Strict),
+            verification_mode:     args
+                .wal_verify_mode
+                .as_ref()
+                .and_then(|s| parse_wal_failure_mode(s))
+                .unwrap_or(WalFailureMode::Warn),
+            auto_verify:           args.wal_auto_verify.unwrap_or(false),
+            enable_recovery:       args.wal_enable_recovery.unwrap_or(true),
+            max_wal_size_bytes:    args.wal_max_file_size,
+            compression_algorithm: args
+                .wal_compression
+                .as_ref()
+                .and_then(|s| parse_compression_algorithm(s)),
+            max_records_per_file:  args.wal_max_records,
+            format:                args
+                .wal_format
+                .as_ref()
+                .and_then(|s| parse_wal_format(s))
+                .unwrap_or_default(),
+        })
+    }
+    else {
+        None
+    }
+}
+
+/// Parse WAL failure mode from string
+fn parse_wal_failure_mode(s: &str) -> Option<WalFailureMode> {
+    match s.to_lowercase().as_str() {
+        "disabled" => Some(WalFailureMode::Disabled),
+        "warn" => Some(WalFailureMode::Warn),
+        "strict" => Some(WalFailureMode::Strict),
+        _ => None,
+    }
+}
+
+/// Parse compression algorithm from string
+fn parse_compression_algorithm(s: &str) -> Option<CompressionAlgorithm> {
+    match s.to_lowercase().as_str() {
+        "zstd" => Some(CompressionAlgorithm::Zstd),
+        "lz4" => Some(CompressionAlgorithm::Lz4),
+        "brotli" => Some(CompressionAlgorithm::Brotli),
+        "deflate" => Some(CompressionAlgorithm::Deflate),
+        "gzip" => Some(CompressionAlgorithm::Gzip),
+        _ => None,
+    }
+}
+
+/// Parse WAL format from string
+fn parse_wal_format(s: &str) -> Option<WalFormat> {
+    match s.to_lowercase().as_str() {
+        "binary" => Some(WalFormat::Binary),
+        "json_lines" => Some(WalFormat::JsonLines),
+        _ => None,
+    }
+}
+
 pub async fn run(args: DeleteArgs) -> sentinel_dbms::Result<()> {
+    let wal_config = build_collection_wal_config(&args);
     let store_path = args.store_path;
     let collection = args.collection;
     let id = args.id;
@@ -45,8 +156,16 @@ pub async fn run(args: DeleteArgs) -> sentinel_dbms::Result<()> {
         "Deleting document '{}' from collection '{}' in store {}",
         id, collection, store_path
     );
-    let store = sentinel_dbms::Store::new(&store_path, None).await?;
-    let coll = store.collection(&collection).await?;
+    let store =
+        sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_wal::StoreWalConfig::default()).await?;
+    let coll = if let Some(config) = wal_config {
+        store
+            .collection_with_config(&collection, Some(config))
+            .await?
+    }
+    else {
+        store.collection(&collection).await?
+    };
     match coll.delete(&id).await {
         Ok(_) => {
             info!("Document '{}' deleted successfully", id);

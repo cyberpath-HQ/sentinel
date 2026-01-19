@@ -1,5 +1,6 @@
 use clap::Args;
 use tracing::{error, info};
+use sentinel_wal::{manager::WalFormat, CollectionWalConfig, CompressionAlgorithm, StoreWalConfig, WalFailureMode};
 
 /// Arguments for the init command.
 #[derive(Args, Clone, Default)]
@@ -26,10 +27,10 @@ pub struct InitArgs {
     #[arg(long)]
     pub wal_max_records:         Option<usize>,
     /// WAL write mode: disabled, warn, strict (default: strict)
-    #[arg(long, value_enum)]
+    #[arg(long)]
     pub wal_write_mode:          Option<String>,
     /// WAL verification mode: disabled, warn, strict (default: warn)
-    #[arg(long, value_enum)]
+    #[arg(long)]
     pub wal_verify_mode:         Option<String>,
     /// Enable automatic document verification against WAL (default: false)
     #[arg(long)]
@@ -38,7 +39,7 @@ pub struct InitArgs {
     #[arg(long)]
     pub wal_enable_recovery:     Option<bool>,
     /// Store-level WAL failure mode: disabled, warn, strict (default: strict)
-    #[arg(long, value_enum)]
+    #[arg(long)]
     pub wal_store_failure_mode:  Option<String>,
     /// Enable automatic store-wide checkpoints (default: true)
     #[arg(long)]
@@ -72,12 +73,87 @@ pub struct InitArgs {
 /// };
 /// run(args).await?;
 /// ```
+
+/// Build StoreWalConfig from CLI arguments
+fn build_store_wal_config(args: &InitArgs) -> StoreWalConfig {
+    let default_collection_config = CollectionWalConfig {
+        write_mode:            args
+            .wal_write_mode
+            .as_ref()
+            .and_then(|s| parse_wal_failure_mode(s))
+            .unwrap_or(WalFailureMode::Strict),
+        verification_mode:     args
+            .wal_verify_mode
+            .as_ref()
+            .and_then(|s| parse_wal_failure_mode(s))
+            .unwrap_or(WalFailureMode::Warn),
+        auto_verify:           args.wal_auto_verify.unwrap_or(false),
+        enable_recovery:       args.wal_enable_recovery.unwrap_or(true),
+        max_wal_size_bytes:    args.wal_max_file_size,
+        compression_algorithm: args
+            .wal_compression
+            .as_ref()
+            .and_then(|s| parse_compression_algorithm(s)),
+        max_records_per_file:  args.wal_max_records,
+        format:                args
+            .wal_format
+            .as_ref()
+            .and_then(|s| parse_wal_format(s))
+            .unwrap_or_default(),
+    };
+
+    StoreWalConfig {
+        default_collection_config,
+        collection_configs: std::collections::HashMap::new(),
+        store_failure_mode: args
+            .wal_store_failure_mode
+            .as_ref()
+            .and_then(|s| parse_wal_failure_mode(s))
+            .unwrap_or(WalFailureMode::Strict),
+        auto_checkpoint: args.wal_auto_checkpoint.unwrap_or(true),
+        checkpoint_interval_secs: args.wal_checkpoint_interval.unwrap_or(300),
+        max_wal_size_bytes: args.wal_store_max_size.unwrap_or(100 * 1024 * 1024), // 100MB default
+    }
+}
+
+/// Parse WAL failure mode from string
+fn parse_wal_failure_mode(s: &str) -> Option<WalFailureMode> {
+    match s.to_lowercase().as_str() {
+        "disabled" => Some(WalFailureMode::Disabled),
+        "warn" => Some(WalFailureMode::Warn),
+        "strict" => Some(WalFailureMode::Strict),
+        _ => None,
+    }
+}
+
+/// Parse compression algorithm from string
+fn parse_compression_algorithm(s: &str) -> Option<CompressionAlgorithm> {
+    match s.to_lowercase().as_str() {
+        "zstd" => Some(CompressionAlgorithm::Zstd),
+        "lz4" => Some(CompressionAlgorithm::Lz4),
+        "brotli" => Some(CompressionAlgorithm::Brotli),
+        "deflate" => Some(CompressionAlgorithm::Deflate),
+        "gzip" => Some(CompressionAlgorithm::Gzip),
+        _ => None,
+    }
+}
+
+/// Parse WAL format from string
+fn parse_wal_format(s: &str) -> Option<WalFormat> {
+    match s.to_lowercase().as_str() {
+        "binary" => Some(WalFormat::Binary),
+        "json_lines" => Some(WalFormat::JsonLines),
+        _ => None,
+    }
+}
+
 pub async fn run(args: InitArgs) -> sentinel_dbms::Result<()> {
+    let wal_config = build_store_wal_config(&args);
     let path = args.path;
     info!("Initializing store at {}", path);
 
     let passphrase = args.passphrase.as_deref();
-    match sentinel_dbms::Store::new(&path, passphrase).await {
+    match sentinel_dbms::Store::new_with_config(&path, passphrase, wal_config).await {
         Ok(mut store) => {
             #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
             if let Some(hex) = &args.signing_key {
