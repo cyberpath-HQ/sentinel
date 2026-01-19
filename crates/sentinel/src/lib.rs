@@ -2,6 +2,8 @@
 mod collection;
 /// Comparison utilities module.
 mod comparison;
+/// Constants for special file and directory names.
+mod constants;
 /// Document handling module.
 mod document;
 /// Error types module.
@@ -30,6 +32,7 @@ pub use async_stream;
 pub use futures;
 // Re-export internal modules
 pub use collection::Collection;
+pub use constants::*;
 pub use document::Document;
 pub use error::{Result, SentinelError};
 pub use query::{Aggregation, Filter, Operator, Query, QueryBuilder, QueryResult, SortOrder};
