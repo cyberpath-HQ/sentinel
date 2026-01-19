@@ -5,8 +5,16 @@ use std::{collections::HashMap, pin::Pin};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use tracing::{debug, error};
+use sentinel_wal::{
+    recover_from_wal_safe,
+    verify_wal_consistency,
+    LogEntry,
+    WalRecoveryResult,
+    WalVerificationIssue,
+    WalVerificationResult,
+};
+
 use crate::{Collection, Store};
-use sentinel_wal::{LogEntry, WalRecoveryResult, WalVerificationResult, WalVerificationIssue};
 
 /// Extension trait for Store to add WAL operations
 #[async_trait]
@@ -15,7 +23,9 @@ pub trait StoreWalOps {
     async fn checkpoint_all_collections(&self) -> crate::Result<()>;
 
     /// Stream WAL entries from all collections
-    async fn stream_all_wal_entries(&self) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<(String, LogEntry)>> + Send>>>;
+    async fn stream_all_wal_entries(
+        &self,
+    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<(String, LogEntry)>> + Send>>>;
 
     /// Verify all collections against their WAL files
     async fn verify_all_collections(&self) -> crate::Result<HashMap<String, Vec<WalVerificationIssue>>>;
@@ -59,7 +69,9 @@ impl StoreWalOps for Store {
         Ok(())
     }
 
-    async fn stream_all_wal_entries(&self) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<(String, LogEntry)>> + Send>>> {
+    async fn stream_all_wal_entries(
+        &self,
+    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<(String, LogEntry)>> + Send>>> {
         let collections = self.list_collections().await?;
         let mut streams = Vec::new();
 
@@ -141,14 +153,39 @@ impl CollectionWalOps for Collection {
             let entries = wal.read_all_entries().await?;
             let stream = futures::stream::iter(entries.into_iter().map(Ok));
             Ok(Box::pin(stream))
-        } else {
+        }
+        else {
             Ok(Box::pin(futures::stream::empty()))
         }
     }
 
-    async fn verify_against_wal(&self) -> crate::Result<WalVerificationResult> { self.verify_wal_consistency().await }
+    async fn verify_against_wal(&self) -> crate::Result<WalVerificationResult> {
+        if let Some(wal) = &self.wal_manager {
+            verify_wal_consistency(wal, self).await.map_err(Into::into)
+        }
+        else {
+            Ok(WalVerificationResult {
+                issues:             vec![],
+                passed:             true,
+                entries_processed:  0,
+                affected_documents: 0,
+            })
+        }
+    }
 
-    async fn recover_from_wal(&self) -> crate::Result<WalRecoveryResult> { self.recover_from_wal_safe().await }
+    async fn recover_from_wal(&self) -> crate::Result<WalRecoveryResult> {
+        if let Some(wal) = &self.wal_manager {
+            recover_from_wal_safe(wal, self).await.map_err(Into::into)
+        }
+        else {
+            Ok(WalRecoveryResult {
+                recovered_operations: 0,
+                skipped_operations:   0,
+                failed_operations:    0,
+                failures:             vec![],
+            })
+        }
+    }
 
     async fn wal_size(&self) -> crate::Result<u64> {
         if let Some(wal) = &self.wal_manager {
@@ -161,16 +198,9 @@ impl CollectionWalOps for Collection {
 
     async fn wal_entries_count(&self) -> crate::Result<usize> {
         if let Some(wal) = &self.wal_manager {
-            let mut count = 0;
-            let stream = wal.stream_entries();
-            use futures::StreamExt;
-            futures::pin_mut!(stream);
-            while let Some(result) = stream.next().await {
-                result?; // Check for errors but don't need the entry
-                count += 1;
-            }
-            Ok(count)
-        } else {
+            Ok(wal.entries_count().await?)
+        }
+        else {
             Ok(0)
         }
     }
