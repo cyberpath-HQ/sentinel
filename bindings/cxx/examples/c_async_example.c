@@ -11,6 +11,13 @@ static int documents_inserted = 0;
 static int documents_retrieved = 0;
 static int errors_occurred = 0;
 
+// Forward declarations for callback functions
+void on_store_created(uint64_t task_id, sentinel_store_t* store, char* user_data);
+void on_collection_created(uint64_t task_id, sentinel_collection_t* collection, char* user_data);
+void on_document_inserted(uint64_t task_id, char* user_data);
+void on_document_retrieved(uint64_t task_id, char* json_data, char* user_data);
+void on_error(uint64_t task_id, const char* error_msg, char* user_data);
+
 // Callback implementations
 void on_store_created(uint64_t task_id, sentinel_store_t* store, char* user_data) {
     printf("✓ Store created asynchronously (task %llu, user_data: %s)\n", task_id, user_data);
