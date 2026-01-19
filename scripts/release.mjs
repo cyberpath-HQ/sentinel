@@ -35,20 +35,16 @@ function section(name) {
 async function main() {
   const workspaceRoot = join(__dirname, '..');
 
-  section('Publishing Rust Crates to crates.io');
+   section('Publishing Rust Crates to crates.io');
 
-  run('cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml', { cwd: workspaceRoot });
-  run('cargo publish --manifest-path crates/sentinel/Cargo.toml', { cwd: workspaceRoot });
-  run('cargo publish --manifest-path crates/cli/Cargo.toml', { cwd: workspaceRoot });
+   run('cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml', { cwd: workspaceRoot });
+   run('cargo publish --manifest-path crates/sentinel/Cargo.toml', { cwd: workspaceRoot });
+   run('cargo publish --manifest-path crates/cli/Cargo.toml', { cwd: workspaceRoot });
 
-  section('Building C/C++ Bindings');
+   section('Creating C/C++ Development Package');
 
-  const cxxBindings = join(workspaceRoot, 'bindings', 'cxx');
-  run('python bindings/cxx/cbuild.py', { cwd: workspaceRoot });
-
-  section('Creating C/C++ Development Package');
-
-  const distDir = join(workspaceRoot, 'dist');
+   const cxxBindings = join(workspaceRoot, 'bindings', 'cxx');
+   const distDir = join(workspaceRoot, 'dist');
   mkdirSync(distDir, { recursive: true });
 
   const packageName = `sentinel-cxx-dev-${nextRelease}`;
