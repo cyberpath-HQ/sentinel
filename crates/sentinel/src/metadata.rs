@@ -1,46 +1,47 @@
 //! General metadata structures for collections and stores.
 //!
-//! This module provides metadata structures that are DBMS-wide. 
-//! Metadata includes general collection and store information, statistics, and configuration with proper versioning.
+//! This module provides metadata structures that are DBMS-wide.
+//! Metadata includes general collection and store information, statistics, and configuration with
+//! proper versioning.
+//!
+//! ## Storage Limits
+//!
+//! Collection metadata files are limited to 1MB total size to prevent unbounded growth.
+//! Store metadata files are limited to 10MB total size.
+//! These limits ensure metadata operations remain performant and prevent abuse.
 
 use serde::{Deserialize, Serialize};
 
+use crate::wal::config::{CollectionWalConfig, StoreWalConfig};
+
 /// Version of the metadata format.
 ///
-/// This allows for forward-compatible metadata evolution.
-/// Newer versions can read older metadata and migrate forward.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum MetadataVersion {
-    /// Initial metadata format (v1.0)
-    V1,
-}
-
-impl Default for MetadataVersion {
-    fn default() -> Self {
-        MetadataVersion::V1
-    }
-}
+/// This is a numeric version that supports fast-forward migration.
+/// Higher versions can read and migrate older metadata formats.
+pub type MetadataVersion = u32;
 
 /// Collection metadata stored on disk.
 ///
 /// This struct contains all persistent metadata for a collection,
-/// including statistics and operational state. WAL configuration
-/// is handled separately to avoid tight coupling.
+/// including statistics, operational state, and WAL configuration.
+///
+/// Storage limit: 1MB total serialized size
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionMetadata {
     /// Metadata format version
-    pub version:         MetadataVersion,
+    pub version:          MetadataVersion,
     /// Collection name
-    pub name:            String,
+    pub name:             String,
     /// Creation timestamp (Unix timestamp)
-    pub created_at:      u64,
+    pub created_at:       u64,
     /// Last modification timestamp
-    pub updated_at:      u64,
+    pub updated_at:       u64,
     /// Number of documents in the collection
-    pub document_count:  u64,
+    pub document_count:   u64,
     /// Total size of all documents (bytes)
     pub total_size_bytes: u64,
+    /// WAL configuration for this collection
+    pub wal_config:       CollectionWalConfig,
 }
 
 impl CollectionMetadata {
@@ -52,12 +53,13 @@ impl CollectionMetadata {
             .as_secs();
 
         Self {
-            version:          MetadataVersion::V1,
+            version:          1,
             name:             name.clone(),
             created_at:       now,
             updated_at:       now,
             document_count:   0,
             total_size_bytes: 0,
+            wal_config:       CollectionWalConfig::default(),
         }
     }
 
@@ -93,21 +95,25 @@ impl CollectionMetadata {
 /// Store metadata stored on disk.
 ///
 /// This struct contains all persistent metadata for the store,
-/// including global statistics and operational state.
+/// including global statistics, operational state, and WAL configuration.
+///
+/// Storage limit: 10MB total serialized size
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreMetadata {
     /// Metadata format version
-    pub version:         MetadataVersion,
+    pub version:          MetadataVersion,
     /// Store creation timestamp
-    pub created_at:      u64,
+    pub created_at:       u64,
     /// Last modification timestamp
-    pub updated_at:      u64,
+    pub updated_at:       u64,
     /// Total number of collections
     pub collection_count: u64,
     /// Total number of documents across all collections
-    pub total_documents: u64,
+    pub total_documents:  u64,
     /// Total size of all data (bytes)
     pub total_size_bytes: u64,
+    /// WAL configuration for the store
+    pub wal_config:       StoreWalConfig,
 }
 
 impl StoreMetadata {
@@ -119,12 +125,13 @@ impl StoreMetadata {
             .as_secs();
 
         Self {
-            version:           MetadataVersion::V1,
-            created_at:        now,
-            updated_at:        now,
-            collection_count:  0,
-            total_documents:   0,
-            total_size_bytes:  0,
+            version:          1,
+            created_at:       now,
+            updated_at:       now,
+            collection_count: 0,
+            total_documents:  0,
+            total_size_bytes: 0,
+            wal_config:       StoreWalConfig::default(),
         }
     }
 
