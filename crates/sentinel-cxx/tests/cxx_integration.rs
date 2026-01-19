@@ -95,12 +95,11 @@ fn test_cxx_bindings_build() {
     println!("✓ All C/C++ executables built successfully");
 }
 
+#[serial_test::serial]
 #[test]
 fn test_cxx_examples_run() {
     // Get the project root (crates/sentinel-cxx -> project root)
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
         .parent()
         .unwrap()
         .parent()
@@ -135,12 +134,11 @@ fn test_cxx_examples_run() {
     println!("✓ All C/C++ examples ran successfully");
 }
 
+#[serial_test::serial]
 #[test]
 fn test_cxx_bindings_tests() {
     // Get the project root (crates/sentinel-cxx -> project root)
     let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
         .parent()
         .unwrap()
         .parent()
@@ -164,8 +162,48 @@ fn test_cxx_bindings_tests() {
 fn run_example_test(build_dir: &PathBuf, exe_name: &str, description: &str) {
     let exe_path = build_dir.join(exe_name);
 
+    // If executable doesn't exist, try to build it
     if !exe_path.exists() {
-        panic!("{} executable not found at {:?}", description, exe_path);
+        println!(
+            "{} executable not found, attempting to build...",
+            description
+        );
+
+        let source_dir = build_dir.parent().unwrap();
+
+        // Run cmake configure
+        let cmake_result = Command::new("cmake")
+            .args(&["..", "-DCMAKE_BUILD_TYPE=Debug"])
+            .current_dir(build_dir)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .expect("Failed to run cmake");
+
+        assert!(
+            cmake_result.success(),
+            "CMake configuration failed for {}",
+            description
+        );
+
+        // Run make
+        let make_result = Command::new("make")
+            .args(&["-j", &num_cpus::get().to_string()])
+            .current_dir(build_dir)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .expect("Failed to run make");
+
+        assert!(make_result.success(), "Make failed for {}", description);
+    }
+
+    // Now check again
+    if !exe_path.exists() {
+        panic!(
+            "{} executable still not found after build attempt at {:?}",
+            description, exe_path
+        );
     }
 
     println!("Running {}...", description);
