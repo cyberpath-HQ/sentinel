@@ -376,11 +376,18 @@ impl Store {
             let _ = self.event_sender.send(event);
         }
 
-        // Create WAL manager with config from metadata
+        // Get collection-specific WAL config or use default
+        let collection_wal_config = self
+            .wal_config
+            .collection_configs
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| self.wal_config.default_collection_config.clone());
+
+        // Create WAL manager with collection config
         let wal_path = path.join(WAL_DIR).join(WAL_FILE);
-        let wal_config = metadata.wal_config;
         let wal_manager = Some(Arc::new(
-            WalManager::new(wal_path, wal_config.into()).await?,
+            WalManager::new(wal_path, collection_wal_config.clone().into()).await?,
         ));
 
         trace!("Collection '{}' accessed successfully", name);
@@ -393,6 +400,7 @@ impl Store {
             path,
             signing_key: self.signing_key.clone(),
             wal_manager,
+            wal_config: collection_wal_config,
             created_at: now,
             updated_at: std::sync::RwLock::new(now),
             last_checkpoint_at: std::sync::RwLock::new(None),
