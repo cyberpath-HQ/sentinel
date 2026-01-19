@@ -16,10 +16,8 @@
   "scripts": {
     "build": "cargo build --release -p sentinel-js && cp crates/sentinel-js/target/release/*.node native/ 2>/dev/null || true",
     "build:debug": "cargo build -p sentinel-js && cp crates/sentinel-js/target/debug/*.node native/ 2>/dev/null || true",
-    "postinstall": "node -e \"const fs = require('fs'); const path = require('path'); const ext = process.platform === 'win32' ? '.dll' : process.platform === 'darwin' ? '.dylib' : '.so'; const file = fs.readdirSync('native').find(f => f.endsWith(ext)); if(file) { const content = fs.readFileSync('native/' + file); fs.writeFileSync('dist/index.node', content); }\")",
     "bundle": "rollup -c rollup.config.js",
-    "test": "ava",
-    "prepublishOnly": "npm run build && npm run bundle",
+    "test": "mocha tests/",
     "lint": "eslint . --ext .js,.ts",
     "fmt": "prettier --write ."
   },
@@ -47,7 +45,7 @@
     "@rollup/plugin-commonjs": "^25.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
     "@types/node": "^20.0.0",
-    "ava": "^5.0.0",
+    "mocha": "^11.0.0",
     "rollup": "^4.0.0",
     "typescript": "^5.0.0"
   }
