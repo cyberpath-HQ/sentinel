@@ -12,7 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [lib]
-name = "sentinel_python"
+name = "sentinel"
 crate-type = ["cdylib"]
 
 [dependencies]
