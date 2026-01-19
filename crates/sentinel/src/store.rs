@@ -129,6 +129,10 @@ impl Store {
     /// - If the directory already exists, this method succeeds without modification
     /// - Parent directories are created automatically if they don't exist
     /// - The created directory will have default permissions set by the operating system
+    #[deprecated(
+        since = "2.0.2",
+        note = "Please use new_with_config to specify WAL configuration"
+    )]
     pub async fn new<P>(root_path: P, passphrase: Option<&str>) -> Result<Self>
     where
         P: AsRef<Path>,
@@ -157,6 +161,179 @@ impl Store {
         else {
             debug!("Creating new store metadata");
             let metadata = StoreMetadata::new();
+            let content = serde_json::to_string_pretty(&metadata)?;
+            tokio_fs::write(&metadata_path, content).await?;
+            metadata
+        };
+
+        let now = chrono::Utc::now();
+
+        // Create event channel for collection synchronization
+        let (event_sender, event_receiver) = mpsc::unbounded_channel();
+
+        let mut store = Self {
+            root_path,
+            signing_key: None,
+            created_at: now,
+            last_accessed_at: std::sync::RwLock::new(now),
+            total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
+                store_metadata.total_size_bytes,
+            )),
+            total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
+                store_metadata.total_documents,
+            )),
+            collection_count: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
+                store_metadata.collection_count,
+            )),
+            wal_config: store_metadata.wal_config,
+            event_receiver: Some(event_receiver),
+            event_sender,
+            event_task: None,
+        };
+        if let Some(passphrase) = passphrase {
+            debug!("Passphrase provided, handling signing key");
+            let keys_collection = store.collection(KEYS_COLLECTION).await?;
+            if let Some(doc) = keys_collection
+                .get_with_verification("signing_key", &crate::VerificationOptions::disabled())
+                .await?
+            {
+                // Load existing signing key
+                debug!("Loading existing signing key from store");
+                let data = doc.data();
+                let encrypted = data["encrypted"].as_str().ok_or_else(|| {
+                    error!("Stored signing key document missing 'encrypted' field");
+                    SentinelError::StoreCorruption {
+                        reason: "stored signing key document missing 'encrypted' field or not a string".to_owned(),
+                    }
+                })?;
+                let salt_hex = data["salt"].as_str().ok_or_else(|| {
+                    error!("Stored signing key document missing 'salt' field");
+                    SentinelError::StoreCorruption {
+                        reason: "stored signing key document missing 'salt' field or not a string".to_owned(),
+                    }
+                })?;
+                let salt = hex::decode(salt_hex).map_err(|err| {
+                    error!("Stored signing key salt is not valid hex: {}", err);
+                    SentinelError::StoreCorruption {
+                        reason: format!("stored signing key salt is not valid hex ({})", err),
+                    }
+                })?;
+                let encryption_key = sentinel_crypto::derive_key_from_passphrase_with_salt(passphrase, &salt).await?;
+                let key_bytes = sentinel_crypto::decrypt_data(encrypted, &encryption_key).await?;
+                let key_array: [u8; 32] = key_bytes.try_into().map_err(|kb: Vec<u8>| {
+                    error!(
+                        "Stored signing key has invalid length: {}, expected 32",
+                        kb.len()
+                    );
+                    SentinelError::StoreCorruption {
+                        reason: format!(
+                            "stored signing key has an invalid length ({}, expected 32)",
+                            kb.len()
+                        ),
+                    }
+                })?;
+                let signing_key = sentinel_crypto::SigningKey::from_bytes(&key_array);
+                store.signing_key = Some(Arc::new(signing_key));
+                debug!("Existing signing key loaded successfully");
+            }
+            else {
+                // Generate new signing key and salt
+                debug!("Generating new signing key");
+                let (salt, encryption_key) = sentinel_crypto::derive_key_from_passphrase(passphrase).await?;
+                let signing_key = sentinel_crypto::SigningKeyManager::generate_key();
+                let key_bytes = signing_key.to_bytes();
+                let encrypted = sentinel_crypto::encrypt_data(&key_bytes, &encryption_key).await?;
+                let salt_hex = hex::encode(&salt);
+                keys_collection
+                    .insert(
+                        "signing_key",
+                        serde_json::json!({"encrypted": encrypted, "salt": salt_hex}),
+                    )
+                    .await?;
+                store.signing_key = Some(Arc::new(signing_key));
+                debug!("New signing key generated and stored");
+            }
+        }
+        trace!("Store created successfully");
+
+        // Start background event processing task
+        store.start_event_processor();
+
+        Ok(store)
+    }
+
+    /// Creates a new `Store` instance at the specified root path with custom WAL configuration.
+    ///
+    /// This method initializes the store by creating the root directory if it doesn't
+    /// exist and applies the provided WAL configuration. It does not create the `data/`
+    /// subdirectory until collections are accessed.
+    ///
+    /// # Parameters
+    ///
+    /// * `root_path` - The filesystem path where the store will be created. This can be any type
+    ///   that implements `AsRef<Path>`, including `&str`, `String`, `Path`, and `PathBuf`.
+    /// * `passphrase` - Optional passphrase for encrypting the signing key
+    /// * `wal_config` - Custom WAL configuration for the store
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Self>` - Returns a new `Store` instance on success, or a `SentinelError` if:
+    ///   - The directory cannot be created due to permission issues
+    ///   - The path is invalid or cannot be accessed
+    ///   - I/O errors occur during directory creation
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use sentinel_dbms::Store;
+    /// use sentinel_wal::StoreWalConfig;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let wal_config = StoreWalConfig::default();
+    /// let store = Store::new_with_config("/var/lib/sentinel", None, wal_config).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn new_with_config<P>(
+        root_path: P,
+        passphrase: Option<&str>,
+        wal_config: sentinel_wal::StoreWalConfig,
+    ) -> Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        trace!("Creating new Store at path: {:?} with custom WAL config", root_path.as_ref());
+        let root_path = root_path.as_ref().to_path_buf();
+        tokio_fs::create_dir_all(&root_path).await.map_err(|e| {
+            error!(
+                "Failed to create store root directory {:?}: {}",
+                root_path, e
+            );
+            e
+        })?;
+        debug!(
+            "Store root directory created or already exists: {:?}",
+            root_path
+        );
+
+        // Load or create store metadata with custom WAL config
+        let metadata_path = root_path.join(STORE_METADATA_FILE);
+        let store_metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
+            debug!("Loading existing store metadata");
+            let mut metadata: StoreMetadata = {
+                let content = tokio_fs::read_to_string(&metadata_path).await?;
+                serde_json::from_str(&content)?
+            };
+            // Update WAL config if store already exists
+            metadata.wal_config = wal_config;
+            let content = serde_json::to_string_pretty(&metadata)?;
+            tokio_fs::write(&metadata_path, content).await?;
+            metadata
+        }
+        else {
+            debug!("Creating new store metadata with custom WAL config");
+            let mut metadata = StoreMetadata::new();
+            metadata.wal_config = wal_config;
             let content = serde_json::to_string_pretty(&metadata)?;
             tokio_fs::write(&metadata_path, content).await?;
             metadata
@@ -341,6 +518,10 @@ impl Store {
     /// - The `data/` subdirectory is created automatically on first collection access
     /// - Collections are not cached; each call creates a new `Collection` instance
     /// - No validation is performed on the collection name beyond filesystem constraints
+    #[deprecated(
+        since = "2.0.2",
+        note = "Please use collection_with_config to specify WAL configuration"
+    )]
     pub async fn collection(&self, name: &str) -> Result<Collection> {
         trace!("Accessing collection: {}", name);
         validate_collection_name(name)?;
@@ -377,6 +558,136 @@ impl Store {
         }
 
         // Get collection WAL config: prefer metadata's config, fall back to store-derived
+        let collection_wal_config = metadata.wal_config.unwrap_or_else(|| {
+            self.wal_config
+                .collection_configs
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| self.wal_config.default_collection_config.clone())
+        });
+
+        // Create WAL manager with collection config
+        let wal_path = path.join(WAL_DIR).join(WAL_FILE);
+        let wal_manager = Some(Arc::new(
+            WalManager::new(wal_path, collection_wal_config.clone().into()).await?,
+        ));
+
+        trace!("Collection '{}' accessed successfully", name);
+        let now = chrono::Utc::now();
+
+        // Update store metadata
+        *self.last_accessed_at.write().unwrap() = now;
+
+        let mut collection = Collection {
+            path,
+            signing_key: self.signing_key.clone(),
+            wal_manager,
+            wal_config: collection_wal_config,
+            created_at: now,
+            updated_at: std::sync::RwLock::new(now),
+            last_checkpoint_at: std::sync::RwLock::new(None),
+            total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.document_count)),
+            total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.total_size_bytes)),
+            event_sender: Some(self.event_sender()),
+            event_task: None,
+        };
+        collection.start_event_processor();
+        Ok(collection)
+    }
+
+    /// Retrieves or creates a collection with the specified name and custom WAL configuration.
+    ///
+    /// This method provides access to a named collection within the store with custom WAL settings.
+    /// If the collection directory doesn't exist, it will be created automatically under
+    /// the `data/` subdirectory of the store's root path.
+    ///
+    /// # Parameters
+    ///
+    /// * `name` - The name of the collection. This will be used as the directory name under
+    ///   `data/`. The name should be filesystem-safe.
+    /// * `wal_config` - Optional custom WAL configuration for this collection
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Collection>` - Returns a `Collection` instance on success, or a `SentinelError`
+    ///   if:
+    ///   - The collection directory cannot be created due to permission issues
+    ///   - The name contains invalid characters for the filesystem
+    ///   - I/O errors occur during directory creation
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use sentinel_dbms::Store;
+    /// use sentinel_wal::CollectionWalConfig;
+    /// use serde_json::json;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let store = Store::new("/var/lib/sentinel", None).await?;
+    /// let wal_config = CollectionWalConfig::default();
+    ///
+    /// // Access a users collection with custom WAL config
+    /// let users = store.collection_with_config("users", Some(wal_config)).await?;
+    ///
+    /// // Insert a document into the collection
+    /// users.insert("user-123", json!({
+    ///     "name": "Alice",
+    ///     "email": "alice@example.com"
+    /// })).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn collection_with_config(
+        &self,
+        name: &str,
+        wal_config: Option<sentinel_wal::CollectionWalConfig>,
+    ) -> Result<Collection> {
+        trace!("Accessing collection: {} with custom WAL config", name);
+        validate_collection_name(name)?;
+        let path = self.root_path.join(DATA_DIR).join(name);
+        tokio_fs::create_dir_all(&path).await.map_err(|e| {
+            error!("Failed to create collection directory {:?}: {}", path, e);
+            e
+        })?;
+        debug!("Collection directory ensured: {:?}", path);
+
+        // Load or create collection metadata
+        let metadata_path = path.join(COLLECTION_METADATA_FILE);
+        let is_new_collection = !tokio_fs::try_exists(&metadata_path).await.unwrap_or(false);
+        let metadata = if is_new_collection {
+            debug!("Creating new collection metadata for {}", name);
+            let mut metadata = CollectionMetadata::new(name.to_string());
+            // Set custom WAL config if provided
+            if let Some(config) = wal_config {
+                metadata.wal_config = Some(config);
+            }
+            let content = serde_json::to_string_pretty(&metadata)?;
+            tokio_fs::write(&metadata_path, content).await?;
+            metadata
+        }
+        else {
+            debug!("Loading existing collection metadata for {}", name);
+            let content = tokio_fs::read_to_string(&metadata_path).await?;
+            let mut metadata: CollectionMetadata = serde_json::from_str(&content)?;
+            // Update WAL config if provided (even for existing collections)
+            if let Some(config) = wal_config {
+                metadata.wal_config = Some(config);
+                let content = serde_json::to_string_pretty(&metadata)?;
+                tokio_fs::write(&metadata_path, content).await?;
+            }
+            metadata
+        };
+
+        // If this is a new collection, emit event (metadata will be saved by event handler)
+        if is_new_collection {
+            // Emit collection created event
+            let event = StoreEvent::CollectionCreated {
+                name: name.to_string(),
+            };
+            let _ = self.event_sender.send(event);
+        }
+
+        // Get collection WAL config: use metadata's config, or provided config, or fall back to store-derived
         let collection_wal_config = metadata.wal_config.unwrap_or_else(|| {
             self.wal_config
                 .collection_configs
