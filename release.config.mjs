@@ -59,11 +59,24 @@ export default {
           "cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml && cargo publish --manifest-path crates/sentinel/Cargo.toml && cargo publish --manifest-path crates/cli/Cargo.toml",
       },
     ],
+    // Python package publishing to PyPI using maturin
+    [
+      "@semantic-release/exec",
+      {
+        publishCmd: [
+          "echo 'Building Python package with maturin...'",
+          "maturin build --manifest-path crates/sentinel-python/Cargo.toml --release --out target/wheels",
+          "echo 'Publishing to PyPI...'",
+          "twine upload target/wheels/*.whl --skip-existing --non-interactive || twine upload target/wheels/*.whl",
+        ].join(" && "),
+      },
+    ],
     [
       "@semantic-release/github",
       {
         assets: [
           { path: "sentinel-cxx-dev-*.zip", label: "C/C++ Development Package" },
+          { path: "target/wheels/*.whl", label: "Python Wheel Package" },
         ],
       },
     ],
