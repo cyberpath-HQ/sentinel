@@ -14,7 +14,7 @@ use async_stream::stream;
 use crate::{LogEntry, Result};
 
 /// WAL file format options
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub enum WalFormat {
     /// Binary format (compact, default)
     #[default]
