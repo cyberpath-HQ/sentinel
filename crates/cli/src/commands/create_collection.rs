@@ -6,13 +6,38 @@ use tracing::{error, info};
 pub struct CreateCollectionArgs {
     /// Store path
     #[arg(short, long)]
-    pub store_path: String,
+    pub store_path:          String,
     /// Collection name
     #[arg(short, long)]
-    pub name:       String,
+    pub name:                String,
     /// Passphrase for decrypting the signing key
     #[arg(long)]
-    pub passphrase: Option<String>,
+    pub passphrase:          Option<String>,
+    /// Maximum WAL file size in bytes for this collection (default: 10MB)
+    #[arg(long)]
+    pub wal_max_file_size:   Option<u64>,
+    /// WAL file format for this collection: binary or json_lines (default: binary)
+    #[arg(long, value_enum)]
+    pub wal_format:          Option<String>,
+    /// WAL compression algorithm for this collection: zstd, lz4, brotli, deflate, gzip (default:
+    /// zstd)
+    #[arg(long, value_enum)]
+    pub wal_compression:     Option<String>,
+    /// Maximum number of records per WAL file for this collection (default: 1000)
+    #[arg(long)]
+    pub wal_max_records:     Option<usize>,
+    /// WAL write mode for this collection: disabled, warn, strict (default: strict)
+    #[arg(long, value_enum)]
+    pub wal_write_mode:      Option<String>,
+    /// WAL verification mode for this collection: disabled, warn, strict (default: warn)
+    #[arg(long, value_enum)]
+    pub wal_verify_mode:     Option<String>,
+    /// Enable automatic document verification against WAL for this collection (default: false)
+    #[arg(long)]
+    pub wal_auto_verify:     Option<bool>,
+    /// Enable WAL-based recovery features for this collection (default: true)
+    #[arg(long)]
+    pub wal_enable_recovery: Option<bool>,
 }
 
 /// Create a new collection within an existing Sentinel store.
