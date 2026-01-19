@@ -63,7 +63,7 @@ export default {
       "@semantic-release/github",
       {
         assets: [
-          { path: "bindings/cxx/dist/*", label: "C/C++ Libraries" },
+          { path: "sentinel-cxx-dev-*.zip", label: "C/C++ Development Package" },
         ],
       },
     ],
@@ -71,9 +71,14 @@ export default {
       "@semantic-release/exec",
       {
         successCmd:
-          "gh workflow run release-python.yml --ref ${nextRelease.gitTag} && gh workflow run release-js.yml --ref ${nextRelease.gitTag} && gh workflow run release-wasm.yml --ref ${nextRelease.gitTag} && gh workflow run release-cxx.yml --ref ${nextRelease.gitTag}",
+          "gh workflow run release-python.yml --ref ${nextRelease.gitTag} && gh workflow run release-js.yml --ref ${nextRelease.gitTag} && gh workflow run release-wasm.yml --ref ${nextRelease.gitTag}",
       },
     ],
-    "@semantic-release/github",
+    [
+      "@semantic-release/exec",
+      {
+        successCmd: "gh workflow run release-cxx.yml --ref ${nextRelease.gitTag} -f version=${nextRelease.version}",
+      },
+    ],
   ],
 };
