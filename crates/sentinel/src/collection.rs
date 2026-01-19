@@ -86,21 +86,21 @@ use crate::{
 )]
 pub struct Collection {
     /// The filesystem path to the collection directory.
-    pub(crate) path:              PathBuf,
+    pub(crate) path:               PathBuf,
     /// The signing key for the collection.
-    pub(crate) signing_key:       Option<Arc<sentinel_crypto::SigningKey>>,
+    pub(crate) signing_key:        Option<Arc<sentinel_crypto::SigningKey>>,
     /// The Write-Ahead Log manager for durability.
-    pub(crate) wal_manager:       Option<Arc<WalManager>>,
+    pub(crate) wal_manager:        Option<Arc<WalManager>>,
     /// When the collection was created.
-    pub(crate) created_at:        chrono::DateTime<chrono::Utc>,
+    pub(crate) created_at:         chrono::DateTime<chrono::Utc>,
     /// When the collection was last updated.
-    pub(crate) updated_at:        std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
+    pub(crate) updated_at:         std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
     /// When the collection was last checkpointed.
     pub(crate) last_checkpoint_at: std::sync::RwLock<Option<chrono::DateTime<chrono::Utc>>>,
     /// Total number of documents in the collection.
-    pub(crate) total_documents:   std::sync::atomic::AtomicU64,
+    pub(crate) total_documents:    std::sync::atomic::AtomicU64,
     /// Total size of all documents in bytes.
-    pub(crate) total_size_bytes:  std::sync::atomic::AtomicU64,
+    pub(crate) total_size_bytes:   std::sync::atomic::AtomicU64,
 }
 
 #[allow(
@@ -112,14 +112,10 @@ impl Collection {
     pub fn name(&self) -> &str { self.path.file_name().unwrap().to_str().unwrap() }
 
     /// Returns the creation timestamp of the collection.
-    pub fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
-        self.created_at
-    }
+    pub fn created_at(&self) -> chrono::DateTime<chrono::Utc> { self.created_at }
 
     /// Returns the last update timestamp of the collection.
-    pub fn updated_at(&self) -> chrono::DateTime<chrono::Utc> {
-        *self.updated_at.read().unwrap()
-    }
+    pub fn updated_at(&self) -> chrono::DateTime<chrono::Utc> { *self.updated_at.read().unwrap() }
 
     /// Returns the last checkpoint timestamp of the collection, if any.
     pub fn last_checkpoint_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -128,12 +124,14 @@ impl Collection {
 
     /// Returns the total number of documents in the collection.
     pub fn total_documents(&self) -> u64 {
-        self.total_documents.load(std::sync::atomic::Ordering::Relaxed)
+        self.total_documents
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Returns the total size of all documents in the collection in bytes.
     pub fn total_size_bytes(&self) -> u64 {
-        self.total_size_bytes.load(std::sync::atomic::Ordering::Relaxed)
+        self.total_size_bytes
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Saves the current collection metadata to disk.
@@ -147,12 +145,13 @@ impl Collection {
     /// Returns `Ok(())` on success, or a `SentinelError` if the metadata cannot be saved.
     async fn save_metadata(&self) -> Result<()> {
         let metadata_path = self.path.join(COLLECTION_METADATA_FILE);
-        
+
         // Load existing metadata to preserve other fields
         let mut metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
             let content = tokio_fs::read_to_string(&metadata_path).await?;
             serde_json::from_str(&content)?
-        } else {
+        }
+        else {
             // Create new metadata if file doesn't exist
             CollectionMetadata::new(self.name().to_string())
         };
@@ -168,7 +167,7 @@ impl Collection {
         // Save back to disk
         let content = serde_json::to_string_pretty(&metadata)?;
         tokio_fs::write(&metadata_path, content).await?;
-        
+
         debug!("Collection metadata saved for {}", self.name());
         Ok(())
     }
@@ -215,14 +214,14 @@ impl Collection {
         Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
 
-        // Check if document already exists to properly update metadata
+        // Check if document already exists - insert should not overwrite (except for system collections)
         let document_exists = tokio_fs::try_exists(&file_path).await.unwrap_or(false);
-        let old_size = if document_exists {
-            // Get the old document size
-            tokio_fs::metadata(&file_path).await?.len()
-        } else {
-            0
-        };
+        if document_exists && !self.name().starts_with('.') {
+            return Err(SentinelError::DocumentAlreadyExists {
+                id:         id.to_owned(),
+                collection: self.name().to_owned(),
+            });
+        }
 
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
@@ -265,17 +264,12 @@ impl Collection {
         })?;
         debug!("Document {} inserted successfully", id);
 
-        // Update metadata
+        // Update metadata - new document only since overwrites are not allowed
         *self.updated_at.write().unwrap() = chrono::Utc::now();
-        if document_exists {
-            // Overwriting existing document: adjust size difference
-            self.total_size_bytes.fetch_sub(old_size, std::sync::atomic::Ordering::Relaxed);
-            self.total_size_bytes.fetch_add(json.len() as u64, std::sync::atomic::Ordering::Relaxed);
-        } else {
-            // New document: increment count and add size
-            self.total_documents.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            self.total_size_bytes.fetch_add(json.len() as u64, std::sync::atomic::Ordering::Relaxed);
-        }
+        self.total_documents
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_size_bytes
+            .fetch_add(json.len() as u64, std::sync::atomic::Ordering::Relaxed);
 
         // Save metadata to disk
         self.save_metadata().await?;
@@ -501,8 +495,10 @@ impl Collection {
 
                 // Update metadata
                 *self.updated_at.write().unwrap() = chrono::Utc::now();
-                self.total_documents.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                self.total_size_bytes.fetch_sub(file_size, std::sync::atomic::Ordering::Relaxed);
+                self.total_documents
+                    .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                self.total_size_bytes
+                    .fetch_sub(file_size, std::sync::atomic::Ordering::Relaxed);
 
                 // Save metadata to disk
                 self.save_metadata().await?;
@@ -600,7 +596,9 @@ impl Collection {
     /// ```
     pub async fn count(&self) -> Result<usize> {
         trace!("Counting documents in collection: {}", self.name());
-        Ok(self.total_documents.load(std::sync::atomic::Ordering::Relaxed) as usize)
+        Ok(self
+            .total_documents
+            .load(std::sync::atomic::Ordering::Relaxed) as usize)
     }
 
     /// Performs bulk insert operations on multiple documents.
@@ -1589,7 +1587,8 @@ impl Collection {
 
         // Get old file size before updating
         let file_path = self.path.join(format!("{}.json", id));
-        let old_size = tokio_fs::metadata(&file_path).await
+        let old_size = tokio_fs::metadata(&file_path)
+            .await
             .map(|m| m.len())
             .unwrap_or(0);
 
@@ -1611,8 +1610,10 @@ impl Collection {
 
         // Update metadata
         *self.updated_at.write().unwrap() = chrono::Utc::now();
-        self.total_size_bytes.fetch_sub(old_size, std::sync::atomic::Ordering::Relaxed);
-        self.total_size_bytes.fetch_add(new_size, std::sync::atomic::Ordering::Relaxed);
+        self.total_size_bytes
+            .fetch_sub(old_size, std::sync::atomic::Ordering::Relaxed);
+        self.total_size_bytes
+            .fetch_add(new_size, std::sync::atomic::Ordering::Relaxed);
 
         // Save metadata to disk
         self.save_metadata().await?;
@@ -1895,27 +1896,61 @@ impl Collection {
 #[async_trait::async_trait]
 impl WalDocumentOps for Collection {
     async fn get_document(&self, id: &str) -> sentinel_wal::Result<Option<serde_json::Value>> {
-        self.get(id).await.map(|opt| opt.map(|d| d.data().clone())).map_err(|e| sentinel_wal::WalError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))))
+        self.get(id)
+            .await
+            .map(|opt| opt.map(|d| d.data().clone()))
+            .map_err(|e| {
+                sentinel_wal::WalError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("{}", e),
+                ))
+            })
     }
 
-    async fn apply_operation(&self, entry_type: &sentinel_wal::EntryType, id: &str, data: Option<serde_json::Value>) -> sentinel_wal::Result<()> {
+    async fn apply_operation(
+        &self,
+        entry_type: &sentinel_wal::EntryType,
+        id: &str,
+        data: Option<serde_json::Value>,
+    ) -> sentinel_wal::Result<()> {
         match *entry_type {
             sentinel_wal::EntryType::Insert => {
                 if let Some(data) = data {
-                    self.insert(id, data).await.map_err(|e| sentinel_wal::WalError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))))
-                } else {
-                    Err(sentinel_wal::WalError::InvalidEntry("Insert operation missing data".to_string()))
+                    self.insert(id, data).await.map_err(|e| {
+                        sentinel_wal::WalError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("{}", e),
+                        ))
+                    })
+                }
+                else {
+                    Err(sentinel_wal::WalError::InvalidEntry(
+                        "Insert operation missing data".to_string(),
+                    ))
                 }
             },
             sentinel_wal::EntryType::Update => {
                 if let Some(data) = data {
-                    self.update(id, data).await.map_err(|e| sentinel_wal::WalError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))))
-                } else {
-                    Err(sentinel_wal::WalError::InvalidEntry("Update operation missing data".to_string()))
+                    self.update(id, data).await.map_err(|e| {
+                        sentinel_wal::WalError::Io(std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("{}", e),
+                        ))
+                    })
+                }
+                else {
+                    Err(sentinel_wal::WalError::InvalidEntry(
+                        "Update operation missing data".to_string(),
+                    ))
                 }
             },
             sentinel_wal::EntryType::Delete => {
-                self.delete(id).await.map_err(|e| sentinel_wal::WalError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{}", e))))
+                self.delete(id).await.map_err(|e| {
+                    sentinel_wal::WalError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("{}", e),
+                    ))
+                })
             },
             _ => Ok(()), // Other operations not handled here
         }
@@ -4022,79 +4057,114 @@ mod tests {
 
 #[cfg(test)]
 mod persistence_tests {
-    use super::*;
-    use crate::Store;
     use tempfile::tempdir;
     use tokio::fs;
+
+    use super::*;
+    use crate::Store;
 
     #[tokio::test]
     async fn test_metadata_persistence_across_restarts() {
         let temp_dir = tempdir().unwrap();
         let store_path = temp_dir.path().join("test_store");
-        
+
         // First "application session" - create store and collection, add documents
         {
             let store = Store::new(store_path.clone(), None).await.unwrap();
             let collection = store.collection("test_collection").await.unwrap();
-            
+
             // Insert some documents
-            collection.insert("doc1", serde_json::json!({"name": "Alice", "age": 30})).await.unwrap();
-            collection.insert("doc2", serde_json::json!({"name": "Bob", "age": 25})).await.unwrap();
-            collection.insert("doc3", serde_json::json!({"name": "Charlie", "age": 35})).await.unwrap();
-            
+            collection
+                .insert("doc1", serde_json::json!({"name": "Alice", "age": 30}))
+                .await
+                .unwrap();
+            collection
+                .insert("doc2", serde_json::json!({"name": "Bob", "age": 25}))
+                .await
+                .unwrap();
+            collection
+                .insert("doc3", serde_json::json!({"name": "Charlie", "age": 35}))
+                .await
+                .unwrap();
+
             // Update one document
-            collection.update("doc2", serde_json::json!({"name": "Bob", "age": 26})).await.unwrap();
-            
+            collection
+                .update("doc2", serde_json::json!({"name": "Bob", "age": 26}))
+                .await
+                .unwrap();
+
             // Delete one document
             collection.delete("doc3").await.unwrap();
-            
+
             // Check metadata is correct in memory
-            let metadata_path = store_path.join("data").join("test_collection").join(".metadata.json");
+            let metadata_path = store_path
+                .join("data")
+                .join("test_collection")
+                .join(".metadata.json");
             let metadata_content = fs::read_to_string(&metadata_path).await.unwrap();
             let metadata: CollectionMetadata = serde_json::from_str(&metadata_content).unwrap();
-            
+
             assert_eq!(metadata.document_count, 2); // 3 inserted, 1 deleted
             assert!(metadata.total_size_bytes > 0);
-            println!("First session - document_count: {}, total_size_bytes: {}", metadata.document_count, metadata.total_size_bytes);
+            println!(
+                "First session - document_count: {}, total_size_bytes: {}",
+                metadata.document_count, metadata.total_size_bytes
+            );
         }
-        
+
         // Second "application session" - reload store and verify metadata persisted
         {
             let store = Store::new(store_path.clone(), None).await.unwrap();
             let collection = store.collection("test_collection").await.unwrap();
-            
+
             // Check that metadata was loaded correctly from disk
-            let metadata_path = store_path.join("data").join("test_collection").join(".metadata.json");
+            let metadata_path = store_path
+                .join("data")
+                .join("test_collection")
+                .join(".metadata.json");
             let metadata_content = fs::read_to_string(&metadata_path).await.unwrap();
             let metadata: CollectionMetadata = serde_json::from_str(&metadata_content).unwrap();
-            
+
             assert_eq!(metadata.document_count, 2);
             assert!(metadata.total_size_bytes > 0);
-            println!("Second session - document_count: {}, total_size_bytes: {}", metadata.document_count, metadata.total_size_bytes);
-            
+            println!(
+                "Second session - document_count: {}, total_size_bytes: {}",
+                metadata.document_count, metadata.total_size_bytes
+            );
+
             // Verify documents exist
             assert!(collection.get("doc1").await.unwrap().is_some());
             assert!(collection.get("doc2").await.unwrap().is_some());
             assert!(collection.get("doc3").await.unwrap().is_none()); // Should be deleted
-            
+
             // Add one more document
-            collection.insert("doc4", serde_json::json!({"name": "Diana", "age": 28})).await.unwrap();
+            collection
+                .insert("doc4", serde_json::json!({"name": "Diana", "age": 28}))
+                .await
+                .unwrap();
         }
-        
+
         // Third "application session" - final verification
         {
             let store = Store::new(store_path, None).await.unwrap();
             let collection = store.collection("test_collection").await.unwrap();
-            
+
             // Check final metadata
-            let metadata_path = store.root_path().join("data").join("test_collection").join(".metadata.json");
+            let metadata_path = store
+                .root_path()
+                .join("data")
+                .join("test_collection")
+                .join(".metadata.json");
             let metadata_content = fs::read_to_string(&metadata_path).await.unwrap();
             let metadata: CollectionMetadata = serde_json::from_str(&metadata_content).unwrap();
-            
+
             assert_eq!(metadata.document_count, 3); // 2 from before + 1 new
             assert!(metadata.total_size_bytes > 0);
-            println!("Third session - document_count: {}, total_size_bytes: {}", metadata.document_count, metadata.total_size_bytes);
-            
+            println!(
+                "Third session - document_count: {}, total_size_bytes: {}",
+                metadata.document_count, metadata.total_size_bytes
+            );
+
             // Verify all documents
             assert!(collection.get("doc1").await.unwrap().is_some());
             assert!(collection.get("doc2").await.unwrap().is_some());
