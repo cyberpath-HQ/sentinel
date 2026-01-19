@@ -25,6 +25,7 @@
 //! - Crash recovery via log replay
 
 pub mod compression;
+pub mod config;
 pub mod entry;
 pub mod error;
 pub mod manager;
@@ -33,6 +34,7 @@ pub mod manager;
 pub use error::WalError;
 pub use entry::{EntryType, FixedBytes256, FixedBytes32, LogEntry};
 pub use manager::{WalConfig, WalFormat, WalManager};
+pub use config::{CollectionWalConfig, StoreWalConfig, WalFailureMode};
 pub use compression::*;
 pub use postcard;
 pub use cuid2;
