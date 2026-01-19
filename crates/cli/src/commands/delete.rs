@@ -1,6 +1,5 @@
 use clap::Args;
-use sentinel_dbms::CollectionWalConfig;
-use sentinel_wal::{manager::WalFormat, CompressionAlgorithm, WalFailureMode};
+use sentinel_dbms::{CollectionWalConfig, CompressionAlgorithm, WalFailureMode, WalFormat};
 use tracing::{error, info};
 
 /// Arguments for the delete command.
@@ -157,15 +156,10 @@ pub async fn run(args: DeleteArgs) -> sentinel_dbms::Result<()> {
         id, collection, store_path
     );
     let store =
-        sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_wal::StoreWalConfig::default()).await?;
-    let coll = if let Some(config) = wal_config {
-        store
-            .collection_with_config(&collection, Some(config))
-            .await?
-    }
-    else {
-        store.collection(&collection).await?
-    };
+        sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default()).await?;
+    let coll = store
+        .collection_with_config(&collection, wal_config)
+        .await?;
     match coll.delete(&id).await {
         Ok(_) => {
             info!("Document '{}' deleted successfully", id);
@@ -222,9 +216,17 @@ mod tests {
 
         // Now delete
         let args = DeleteArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         "doc1".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  "doc1".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -260,9 +262,17 @@ mod tests {
             .unwrap();
 
         let args = DeleteArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         "non_existent".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  "non_existent".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -290,9 +300,17 @@ mod tests {
         crate::commands::init::run(init_args).await.unwrap();
 
         let args = DeleteArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "non_existent".to_string(),
-            id:         "doc1".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "non_existent".to_string(),
+            id:                  "doc1".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -324,9 +342,17 @@ mod tests {
             .unwrap();
 
         let args = DeleteArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         "".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  "".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
@@ -379,9 +405,17 @@ mod tests {
         std::fs::set_permissions(&collection_path, perms).unwrap();
 
         let args = DeleteArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         "doc1".to_string(),
+            store_path:          store_path.to_string_lossy().to_string(),
+            collection:          "test_collection".to_string(),
+            id:                  "doc1".to_string(),
+            wal_max_file_size:   None,
+            wal_format:          None,
+            wal_compression:     None,
+            wal_max_records:     None,
+            wal_write_mode:      None,
+            wal_verify_mode:     None,
+            wal_auto_verify:     None,
+            wal_enable_recovery: None,
         };
 
         let result = run(args).await;
