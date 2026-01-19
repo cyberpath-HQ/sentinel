@@ -9,7 +9,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const nextRelease = process.env.NEXT_RELEASE_VERSION || process.argv[2];
 
-const isDryRun = process.argv.includes('--dry-run') || process.argv.includes('--dryRun');
+const isDryRun = process.argv.includes('--dry-run') || process.argv.includes('--dryRun') || process.env.DRY_RUN;
 
 if (!nextRelease) {
   console.error('Error: NEXT_RELEASE_VERSION not set');
