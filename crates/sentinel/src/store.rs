@@ -396,8 +396,8 @@ impl Store {
             created_at: now,
             updated_at: std::sync::RwLock::new(now),
             last_checkpoint_at: std::sync::RwLock::new(None),
-            total_documents: std::sync::atomic::AtomicU64::new(metadata.document_count),
-            total_size_bytes: std::sync::atomic::AtomicU64::new(metadata.total_size_bytes),
+            total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.document_count)),
+            total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.total_size_bytes)),
             event_sender: Some(self.event_sender()),
             event_task: None,
         };
@@ -441,9 +441,11 @@ impl Store {
         let created_at = self.created_at;
 
         let task = tokio::spawn(async move {
-            // Debouncing: save metadata every 5 seconds instead of after every event
-            let mut save_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+            // Debouncing: save metadata every 500 milliseconds instead of after every event
+            let mut save_interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
             save_interval.tick().await; // First tick completes immediately
+
+            let mut changed = false;
 
             loop {
                 tokio::select! {
@@ -453,6 +455,7 @@ impl Store {
                             Some(StoreEvent::CollectionCreated { name }) => {
                                 debug!("Processing collection created event: {}", name);
                                 collection_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                changed = true;
                             }
                             Some(StoreEvent::CollectionDeleted { name, document_count, total_size_bytes: event_size }) => {
                                 debug!("Processing collection deleted event: {} (docs: {}, size: {})",
@@ -460,22 +463,26 @@ impl Store {
                                 collection_count.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                                 total_documents.fetch_sub(document_count, std::sync::atomic::Ordering::Relaxed);
                                 total_size_bytes.fetch_sub(event_size, std::sync::atomic::Ordering::Relaxed);
+                                changed = true;
                             }
                             Some(StoreEvent::DocumentInserted { collection, size_bytes }) => {
                                 debug!("Processing document inserted event: {} (size: {})", collection, size_bytes);
                                 total_documents.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                 total_size_bytes.fetch_add(size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                changed = true;
                             }
                             Some(StoreEvent::DocumentUpdated { collection, old_size_bytes, new_size_bytes }) => {
                                 debug!("Processing document updated event: {} (old: {}, new: {})",
                                       collection, old_size_bytes, new_size_bytes);
                                 total_size_bytes.fetch_sub(old_size_bytes, std::sync::atomic::Ordering::Relaxed);
                                 total_size_bytes.fetch_add(new_size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                changed = true;
                             }
                             Some(StoreEvent::DocumentDeleted { collection, size_bytes }) => {
                                 debug!("Processing document deleted event: {} (size: {})", collection, size_bytes);
                                 total_documents.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                                 total_size_bytes.fetch_sub(size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                changed = true;
                             }
                             None => {
                                 // Channel closed, exit
@@ -486,29 +493,32 @@ impl Store {
 
                     // Periodic metadata save
                     _ = save_interval.tick() => {
-                        let metadata = StoreMetadata {
-                            version: META_SENTINEL_VERSION,
-                            created_at: created_at.timestamp() as u64,
-                            updated_at: chrono::Utc::now().timestamp() as u64,
-                            collection_count: collection_count.load(std::sync::atomic::Ordering::Relaxed),
-                            total_documents: total_documents.load(std::sync::atomic::Ordering::Relaxed),
-                            total_size_bytes: total_size_bytes.load(std::sync::atomic::Ordering::Relaxed),
-                            wal_config: wal_config.clone(),
-                        };
+                        if changed {
+                            let metadata = StoreMetadata {
+                                version: META_SENTINEL_VERSION,
+                                created_at: created_at.timestamp() as u64,
+                                updated_at: chrono::Utc::now().timestamp() as u64,
+                                collection_count: collection_count.load(std::sync::atomic::Ordering::Relaxed),
+                                total_documents: total_documents.load(std::sync::atomic::Ordering::Relaxed),
+                                total_size_bytes: total_size_bytes.load(std::sync::atomic::Ordering::Relaxed),
+                                wal_config: wal_config.clone(),
+                            };
 
-                        let content = match serde_json::to_string_pretty(&metadata) {
-                            Ok(content) => content,
-                            Err(e) => {
-                                error!("Failed to serialize store metadata: {}", e);
-                                continue;
+                            let content = match serde_json::to_string_pretty(&metadata) {
+                                Ok(content) => content,
+                                Err(e) => {
+                                    error!("Failed to serialize store metadata: {}", e);
+                                    continue;
+                                }
+                            };
+
+                            let metadata_path = root_path.join(STORE_METADATA_FILE);
+                            if let Err(e) = tokio::fs::write(&metadata_path, content).await {
+                                error!("Failed to save store metadata in background task: {}", e);
+                            } else {
+                                trace!("Store metadata saved successfully");
+                                changed = false;
                             }
-                        };
-
-                        let metadata_path = root_path.join(STORE_METADATA_FILE);
-                        if let Err(e) = tokio::fs::write(&metadata_path, content).await {
-                            error!("Failed to save store metadata in background task: {}", e);
-                        } else {
-                            trace!("Store metadata saved successfully");
                         }
                     }
                 }
