@@ -25,15 +25,15 @@ fn main() {
             }
         },
         Err(e) => {
-            eprintln!("Failed to generate C bindings: {}", e);
+            println!("ERROR: Failed to generate C bindings: {}", e);
             std::process::exit(1);
         },
     }
 }
 
+/// Returns the target directory path for the build.
 fn target_dir() -> PathBuf {
-    let mut target = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    target.push("target");
-    target.push(env::var("PROFILE").unwrap());
-    target
+    PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+        .join("target")
+        .join(env::var("PROFILE").unwrap())
 }
