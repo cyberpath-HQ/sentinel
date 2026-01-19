@@ -22,6 +22,29 @@ pub enum WalFailureMode {
     Strict,
 }
 
+impl std::str::FromStr for WalFailureMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "disabled" => Ok(WalFailureMode::Disabled),
+            "warn" => Ok(WalFailureMode::Warn),
+            "strict" => Ok(WalFailureMode::Strict),
+            _ => Err(format!("Invalid WAL failure mode: {}", s)),
+        }
+    }
+}
+
+impl std::fmt::Display for WalFailureMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WalFailureMode::Disabled => write!(f, "disabled"),
+            WalFailureMode::Warn => write!(f, "warn"),
+            WalFailureMode::Strict => write!(f, "strict"),
+        }
+    }
+}
+
 /// Configuration for WAL operations at the collection level.
 ///
 /// This struct defines how WAL should behave for a specific collection,
