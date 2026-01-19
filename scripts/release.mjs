@@ -41,19 +41,32 @@ async function main() {
   run('cargo publish --manifest-path crates/sentinel/Cargo.toml', { cwd: workspaceRoot });
   run('cargo publish --manifest-path crates/cli/Cargo.toml', { cwd: workspaceRoot });
 
+  section('Building C/C++ Bindings');
+
+  const cxxBindings = join(workspaceRoot, 'bindings', 'cxx');
+  run('python bindings/cxx/cbuild.py', { cwd: workspaceRoot });
+
+  section('Creating C/C++ Development Package');
+
+  const distDir = join(workspaceRoot, 'dist');
+  mkdirSync(distDir, { recursive: true });
+
+  const zipName = `sentinel-cxx-dev-${nextRelease}.zip`;
+  const zipPath = join(distDir, zipName);
+
+  run(`rm -f ${zipPath}`, { cwd: cxxBindings });
+  run(`zip -r ${zipPath} sentinel-cxx-*`, { cwd: cxxBindings });
+
+  if (existsSync(zipPath)) {
+    console.log(`Created: ${zipPath}`);
+  }
+
   section('Building Python Wheel');
 
   const wheelsDir = join(workspaceRoot, 'target', 'wheels');
-  if (!existsSync(wheelsDir)) {
-    mkdirSync(wheelsDir, { recursive: true });
-  }
+  mkdirSync(wheelsDir, { recursive: true });
 
   run(`maturin build --manifest-path ${join(workspaceRoot, 'crates', 'sentinel-python', 'Cargo.toml')} --release --out ${wheelsDir}`);
-
-  const wheelFile = execSync(`ls ${wheelsDir}/*.whl 2>/dev/null | head -1`).toString().trim();
-  if (wheelFile) {
-    console.log(`Built wheel: ${wheelFile}`);
-  }
 
   section('Publishing Python to PyPI');
 
@@ -90,34 +103,14 @@ async function main() {
     console.log('⚠️  NPM_TOKEN not set, skipping npm upload');
   }
 
-  section('Generating C/C++ Development Package');
-
-  const cxxBindings = join(workspaceRoot, 'bindings', 'cxx');
-  run('cargo run --bin sentinel-cxx-generator --release', { cwd: cxxBindings });
-
-  const zipName = `sentinel-cxx-dev-${nextRelease}.zip`;
-  run(`zip -r ${zipName} sentinel-cxx-*`, { cwd: cxxBindings });
-
-  const zipPath = join(cxxBindings, zipName);
-  if (existsSync(zipPath)) {
-    console.log(`Created: ${zipPath}`);
-
-    const distDir = join(workspaceRoot, 'dist');
-    if (!existsSync(distDir)) {
-      mkdirSync(distDir, { recursive: true });
-    }
-    copyFileSync(zipPath, join(distDir, zipName));
-    console.log(`Copied to: ${join(distDir, zipName)}`);
-  }
-
   section('Release Complete!');
 
   console.log('Published:');
   console.log('  ✓ Rust crates to crates.io');
+  console.log('  ✓ C/C++ development package ready');
   console.log('  ✓ Python wheel to PyPI');
   console.log('  ✓ Node.js native to npm');
   console.log('  ✓ WASM package to npm');
-  console.log('  ✓ C/C++ development package ready');
 }
 
 main().catch(error => {
