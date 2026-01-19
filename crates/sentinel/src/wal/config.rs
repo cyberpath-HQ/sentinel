@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Operational modes for WAL operations.
+/// Failure handling modes for WAL operations.
 ///
 /// These modes control how WAL-related failures are handled:
 /// - `Disabled`: WAL operations are skipped entirely
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// - `Strict`: WAL failures cause operations to fail immediately
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum WalMode {
+pub enum WalFailureMode {
     /// WAL operations are completely disabled
     Disabled,
     /// WAL failures are logged as warnings but operations continue
@@ -29,25 +29,22 @@ pub enum WalMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionWalConfig {
     /// Operational mode for WAL write operations (insert/update/delete)
-    pub write_mode:         WalMode,
+    pub write_mode:        WalFailureMode,
     /// Operational mode for WAL verification operations
-    pub verification_mode:  WalMode,
+    pub verification_mode: WalFailureMode,
     /// Whether to automatically verify documents against WAL on read
-    pub auto_verify:        bool,
+    pub auto_verify:       bool,
     /// Whether to enable WAL-based recovery features
-    pub enable_recovery:    bool,
-    /// Maximum number of WAL entries to keep in memory for verification
-    pub max_cached_entries: usize,
+    pub enable_recovery:   bool,
 }
 
 impl Default for CollectionWalConfig {
     fn default() -> Self {
         Self {
-            write_mode:         WalMode::Strict,
-            verification_mode:  WalMode::Warn,
-            auto_verify:        false,
-            enable_recovery:    true,
-            max_cached_entries: 1000,
+            write_mode:        WalFailureMode::Strict,
+            verification_mode: WalFailureMode::Warn,
+            auto_verify:       false,
+            enable_recovery:   true,
         }
     }
 }
@@ -62,8 +59,8 @@ pub struct StoreWalConfig {
     pub default_collection_config: CollectionWalConfig,
     /// Collection-specific WAL configurations (overrides defaults)
     pub collection_configs:        HashMap<String, CollectionWalConfig>,
-    /// Operational mode for store-level WAL operations (checkpoints, etc.)
-    pub store_mode:                WalMode,
+    /// Failure handling mode for store-level WAL operations (checkpoints, etc.)
+    pub store_failure_mode:        WalFailureMode,
     /// Whether to enable automatic store-wide checkpoints
     pub auto_checkpoint:           bool,
     /// Interval for automatic checkpoints (in seconds, 0 = disabled)
@@ -77,7 +74,7 @@ impl Default for StoreWalConfig {
         Self {
             default_collection_config: CollectionWalConfig::default(),
             collection_configs:        HashMap::new(),
-            store_mode:                WalMode::Strict,
+            store_failure_mode:        WalFailureMode::Strict,
             auto_checkpoint:           true,
             checkpoint_interval_secs:  300,               // 5 minutes
             max_wal_size_bytes:        100 * 1024 * 1024, // 100MB
