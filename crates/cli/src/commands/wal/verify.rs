@@ -11,10 +11,11 @@ pub struct VerifyArgs;
 pub async fn run(store_path: String, collection: Option<String>, _args: VerifyArgs) -> sentinel_dbms::Result<()> {
     use sentinel_dbms::wal::ops::{CollectionWalOps, StoreWalOps};
 
-    let store = sentinel_dbms::Store::new(&store_path, None).await?;
+    let store =
+        sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default()).await?;
 
     if let Some(collection_name) = collection {
-        let collection = store.collection(&collection_name).await?;
+        let collection = store.collection_with_config(&collection_name, None).await?;
         info!(
             "Verifying WAL integrity for collection '{}'...",
             collection_name
