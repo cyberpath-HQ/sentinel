@@ -11,8 +11,8 @@ Repository: https://github.com/cyberpath-HQ/sentinel
 Documentation: https://sentinel.cyberpath-hq.com
 """
 
-from sentinel_python import Store, Collection, Document, QueryBuilder, QueryResult, VerificationOptions
-from sentinel_python import hash_data_py, sign_hash_py, verify_signature_py
+from sentinel.sentinel import Store, Collection, Document, QueryBuilder, QueryResult, VerificationOptions
+from sentinel.sentinel import hash_data_py, sign_hash_py, verify_signature_py
 
 __version__ = "2.0.1"
 __author__ = "Cyberpath and Emanuele (Ebalo) Balsamo"

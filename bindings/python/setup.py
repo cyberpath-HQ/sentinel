@@ -3,6 +3,23 @@
 from setuptools import setup, Extension
 from setuptools_rust import Binding, RustExtension
 import os
+import re
+
+def get_version_from_cargo():
+    """Read version from workspace Cargo.toml."""
+    workspace_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    cargo_path = os.path.join(workspace_root, "Cargo.toml")
+    
+    if os.path.exists(cargo_path):
+        with open(cargo_path, "r") as f:
+            content = f.read()
+            # Look for version = "X.Y.Z" in [workspace.package] section
+            match = re.search(r'^version\s*=\s*"(\d+\.\d+\.\d+)"', content, re.MULTILINE)
+            if match:
+                return match.group(1)
+    
+    # Fallback to a default version if not found
+    return "2.0.1"
 
 # Get the absolute path to the sentinel-python crate
 crate_path = os.path.join(os.path.dirname(__file__), "..", "crates", "sentinel-python")
@@ -11,9 +28,12 @@ crate_path = os.path.join(os.path.dirname(__file__), "..", "crates", "sentinel-p
 readme_path = os.path.join(os.path.dirname(__file__), "README.md")
 long_description = open(readme_path).read() if os.path.exists(readme_path) else ""
 
+# Get version from Cargo.toml to ensure sync with Rust library
+version = get_version_from_cargo()
+
 setup(
     name="sentinel-dbms",
-    version="2.0.1",
+    version=version,
     description="Python bindings for Cyberpath Sentinel DBMS",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -50,7 +70,7 @@ setup(
     packages=["sentinel"],
     rust_extensions=[
         RustExtension(
-            "sentinel.sentinel_python",
+            "sentinel.sentinel",
             path=crate_path,
             binding=Binding.PyO3,
             debug=False,
