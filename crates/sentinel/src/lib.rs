@@ -8,6 +8,8 @@ mod document;
 mod error;
 /// Filtering utilities module.
 mod filtering;
+/// Metadata management module.
+mod metadata;
 /// Projection utilities module.
 mod projection;
 /// Query building module.
@@ -34,7 +36,8 @@ pub use query::{Aggregation, Filter, Operator, Query, QueryBuilder, QueryResult,
 pub use sentinel_crypto::crypto_config::*;
 pub use store::Store;
 pub use verification::{VerificationMode, VerificationOptions};
-pub use wal::{CollectionMetadata, CollectionWalConfig, StoreMetadata, StoreWalConfig, WalMode};
+pub use metadata::{CollectionMetadata, MetadataVersion, StoreMetadata};
+pub use wal::{CollectionWalConfig, StoreWalConfig, WalFailureMode};
 
 /// The current version of the Sentinel metadata format.
 pub const META_SENTINEL_VERSION: u32 = 1;
