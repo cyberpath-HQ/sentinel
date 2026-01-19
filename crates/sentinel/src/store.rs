@@ -339,8 +339,8 @@ impl Store {
             created_at:         now,
             updated_at:         std::sync::RwLock::new(now),
             last_checkpoint_at: std::sync::RwLock::new(None),
-            total_documents:    std::sync::atomic::AtomicU64::new(0),
-            total_size_bytes:   std::sync::atomic::AtomicU64::new(0),
+            total_documents:    std::sync::atomic::AtomicU64::new(metadata.document_count),
+            total_size_bytes:   std::sync::atomic::AtomicU64::new(metadata.total_size_bytes),
         })
     }
 
