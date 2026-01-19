@@ -179,40 +179,18 @@ fn test_cxx_bindings_tests() {
 fn run_example_test(build_dir: &PathBuf, exe_name: &str, description: &str) {
     let exe_path = build_dir.join(exe_name);
 
-    // If executable doesn't exist, try to build it
+    // Wait for the executable to exist (with timeout)
+    let mut attempts = 0;
+    while !exe_path.exists() && attempts < 30 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        attempts += 1;
+    }
+
     if !exe_path.exists() {
-        println!(
-            "{} executable not found, attempting to build...",
-            description
+        panic!(
+            "{} executable not found at {:?} after waiting - build test may have failed",
+            description, exe_path
         );
-
-        let source_dir = build_dir.parent().unwrap();
-
-        // Run cmake configure
-        let cmake_result = Command::new("cmake")
-            .args(&["..", "-DCMAKE_BUILD_TYPE=Debug"])
-            .current_dir(build_dir)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .expect("Failed to run cmake");
-
-        assert!(
-            cmake_result.success(),
-            "CMake configuration failed for {}",
-            description
-        );
-
-        // Run make
-        let make_result = Command::new("make")
-            .args(&["-j", &num_cpus::get().to_string()])
-            .current_dir(build_dir)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .expect("Failed to run make");
-
-        assert!(make_result.success(), "Make failed for {}", description);
     }
 
     // Now check again
