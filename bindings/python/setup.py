@@ -7,20 +7,35 @@ import os
 # Get the absolute path to the sentinel-python crate
 crate_path = os.path.join(os.path.dirname(__file__), "..", "crates", "sentinel-python")
 
+# Read README for long description
+readme_path = os.path.join(os.path.dirname(__file__), "README.md")
+long_description = open(readme_path).read() if os.path.exists(readme_path) else ""
+
 setup(
     name="sentinel-dbms",
     version="2.0.1",
     description="Python bindings for Cyberpath Sentinel DBMS",
-    long_description=open("README.md").read() if os.path.exists("README.md") else "",
+    long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Emanuele (Ebalo) Balsamo",
-    author_email="emanuele.balsamo@cyberpath-hq.com",
+    author="Cyberpath",
+    author_email="support@cyberpath-hq.com",
+    maintainer="Emanuele (Ebalo) Balsamo",
+    maintainer_email="emanuele.balsamo@cyberpath-hq.com",
     url="https://github.com/cyberpath-HQ/sentinel",
+    project_urls={
+        "Bug Reports": "https://github.com/cyberpath-HQ/sentinel/issues",
+        "Source": "https://github.com/cyberpath-HQ/sentinel",
+        "Documentation": "https://sentinel.cyberpath-hq.com",
+        "Changelog": "https://github.com/cyberpath-HQ/sentinel/blob/main/CHANGELOG.md",
+    },
     license="Apache-2.0",
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: Apache Software License",
+        "Operating System :: POSIX :: Linux",
+        "Operating System :: MacOS :: MacOS X",
+        "Operating System :: Microsoft :: Windows",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
@@ -31,7 +46,7 @@ setup(
         "Topic :: Database",
         "Topic :: Software Development :: Libraries",
     ],
-    keywords="database dbms document json filesystem",
+    keywords="database dbms document json filesystem rust async",
     packages=["sentinel"],
     rust_extensions=[
         RustExtension(
@@ -42,18 +57,22 @@ setup(
         )
     ],
     include_package_data=True,
+    package_data={
+        "sentinel": ["py.typed", "*.pyi"],
+    },
     zip_safe=False,
     python_requires=">=3.8",
     install_requires=[
         "setuptools-rust>=1.5.0",
+        "pyo3>=0.20.0",
     ],
     extras_require={
         "dev": [
             "pytest>=7.0.0",
             "pytest-asyncio>=0.21.0",
-            "black",
-            "isort",
-            "mypy",
+            "build>=1.0.0",
+            "twine>=4.0.0",
+            "wheel>=0.42.0",
         ],
     },
 )
