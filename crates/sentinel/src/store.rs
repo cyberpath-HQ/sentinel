@@ -269,6 +269,17 @@ impl Store {
         })
     }
 
+    /// Returns the root path of the store.
+    ///
+    /// This method provides access to the root directory path where the store
+    /// is located. This is useful for operations that need to access store-level
+    /// metadata files.
+    ///
+    /// # Returns
+    ///
+    /// Returns a reference to the `PathBuf` containing the store's root path.
+    pub fn root_path(&self) -> &PathBuf { &self.root_path }
+
     /// Deletes a collection and all its documents.
     ///
     /// This method removes the entire collection directory and all documents within it.
@@ -388,9 +399,6 @@ impl Store {
         debug!("Found {} collections", collections.len());
         Ok(collections)
     }
-
-    /// Returns the root path of the store.
-    pub fn root_path(&self) -> &Path { &self.root_path }
 
     pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) { self.signing_key = Some(Arc::new(key)); }
 }
