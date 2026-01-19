@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use chrono::{DateTime, Utc};
 use tokio::fs as tokio_fs;
 use tracing::{debug, error, trace, warn};
 use sentinel_wal::WalManager;
@@ -59,9 +60,15 @@ use crate::{
 #[derive(Debug)]
 pub struct Store {
     /// The root path of the store.
-    root_path:   PathBuf,
+    root_path:        PathBuf,
     /// The signing key for the store.
-    signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
+    signing_key:      Option<Arc<sentinel_crypto::SigningKey>>,
+    /// When the store was created.
+    created_at:       chrono::DateTime<chrono::Utc>,
+    /// When the store was last accessed.
+    last_accessed_at: std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
+    /// Total operations performed across all collections.
+    total_operations: std::sync::atomic::AtomicU64,
 }
 
 impl Store {
@@ -141,9 +148,13 @@ impl Store {
             metadata
         };
 
+        let now = chrono::Utc::now();
         let mut store = Self {
             root_path,
-            signing_key: None,
+            signing_key:      None,
+            created_at:       now,
+            last_accessed_at: std::sync::RwLock::new(now),
+            total_operations: std::sync::atomic::AtomicU64::new(0),
         };
         if let Some(passphrase) = passphrase {
             debug!("Passphrase provided, handling signing key");
@@ -211,6 +222,18 @@ impl Store {
         }
         trace!("Store created successfully");
         Ok(store)
+    }
+
+    /// Returns the creation timestamp of the store.
+    pub fn created_at(&self) -> DateTime<Utc> { self.created_at }
+
+    /// Returns the last access timestamp of the store.
+    pub fn last_accessed_at(&self) -> DateTime<Utc> { *self.last_accessed_at.read().unwrap() }
+
+    /// Returns the total number of operations performed across all collections.
+    pub fn total_operations(&self) -> u64 {
+        self.total_operations
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Retrieves or creates a collection with the specified name.
@@ -305,10 +328,22 @@ impl Store {
         ));
 
         trace!("Collection '{}' accessed successfully", name);
+        let now = chrono::Utc::now();
+
+        // Update store metadata
+        *self.last_accessed_at.write().unwrap() = now;
+        self.total_operations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         Ok(Collection {
             path,
-            signing_key: self.signing_key.clone(),
+            signing_key:        self.signing_key.clone(),
             wal_manager,
+            created_at:         now,
+            updated_at:         std::sync::RwLock::new(now),
+            last_checkpoint_at: std::sync::RwLock::new(None),
+            total_documents:    std::sync::atomic::AtomicU64::new(0),
+            total_operations:   std::sync::atomic::AtomicU64::new(0),
         })
     }
 
@@ -373,11 +408,15 @@ impl Store {
         })?;
 
         debug!("Collection '{}' deleted successfully", name);
+
+        // Update store metadata
+        *self.last_accessed_at.write().unwrap() = chrono::Utc::now();
+        self.total_operations
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         Ok(())
     }
 
-    /// Lists all collections in the store.
-    ///
     /// This method returns a list of all collection names that exist in the store.
     /// The names are returned in no particular order.
     ///
