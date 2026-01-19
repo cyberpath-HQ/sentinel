@@ -20,6 +20,8 @@ mod streaming;
 mod validation;
 /// Verification utilities module.
 mod verification;
+/// WAL (Write-Ahead Logging) operations module.
+mod wal;
 
 // Re-export commonly used external crates for convenience
 pub use async_stream;
@@ -32,6 +34,7 @@ pub use query::{Aggregation, Filter, Operator, Query, QueryBuilder, QueryResult,
 pub use sentinel_crypto::crypto_config::*;
 pub use store::Store;
 pub use verification::{VerificationMode, VerificationOptions};
+pub use wal::{CollectionMetadata, CollectionWalConfig, StoreMetadata, StoreWalConfig, WalMode};
 
 /// The current version of the Sentinel metadata format.
 pub const META_SENTINEL_VERSION: u32 = 1;
