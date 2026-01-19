@@ -48,3 +48,4 @@ Thumbs.db
 bindings/cxx/api_baseline.json
 bindings/cxx/api_changes.md
 bindings/js/**/*.node
+**/dist/**/*
