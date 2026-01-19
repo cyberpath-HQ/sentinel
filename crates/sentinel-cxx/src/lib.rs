@@ -655,8 +655,8 @@ pub unsafe extern "C" fn sentinel_string_free(s: *mut c_char) {
 type StoreCallback = Option<unsafe extern "C" fn(task_id: u64, result: *mut sentinel_store_t, user_data: *mut c_char)>;
 type CollectionCallback =
     Option<unsafe extern "C" fn(task_id: u64, result: *mut sentinel_collection_t, user_data: *mut c_char)>;
-type DocumentCallback = Option<unsafe extern "C" fn(task_id: u64, result: *mut c_char, user_data: *mut c_char)>;
 type VoidCallback = Option<unsafe extern "C" fn(task_id: u64, user_data: *mut c_char)>;
+type DocumentCallback = Option<unsafe extern "C" fn(task_id: u64, result: *mut c_char, user_data: *mut c_char)>;
 type BoolCallback = Option<unsafe extern "C" fn(task_id: u64, result: bool, user_data: *mut c_char)>;
 type CountCallback = Option<unsafe extern "C" fn(task_id: u64, result: u32, user_data: *mut c_char)>;
 type ErrorCallback = Option<unsafe extern "C" fn(task_id: u64, error: *const c_char, user_data: *mut c_char)>;
@@ -669,13 +669,9 @@ pub unsafe extern "C" fn sentinel_store_new_async(
     error_callback: ErrorCallback,
     user_data: *mut c_char,
 ) -> u64 {
+    eprintln!("DEBUG: sentinel_store_new_async called");
     if path.is_null() {
         set_error("Path cannot be null");
-        return 0;
-    }
-
-    if callback.is_none() || error_callback.is_none() {
-        set_error("Callbacks cannot be null for async operations");
         return 0;
     }
 
@@ -701,8 +697,12 @@ pub unsafe extern "C" fn sentinel_store_new_async(
     };
 
     let rt = match RUNTIME.lock() {
-        Ok(rt) => rt,
+        Ok(rt) => {
+            eprintln!("DEBUG: Got runtime lock for store");
+            rt
+        },
         Err(e) => {
+            eprintln!("DEBUG: Failed to acquire runtime lock for store: {}", e);
             set_error(format!("Failed to acquire runtime lock: {}", e));
             return 0;
         },
@@ -713,17 +713,27 @@ pub unsafe extern "C" fn sentinel_store_new_async(
     let callback_ptr = callback.map(|cb| cb as usize);
     let error_callback_ptr = error_callback.map(|cb| cb as usize);
 
-    rt.spawn(async move {
-        let result = Store::new(&path_str, passphrase_str.as_deref()).await;
-        let _ = tx.send(result);
-    });
+    // Temporarily use sync Store::new for debugging
+    eprintln!("DEBUG: About to call Store::new with path: {}", path_str);
+    let result = std::thread::spawn(move || {
+        // Create a temporary runtime for this thread
+        let rt = Runtime::new().expect("Failed to create temp runtime");
+        rt.block_on(async { Store::new(&path_str, passphrase_str.as_deref()).await })
+    })
+    .join()
+    .expect("Thread panicked");
+    eprintln!("DEBUG: Store::new result: {:?}", result.is_ok());
+    let _ = tx.send(result);
 
     // Handle result in a separate thread to call callbacks
     std::thread::spawn(move || {
+        eprintln!("DEBUG: Waiting for result in thread");
         let user_data = user_data_usize as *mut c_char;
         if let Ok(result) = rx.recv() {
+            eprintln!("DEBUG: Got result from channel");
             match result {
                 Ok(store) => {
+                    eprintln!("DEBUG: Store created successfully");
                     let store_ptr = Box::into_raw(Box::new(store)) as *mut sentinel_store_t;
                     if let Some(cb_ptr) = callback_ptr {
                         let cb = unsafe { std::mem::transmute::<usize, StoreCallback>(cb_ptr) };
@@ -733,6 +743,7 @@ pub unsafe extern "C" fn sentinel_store_new_async(
                     }
                 },
                 Err(err) => {
+                    eprintln!("DEBUG: Store creation failed: {}", err);
                     let err_cstr = match CString::new(err.to_string()) {
                         Ok(cstr) => cstr,
                         Err(_) => return,
@@ -748,7 +759,7 @@ pub unsafe extern "C" fn sentinel_store_new_async(
         }
     });
 
-    0 // Return 0 since we don't use task IDs
+    1 // Return task ID
 }
 
 #[unsafe(no_mangle)]
