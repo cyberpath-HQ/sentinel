@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, copyFileSync } from 'fs';
+import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -51,11 +51,86 @@ async function main() {
   const distDir = join(workspaceRoot, 'dist');
   mkdirSync(distDir, { recursive: true });
 
-  const zipName = `sentinel-cxx-dev-${nextRelease}.zip`;
+  const packageName = `sentinel-cxx-dev-${nextRelease}`;
+  const stagingDir = join(distDir, packageName);
+  const libDir = join(stagingDir, 'lib');
+
+  // Clean staging directory
+  run(`rm -rf ${stagingDir}`);
+  mkdirSync(stagingDir, { recursive: true });
+  mkdirSync(libDir, { recursive: true });
+
+  // Copy libraries for each target
+  const targets = [
+    { system: 'linux-x86_64', rustTarget: 'x86_64-unknown-linux-gnu', ext: '.so' },
+    { system: 'macos-x86_64', rustTarget: 'x86_64-apple-darwin', ext: '.dylib' },
+    { system: 'macos-aarch64', rustTarget: 'aarch64-apple-darwin', ext: '.dylib' },
+    { system: 'windows-x86_64', rustTarget: 'x86_64-pc-windows-gnu', ext: '.dll' }
+  ];
+
+  for (const target of targets) {
+    const targetLibDir = join(libDir, target.system);
+    mkdirSync(targetLibDir, { recursive: true });
+
+    const releaseDir = join(workspaceRoot, 'target', target.rustTarget, 'release');
+    const dynamicLib = join(releaseDir, `libsentinel_cxx${target.ext}`);
+    const staticLib = join(releaseDir, 'libsentinel_cxx.a');
+
+    if (existsSync(dynamicLib)) {
+      copyFileSync(dynamicLib, join(targetLibDir, `libsentinel_cxx${target.ext}`));
+      console.log(`Copied dynamic library for ${target.system}`);
+    }
+    if (existsSync(staticLib)) {
+      copyFileSync(staticLib, join(targetLibDir, `libsentinel_cxx.a`));
+      console.log(`Copied static library for ${target.system}`);
+    }
+  }
+
+  // Copy header from one of the builds (headers should be the same)
+  const headerSrc = join(workspaceRoot, 'target', 'x86_64-unknown-linux-gnu', 'release', 'sentinel-cxx.h');
+  const includeDir = join(stagingDir, 'include');
+  mkdirSync(includeDir, { recursive: true });
+  if (existsSync(headerSrc)) {
+    copyFileSync(headerSrc, join(includeDir, 'sentinel-cxx.h'));
+  }
+
+  // Copy additional headers from bindings
+  const bindingsInclude = join(cxxBindings, 'include');
+  if (existsSync(bindingsInclude)) {
+    run(`cp -r ${bindingsInclude}/* ${includeDir}/`, { cwd: workspaceRoot });
+  }
+
+  // Copy cmake files
+  const cmakeDir = join(stagingDir, 'cmake');
+  mkdirSync(cmakeDir, { recursive: true });
+  const bindingsCmake = join(cxxBindings, 'cmake');
+  if (existsSync(bindingsCmake)) {
+    run(`cp -r ${bindingsCmake}/* ${cmakeDir}/`, { cwd: workspaceRoot });
+  }
+
+  // Copy examples
+  const examplesDir = join(stagingDir, 'examples');
+  mkdirSync(examplesDir, { recursive: true });
+  const bindingsExamples = join(cxxBindings, 'examples');
+  if (existsSync(bindingsExamples)) {
+    run(`cp -r ${bindingsExamples}/* ${examplesDir}/`, { cwd: workspaceRoot });
+  }
+
+  // Copy documentation and build files
+  const filesToCopy = ['README.md', 'CMakeLists.txt'];
+  for (const file of filesToCopy) {
+    const src = join(cxxBindings, file);
+    if (existsSync(src)) {
+      copyFileSync(src, join(stagingDir, file));
+    }
+  }
+
+  // Create zip
+  const zipName = `${packageName}.zip`;
   const zipPath = join(distDir, zipName);
 
-  run(`rm -f ${zipPath}`, { cwd: cxxBindings });
-  run(`zip -r ${zipPath} sentinel-cxx-*`, { cwd: cxxBindings });
+  run(`rm -f ${zipPath}`, { cwd: distDir });
+  run(`cd ${distDir} && zip -r ${zipName} ${packageName}`, { cwd: distDir });
 
   if (existsSync(zipPath)) {
     console.log(`Created: ${zipPath}`);
