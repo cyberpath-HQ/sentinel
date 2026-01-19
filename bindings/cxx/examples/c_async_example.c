@@ -81,11 +81,18 @@ int main() {
 
     // Start async store creation
     printf("Starting async store creation...\n");
+    printf("Callbacks: on_store_created=%p, on_error=%p\n", on_store_created, on_error);
     uint64_t store_task = sentinel_store_new_async("./async_test_db", NULL,
                                                    on_store_created, on_error, "async_demo");
+    printf("Function returned: %llu\n", store_task);
 
     if (store_task == 0) {
         printf("Failed to start async store creation\n");
+        const char* err = sentinel_get_last_error();
+        if (err) {
+            printf("Error: %s\n", err);
+            sentinel_string_free((char*)err);
+        }
         return 1;
     }
 
