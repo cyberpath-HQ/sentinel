@@ -4,6 +4,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 use tokio::fs as tokio_fs;
 use tracing::{debug, error, trace, warn};
 use sentinel_wal::WalManager;
@@ -18,6 +19,7 @@ use crate::{
     COLLECTION_METADATA_FILE,
     DATA_DIR,
     KEYS_COLLECTION,
+    META_SENTINEL_VERSION,
     STORE_METADATA_FILE,
     WAL_DIR,
     WAL_FILE,
@@ -69,6 +71,10 @@ pub struct Store {
     last_accessed_at: std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
     /// Total size of all collections in bytes.
     total_size_bytes: std::sync::atomic::AtomicU64,
+    /// Total number of documents across all collections.
+    total_documents:  std::sync::atomic::AtomicU64,
+    /// Total number of collections.
+    collection_count: std::sync::atomic::AtomicU64,
 }
 
 impl Store {
@@ -135,7 +141,7 @@ impl Store {
 
         // Load or create store metadata
         let metadata_path = root_path.join(STORE_METADATA_FILE);
-        let _store_metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
+        let store_metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
             debug!("Loading existing store metadata");
             let content = tokio_fs::read_to_string(&metadata_path).await?;
             serde_json::from_str(&content)?
@@ -151,10 +157,12 @@ impl Store {
         let now = chrono::Utc::now();
         let mut store = Self {
             root_path,
-            signing_key:      None,
-            created_at:       now,
+            signing_key: None,
+            created_at: now,
             last_accessed_at: std::sync::RwLock::new(now),
-            total_size_bytes: std::sync::atomic::AtomicU64::new(0),
+            total_size_bytes: std::sync::atomic::AtomicU64::new(store_metadata.total_size_bytes),
+            total_documents: std::sync::atomic::AtomicU64::new(store_metadata.total_documents),
+            collection_count: std::sync::atomic::AtomicU64::new(store_metadata.collection_count),
         };
         if let Some(passphrase) = passphrase {
             debug!("Passphrase provided, handling signing key");
@@ -232,7 +240,20 @@ impl Store {
 
     /// Returns the total size of all collections in the store in bytes.
     pub fn total_size_bytes(&self) -> u64 {
-        self.total_size_bytes.load(std::sync::atomic::Ordering::Relaxed)
+        self.total_size_bytes
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Returns the total number of documents across all collections in the store.
+    pub fn total_documents(&self) -> u64 {
+        self.total_documents
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Returns the total number of collections in the store.
+    pub fn collection_count(&self) -> u64 {
+        self.collection_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Retrieves or creates a collection with the specified name.
@@ -306,18 +327,26 @@ impl Store {
 
         // Load or create collection metadata
         let metadata_path = path.join(COLLECTION_METADATA_FILE);
-        let metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
-            debug!("Loading existing collection metadata for {}", name);
-            let content = tokio_fs::read_to_string(&metadata_path).await?;
-            serde_json::from_str(&content)?
-        }
-        else {
+        let is_new_collection = !tokio_fs::try_exists(&metadata_path).await.unwrap_or(false);
+        let metadata = if is_new_collection {
             debug!("Creating new collection metadata for {}", name);
             let metadata = CollectionMetadata::new(name.to_string());
             let content = serde_json::to_string_pretty(&metadata)?;
             tokio_fs::write(&metadata_path, content).await?;
             metadata
+        }
+        else {
+            debug!("Loading existing collection metadata for {}", name);
+            let content = tokio_fs::read_to_string(&metadata_path).await?;
+            serde_json::from_str(&content)?
         };
+
+        // If this is a new collection, update store metadata
+        if is_new_collection {
+            self.collection_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.save_store_metadata().await?;
+        }
 
         // Create WAL manager with config from metadata
         let wal_path = path.join(WAL_DIR).join(WAL_FILE);
@@ -334,13 +363,13 @@ impl Store {
 
         Ok(Collection {
             path,
-            signing_key:        self.signing_key.clone(),
+            signing_key: self.signing_key.clone(),
             wal_manager,
-            created_at:         now,
-            updated_at:         std::sync::RwLock::new(now),
+            created_at: now,
+            updated_at: std::sync::RwLock::new(now),
             last_checkpoint_at: std::sync::RwLock::new(None),
-            total_documents:    std::sync::atomic::AtomicU64::new(metadata.document_count),
-            total_size_bytes:   std::sync::atomic::AtomicU64::new(metadata.total_size_bytes),
+            total_documents: std::sync::atomic::AtomicU64::new(metadata.document_count),
+            total_size_bytes: std::sync::atomic::AtomicU64::new(metadata.total_size_bytes),
         })
     }
 
@@ -398,6 +427,16 @@ impl Store {
             return Ok(());
         }
 
+        // Load collection metadata to get document count and size before deletion
+        let metadata_path = path.join(COLLECTION_METADATA_FILE);
+        let collection_metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
+            let content = tokio_fs::read_to_string(&metadata_path).await?;
+            Some(serde_json::from_str::<CollectionMetadata>(&content)?)
+        }
+        else {
+            None
+        };
+
         // Remove the entire directory
         tokio_fs::remove_dir_all(&path).await.map_err(|e| {
             error!("Failed to delete collection directory {:?}: {}", path, e);
@@ -408,6 +447,19 @@ impl Store {
 
         // Update store metadata
         *self.last_accessed_at.write().unwrap() = chrono::Utc::now();
+        self.collection_count
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        if let Some(metadata) = collection_metadata {
+            self.total_documents.fetch_sub(
+                metadata.document_count,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            self.total_size_bytes.fetch_sub(
+                metadata.total_size_bytes,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }
+        self.save_store_metadata().await?;
 
         Ok(())
     }
@@ -475,6 +527,54 @@ impl Store {
 
         debug!("Found {} collections", collections.len());
         Ok(collections)
+    }
+
+    /// Saves the store metadata to disk.
+    ///
+    /// This method updates the store's metadata file (.store.json) with the current
+    /// values of total_documents, total_size_bytes, and collection_count.
+    async fn save_store_metadata(&self) -> Result<()> {
+        use sentinel_wal::StoreWalConfig;
+
+        let metadata_path = self.root_path.join(STORE_METADATA_FILE);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let metadata = StoreMetadata {
+            version:          META_SENTINEL_VERSION,
+            created_at:       self.created_at.timestamp() as u64,
+            updated_at:       now,
+            collection_count: self
+                .collection_count
+                .load(std::sync::atomic::Ordering::Relaxed),
+            total_documents:  self
+                .total_documents
+                .load(std::sync::atomic::Ordering::Relaxed),
+            total_size_bytes: self
+                .total_size_bytes
+                .load(std::sync::atomic::Ordering::Relaxed),
+            wal_config:       StoreWalConfig::default(),
+        };
+
+        let content = serde_json::to_string_pretty(&metadata).map_err(|e| {
+            error!("Failed to serialize store metadata: {}", e);
+            e
+        })?;
+
+        tokio_fs::write(&metadata_path, content)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to write store metadata to {:?}: {}",
+                    metadata_path, e
+                );
+                e
+            })?;
+
+        debug!("Store metadata saved successfully");
+        Ok(())
     }
 
     pub fn set_signing_key(&mut self, key: sentinel_crypto::SigningKey) { self.signing_key = Some(Arc::new(key)); }
