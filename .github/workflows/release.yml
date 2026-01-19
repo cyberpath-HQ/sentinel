@@ -34,7 +34,7 @@ jobs:
 
       - name: Install Rust tools
         run: |
-          cargo install cargo-edit cbindgen wasm-pack
+          cargo install cargo-edit wasm-pack
 
       - name: Setup Python
         uses: actions/setup-python@v5
