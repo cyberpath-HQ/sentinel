@@ -1,7 +1,6 @@
 use clap::Args;
 use tracing::{error, info};
-use sentinel_dbms::CollectionWalConfig;
-use sentinel_wal::{manager::WalFormat, CompressionAlgorithm, WalFailureMode};
+use sentinel_dbms::{CollectionWalConfig, CompressionAlgorithm, WalFailureMode, WalFormat};
 
 /// Arguments for the create-collection command.
 #[derive(Args, Clone, Default)]
