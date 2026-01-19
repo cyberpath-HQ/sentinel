@@ -21,6 +21,7 @@ if(NOT SENTINEL_CXX_LIBRARY)
     find_library(SENTINEL_CXX_LIBRARY
         NAMES sentinel-cxx sentinel_cxx
         PATHS ${CMAKE_CURRENT_SOURCE_DIR}/lib
+              ${CMAKE_CURRENT_SOURCE_DIR}/dist
               ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/release
               ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/debug
     )
@@ -30,6 +31,7 @@ if(NOT SENTINEL_CXX_INCLUDE_DIR)
     find_path(SENTINEL_CXX_INCLUDE_DIR
         NAMES sentinel-cxx.h
         PATHS ${CMAKE_CURRENT_SOURCE_DIR}/include/sentinel
+              ${CMAKE_CURRENT_SOURCE_DIR}/dist
               ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/release
               ${CMAKE_CURRENT_SOURCE_DIR}/../../../target/debug
     )
