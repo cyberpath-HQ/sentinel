@@ -1469,6 +1469,111 @@ pub unsafe extern "C" fn sentinel_collection_query_async(
     0 // Return task ID
 }
 
+/// Combine two queries with OR logic
+/// Creates a new query that matches either the left OR right query
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_or(
+    left: *mut sentinel_query_t,
+    right: *mut sentinel_query_t,
+) -> *mut sentinel_query_t {
+    if left.is_null() || right.is_null() {
+        set_error("Left and right queries cannot be null");
+        return ptr::null_mut();
+    }
+
+    let left_query = unsafe { &*(left as *mut Query) };
+    let right_query = unsafe { &*(right as *mut Query) };
+
+    // Create a new query with combined filters using OR
+    let mut combined_filters = Vec::new();
+
+    // If either query has multiple filters, we need to combine them properly
+    // For simplicity, we'll combine all filters from both queries with OR
+    if left_query.filters.len() == 1 && right_query.filters.len() == 1 {
+        // Simple case: both queries have single filters
+        let left_filter = left_query.filters[0].clone();
+        let right_filter = right_query.filters[0].clone();
+        combined_filters.push(sentinel_dbms::Filter::Or(
+            Box::new(left_filter),
+            Box::new(right_filter),
+        ));
+    }
+    else {
+        // Complex case: multiple filters, combine them all with OR in a tree structure
+        let mut all_filters = left_query.filters.clone();
+        all_filters.extend(right_query.filters.clone());
+
+        if all_filters.len() >= 2 {
+            // Combine all filters with OR in a tree structure
+            let mut combined = all_filters[0].clone();
+            for filter in &all_filters[1 ..] {
+                combined = sentinel_dbms::Filter::Or(Box::new(combined), Box::new(filter.clone()));
+            }
+            combined_filters.push(combined);
+        }
+        else if all_filters.len() == 1 {
+            combined_filters.push(all_filters[0].clone());
+        }
+    }
+
+    let new_query = Query {
+        filters:    combined_filters,
+        sort:       None, // Could potentially merge sort from both queries
+        limit:      None, // Could potentially merge limit from both queries
+        offset:     None, // Could potentially merge offset from both queries
+        projection: None,
+    };
+
+    let boxed_query = Box::new(new_query);
+    Box::into_raw(boxed_query) as *mut sentinel_query_t
+}
+
+/// Combine two queries with AND logic
+/// Creates a new query that matches both the left AND right query
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_and(
+    left: *mut sentinel_query_t,
+    right: *mut sentinel_query_t,
+) -> *mut sentinel_query_t {
+    if left.is_null() || right.is_null() {
+        set_error("Left and right queries cannot be null");
+        return ptr::null_mut();
+    }
+
+    let left_query = unsafe { &*(left as *mut Query) };
+    let right_query = unsafe { &*(right as *mut Query) };
+
+    // Create a new query with combined filters using AND
+    let mut combined_filters = Vec::new();
+
+    // Combine all filters from both queries
+    let mut all_filters = left_query.filters.clone();
+    all_filters.extend(right_query.filters.clone());
+
+    if all_filters.len() >= 2 {
+        // Combine all filters with AND in a tree structure
+        let mut combined = all_filters[0].clone();
+        for filter in &all_filters[1 ..] {
+            combined = sentinel_dbms::Filter::And(Box::new(combined), Box::new(filter.clone()));
+        }
+        combined_filters.push(combined);
+    }
+    else if all_filters.len() == 1 {
+        combined_filters.push(all_filters[0].clone());
+    }
+
+    let new_query = Query {
+        filters:    combined_filters,
+        sort:       None, // Could potentially merge sort from both queries
+        limit:      None, // Could potentially merge limit from both queries
+        offset:     None, // Could potentially merge offset from both queries
+        projection: None,
+    };
+
+    let boxed_query = Box::new(new_query);
+    Box::into_raw(boxed_query) as *mut sentinel_query_t
+}
+
 /// Create a new query builder
 /// Returns NULL on error
 #[unsafe(no_mangle)]
@@ -1646,6 +1751,244 @@ pub unsafe extern "C" fn sentinel_query_builder_filter_contains(
     query_ref
         .filters
         .push(sentinel_dbms::Filter::Contains(field_str, substring_str));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Add a greater or equal filter to a query
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_greater_or_equal(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    json_value: *const c_char,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() || json_value.is_null() {
+        set_error("Query, field, and value cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let value_str = match unsafe { CStr::from_ptr(json_value) }.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let value: Value = match serde_json::from_str(value_str) {
+        Ok(v) => v,
+        Err(e) => {
+            set_error(format!("Invalid JSON value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_JSON_PARSE_ERROR;
+        },
+    };
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::GreaterOrEqual(field_str, value));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Add a less or equal filter to a query
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_less_or_equal(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    json_value: *const c_char,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() || json_value.is_null() {
+        set_error("Query, field, and value cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let value_str = match unsafe { CStr::from_ptr(json_value) }.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let value: Value = match serde_json::from_str(value_str) {
+        Ok(v) => v,
+        Err(e) => {
+            set_error(format!("Invalid JSON value: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_JSON_PARSE_ERROR;
+        },
+    };
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::LessOrEqual(field_str, value));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Add a starts with filter to a query (for string fields)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_starts_with(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    prefix: *const c_char,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() || prefix.is_null() {
+        set_error("Query, field, and prefix cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let prefix_str = match unsafe { CStr::from_ptr(prefix) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in prefix: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::StartsWith(field_str, prefix_str));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Add an ends with filter to a query (for string fields)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_ends_with(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    suffix: *const c_char,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() || suffix.is_null() {
+        set_error("Query, field, and suffix cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let suffix_str = match unsafe { CStr::from_ptr(suffix) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in suffix: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::EndsWith(field_str, suffix_str));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Add an in filter to a query (field value in array)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_in(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    json_array: *const c_char,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() || json_array.is_null() {
+        set_error("Query, field, and array cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let array_str = match unsafe { CStr::from_ptr(json_array) }.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in array: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let array: Vec<Value> = match serde_json::from_str(array_str) {
+        Ok(Value::Array(arr)) => arr,
+        Ok(_) => {
+            set_error("Expected JSON array");
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+        Err(e) => {
+            set_error(format!("Invalid JSON array: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_JSON_PARSE_ERROR;
+        },
+    };
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::In(field_str, array));
+
+    sentinel_error_t::SENTINEL_OK
+}
+
+/// Add an exists filter to a query (field exists or doesn't exist)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sentinel_query_builder_filter_exists(
+    query: *mut sentinel_query_t,
+    field: *const c_char,
+    should_exist: u32,
+) -> sentinel_error_t {
+    if query.is_null() || field.is_null() {
+        set_error("Query and field cannot be null");
+        return sentinel_error_t::SENTINEL_ERROR_NULL_POINTER;
+    }
+
+    let query_ref = unsafe { &mut *(query as *mut Query) };
+    let field_str = match unsafe { CStr::from_ptr(field) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            set_error(format!("Invalid UTF-8 in field: {}", e));
+            return sentinel_error_t::SENTINEL_ERROR_INVALID_ARGUMENT;
+        },
+    };
+
+    let exists = should_exist != 0;
+
+    query_ref
+        .filters
+        .push(sentinel_dbms::Filter::Exists(field_str, exists));
 
     sentinel_error_t::SENTINEL_OK
 }
