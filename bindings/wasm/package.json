@@ -1,0 +1,38 @@
+{
+  "name": "@cyberpath/sentinel-wasm",
+  "version": "2.0.1",
+  "description": "WebAssembly bindings for Cyberpath Sentinel DBMS",
+  "main": "pkg/sentinel_wasm.js",
+  "module": "pkg/sentinel_wasm.js",
+  "types": "pkg/sentinel_wasm.d.ts",
+  "files": [
+    "pkg/"
+  ],
+  "scripts": {
+    "build": "wasm-pack build --target web --out-dir pkg",
+    "build:nodejs": "wasm-pack build --target nodejs --out-dir pkg",
+    "build:all": "npm run build && npm run build:nodejs",
+    "test": "web-test-runner",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "database",
+    "dbms",
+    "document",
+    "json",
+    "filesystem",
+    "rust",
+    "wasm",
+    "webassembly"
+  ],
+  "author": "Emanuele (Ebalo) Balsamo <emanuele.balsamo@cyberpath-hq.com>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyberpath-HQ/sentinel"
+  },
+  "devDependencies": {
+    "@web/test-runner": "^0.15.0",
+    "wasm-pack": "^0.12.0"
+  }
+}
