@@ -11,8 +11,9 @@
 //! These limits ensure metadata operations remain performant and prevent abuse.
 
 use serde::{Deserialize, Serialize};
+use sentinel_wal::{CollectionWalConfig, StoreWalConfig};
 
-use crate::wal::config::{CollectionWalConfig, StoreWalConfig};
+use crate::META_SENTINEL_VERSION;
 
 /// Version of the metadata format.
 ///
@@ -53,7 +54,7 @@ impl CollectionMetadata {
             .as_secs();
 
         Self {
-            version:          1,
+            version:          META_SENTINEL_VERSION,
             name:             name.clone(),
             created_at:       now,
             updated_at:       now,
@@ -62,6 +63,40 @@ impl CollectionMetadata {
             wal_config:       CollectionWalConfig::default(),
         }
     }
+
+    /// Upgrade metadata to the current version if needed
+    ///
+    /// This method handles forward migration of metadata from older versions
+    /// to the current version. It modifies the metadata in-place.
+    pub fn upgrade_to_current(&mut self) -> Result<(), String> {
+        let current_version = META_SENTINEL_VERSION;
+
+        while self.version < current_version {
+            match self.version {
+                1 => {
+                    // Version 1 -> 2: Add any new fields with defaults
+                    // Currently no changes needed for version 2
+
+                    // this is currently a no-op, but we set the version to 2
+                    // when we add new fields in future versions
+                    self.version = 1;
+                },
+                // Add future version migrations here as needed
+                // 2 => { /* migration logic */ self.version = 3; }
+                _ => {
+                    return Err(format!(
+                        "Unsupported metadata version: {} (current: {})",
+                        self.version, current_version
+                    ));
+                },
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if metadata needs upgrading
+    pub fn needs_upgrade(&self) -> bool { self.version < META_SENTINEL_VERSION }
 
     /// Update the modification timestamp
     pub fn touch(&mut self) {
@@ -125,7 +160,7 @@ impl StoreMetadata {
             .as_secs();
 
         Self {
-            version:          1,
+            version:          META_SENTINEL_VERSION,
             created_at:       now,
             updated_at:       now,
             collection_count: 0,
@@ -134,6 +169,40 @@ impl StoreMetadata {
             wal_config:       StoreWalConfig::default(),
         }
     }
+
+    /// Upgrade metadata to the current version if needed
+    ///
+    /// This method handles forward migration of metadata from older versions
+    /// to the current version. It modifies the metadata in-place.
+    pub fn upgrade_to_current(&mut self) -> Result<(), String> {
+        let current_version = META_SENTINEL_VERSION;
+
+        while self.version < current_version {
+            match self.version {
+                1 => {
+                    // Version 1 -> 2: Add any new fields with defaults
+                    // Currently no changes needed for version 2
+
+                    // this is currently a no-op, but we set the version to 2
+                    // when we add new fields in future versions
+                    self.version = 1;
+                },
+                // Add future version migrations here as needed
+                // 2 => { /* migration logic */ self.version = 3; }
+                _ => {
+                    return Err(format!(
+                        "Unsupported metadata version: {} (current: {})",
+                        self.version, current_version
+                    ));
+                },
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if metadata needs upgrading
+    pub fn needs_upgrade(&self) -> bool { self.version < META_SENTINEL_VERSION }
 
     /// Update the modification timestamp
     pub fn touch(&mut self) {
