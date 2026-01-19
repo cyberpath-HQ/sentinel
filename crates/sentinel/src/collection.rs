@@ -77,18 +77,28 @@ use crate::{
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[allow(
     clippy::field_scoped_visibility_modifiers,
     reason = "fields need to be pub(crate) for internal access"
 )]
 pub struct Collection {
     /// The filesystem path to the collection directory.
-    pub(crate) path:        PathBuf,
+    pub(crate) path:              PathBuf,
     /// The signing key for the collection.
-    pub(crate) signing_key: Option<Arc<sentinel_crypto::SigningKey>>,
+    pub(crate) signing_key:       Option<Arc<sentinel_crypto::SigningKey>>,
     /// The Write-Ahead Log manager for durability.
-    pub(crate) wal_manager: Option<Arc<WalManager>>,
+    pub(crate) wal_manager:       Option<Arc<WalManager>>,
+    /// When the collection was created.
+    pub(crate) created_at:        chrono::DateTime<chrono::Utc>,
+    /// When the collection was last updated.
+    pub(crate) updated_at:        std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
+    /// When the collection was last checkpointed.
+    pub(crate) last_checkpoint_at: std::sync::RwLock<Option<chrono::DateTime<chrono::Utc>>>,
+    /// Total number of documents in the collection.
+    pub(crate) total_documents:   std::sync::atomic::AtomicU64,
+    /// Total operations performed on the collection.
+    pub(crate) total_operations:  std::sync::atomic::AtomicU64,
 }
 
 #[allow(
@@ -98,6 +108,31 @@ pub struct Collection {
 impl Collection {
     /// Returns the name of the collection.
     pub fn name(&self) -> &str { self.path.file_name().unwrap().to_str().unwrap() }
+
+    /// Returns the creation timestamp of the collection.
+    pub fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
+        self.created_at
+    }
+
+    /// Returns the last update timestamp of the collection.
+    pub fn updated_at(&self) -> chrono::DateTime<chrono::Utc> {
+        *self.updated_at.read().unwrap()
+    }
+
+    /// Returns the last checkpoint timestamp of the collection, if any.
+    pub fn last_checkpoint_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        *self.last_checkpoint_at.read().unwrap()
+    }
+
+    /// Returns the total number of documents in the collection.
+    pub fn total_documents(&self) -> u64 {
+        self.total_documents.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Returns the total number of operations performed on the collection.
+    pub fn total_operations(&self) -> u64 {
+        self.total_operations.load(std::sync::atomic::Ordering::Relaxed)
+    }
 
     /// Inserts a new document into the collection or overwrites an existing one.
     ///
@@ -181,6 +216,11 @@ impl Collection {
             e
         })?;
         debug!("Document {} inserted successfully", id);
+
+        // Update metadata
+        *self.updated_at.write().unwrap() = chrono::Utc::now();
+        self.total_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         Ok(())
     }
 
@@ -398,6 +438,11 @@ impl Collection {
                         e
                     })?;
                 debug!("Document {} soft deleted successfully", id);
+
+                // Update metadata
+                *self.updated_at.write().unwrap() = chrono::Utc::now();
+                self.total_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
                 Ok(())
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -405,6 +450,11 @@ impl Collection {
                     "Document {} not found, already deleted or never existed",
                     id
                 );
+
+                // Update metadata even for not found (still an operation)
+                *self.updated_at.write().unwrap() = chrono::Utc::now();
+                self.total_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
                 Ok(())
             },
             Err(e) => {
@@ -706,6 +756,11 @@ impl Collection {
 
                                             let collection_ref = Self {
                                                 path: collection_path.clone(),
+                                                created_at: chrono::Utc::now(),
+                                                updated_at: std::sync::RwLock::new(chrono::Utc::now()),
+                                                last_checkpoint_at: std::sync::RwLock::new(None),
+                                                total_documents: std::sync::atomic::AtomicU64::new(0),
+                                                total_operations: std::sync::atomic::AtomicU64::new(0),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
                                             };
@@ -852,6 +907,11 @@ impl Collection {
 
                                             let collection_ref = Self {
                                                 path: collection_path.clone(),
+                                                created_at: chrono::Utc::now(),
+                                                updated_at: std::sync::RwLock::new(chrono::Utc::now()),
+                                                last_checkpoint_at: std::sync::RwLock::new(None),
+                                                total_documents: std::sync::atomic::AtomicU64::new(0),
+                                                total_operations: std::sync::atomic::AtomicU64::new(0),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
                                             };
@@ -1139,6 +1199,11 @@ impl Collection {
 
                         let collection_ref = Self {
                             path: collection_path.clone(),
+                                                created_at: chrono::Utc::now(),
+                                                updated_at: std::sync::RwLock::new(chrono::Utc::now()),
+                                                last_checkpoint_at: std::sync::RwLock::new(None),
+                                                total_documents: std::sync::atomic::AtomicU64::new(0),
+                                                total_operations: std::sync::atomic::AtomicU64::new(0),
                             signing_key: signing_key.clone(),
                                                 wal_manager: None,
                         };
@@ -1475,6 +1540,11 @@ impl Collection {
         })?;
 
         debug!("Document {} updated successfully", id);
+
+        // Update metadata
+        *self.updated_at.write().unwrap() = chrono::Utc::now();
+        self.total_operations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
         Ok(())
     }
 
