@@ -21,13 +21,13 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
         let count = collection.wal_entries_count().await?;
 
         info!("WAL Statistics for collection '{}':", collection_name);
-        println!(
+        tracing::info!(
             "  Size: {} bytes ({:.2} MB)",
             size,
             size as f64 / (1024.0 * 1024.0)
         );
-        println!("  Entries: {}", count);
-        println!(
+        tracing::info!("  Entries: {}", count);
+        tracing::info!(
             "  Average entry size: {} bytes",
             if count > 0 { size / count as u64 } else { 0 }
         );
@@ -48,12 +48,12 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
                     total_size += size;
                     total_entries += count;
 
-                    println!("  {}: {} bytes, {} entries", collection_name, size, count);
+                    tracing::info!("  {}: {} bytes,  {} entries", collection_name, size, count);
                 }
             }
         }
 
-        println!(
+        tracing::info!(
             "  Total: {} bytes ({:.2} MB), {} entries",
             total_size,
             total_size as f64 / (1024.0 * 1024.0),
