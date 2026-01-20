@@ -72,7 +72,7 @@ pub enum CollectionCommands {
     Query(query::QueryArgs),
 }
 
-mod create;
+pub mod create;
 mod delete;
 mod get;
 mod insert;
