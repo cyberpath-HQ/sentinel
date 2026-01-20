@@ -92,7 +92,9 @@ pub struct Collection {
     pub(crate) signing_key:        Option<Arc<sentinel_crypto::SigningKey>>,
     /// The Write-Ahead Log manager for durability.
     pub(crate) wal_manager:        Option<Arc<WalManager>>,
-    /// WAL configuration for the collection.
+    /// WAL configuration stored in metadata (without temporary overrides).
+    pub(crate) stored_wal_config:  sentinel_wal::CollectionWalConfig,
+    /// Effective WAL configuration (stored + any temporary overrides).
     pub(crate) wal_config:         sentinel_wal::CollectionWalConfig,
     /// When the collection was created.
     pub(crate) created_at:         chrono::DateTime<chrono::Utc>,
@@ -847,6 +849,7 @@ impl Collection {
                                                 total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
+                                                stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 event_sender: None,
                                                 event_task: None,
@@ -1001,6 +1004,7 @@ impl Collection {
                                                 total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                                                 signing_key: signing_key.clone(),
                                                 wal_manager: None,
+                                                stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 event_sender: None,
                                                 event_task: None,
@@ -1295,6 +1299,7 @@ impl Collection {
                                                 total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                                                 total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                             signing_key: signing_key.clone(),
+                                                stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 wal_manager: None,
                                                 wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 event_sender: None,
@@ -1952,7 +1957,7 @@ impl Collection {
         let path = self.path.clone();
         let created_at = self.created_at;
         let name = self.name().to_string();
-        let wal_config = self.wal_config.clone();
+        let wal_config = self.stored_wal_config.clone();
 
         let task = tokio::spawn(async move {
             // Debouncing: save metadata every 500 milliseconds if changed

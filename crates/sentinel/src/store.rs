@@ -645,13 +645,15 @@ impl Store {
 
         // Get collection WAL config: use metadata's config, or provided config, or fall back to
         // store-derived
-        let mut collection_wal_config = metadata.wal_config.unwrap_or_else(|| {
+        let stored_wal_config = metadata.wal_config.clone().unwrap_or_else(|| {
             self.wal_config
                 .collection_configs
                 .get(name)
                 .cloned()
                 .unwrap_or_else(|| self.wal_config.default_collection_config.clone())
         });
+
+        let mut collection_wal_config = stored_wal_config.clone();
 
         // Apply overrides if provided
         if let Some(overrides) = wal_overrides {
@@ -675,6 +677,7 @@ impl Store {
             signing_key: self.signing_key.clone(),
             wal_manager,
             wal_config: collection_wal_config,
+            stored_wal_config,
             created_at: now,
             updated_at: std::sync::RwLock::new(now),
             last_checkpoint_at: std::sync::RwLock::new(None),
