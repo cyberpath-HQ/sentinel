@@ -238,7 +238,7 @@ code .line::before {
 }
 
 .prose table {
-  @apply w-full border-collapse my-6;
+  @apply w-full border-collapse;
 }
 
 .prose th {

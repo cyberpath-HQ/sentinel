@@ -1,0 +1,11 @@
+---
+const id = `table-${Math.random().toString(36).substring(2, 9)}`;
+---
+
+<div class="border border-border rounded-md">
+  <div class="overflow-x-auto max-w-full rounded-md">
+    <table id={id} class="w-full table-auto text-left border-collapse border-border rounded-md">
+      <slot />
+    </table>
+  </div>
+</div>
