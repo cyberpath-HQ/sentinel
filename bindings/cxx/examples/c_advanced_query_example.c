@@ -74,6 +74,7 @@ int main() {
 
     // Greater than or equal
     sentinel_query_t* gte_query = sentinel_query_builder_new();
+    CHECK_NULL(gte_query, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_greater_or_equal(gte_query, "age", "30"));
     char* gte_result = sentinel_collection_query(users, gte_query);
     printf("Age >= 30: %s\n", gte_result ? gte_result : "null");
@@ -82,6 +83,7 @@ int main() {
 
     // Less than or equal
     sentinel_query_t* lte_query = sentinel_query_builder_new();
+    CHECK_NULL(lte_query, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_less_or_equal(lte_query, "score", "90"));
     char* lte_result = sentinel_collection_query(users, lte_query);
     printf("Score <= 90: %s\n", lte_result ? lte_result : "null");
@@ -93,6 +95,7 @@ int main() {
 
     // Starts with
     sentinel_query_t* starts_query = sentinel_query_builder_new();
+    CHECK_NULL(starts_query, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_starts_with(starts_query, "name", "A"));
     char* starts_result = sentinel_collection_query(users, starts_query);
     printf("Names starting with 'A': %s\n", starts_result ? starts_result : "null");
@@ -101,6 +104,7 @@ int main() {
 
     // Ends with
     sentinel_query_t* ends_query = sentinel_query_builder_new();
+    CHECK_NULL(ends_query, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_ends_with(ends_query, "department", "ing"));
     char* ends_result = sentinel_collection_query(users, ends_query);
     printf("Departments ending with 'ing': %s\n", ends_result ? ends_result : "null");
@@ -109,6 +113,7 @@ int main() {
 
     // Contains (already tested in previous example)
     sentinel_query_t* contains_query = sentinel_query_builder_new();
+    CHECK_NULL(contains_query, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_contains(contains_query, "department", "Engineer"));
     char* contains_result = sentinel_collection_query(users, contains_query);
     printf("Departments containing 'Engineer': %s\n", contains_result ? contains_result : "null");
@@ -118,6 +123,7 @@ int main() {
     // Test 3: In filter (value in array)
     printf("\n=== Test 3: In Filter (Value in Array) ===\n");
     sentinel_query_t* in_query = sentinel_query_builder_new();
+    CHECK_NULL(in_query, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_in(in_query, "city", "[\"New York\", \"Chicago\", \"Boston\"]"));
     char* in_result = sentinel_collection_query(users, in_query);
     printf("Cities in [New York, Chicago, Boston]: %s\n", in_result ? in_result : "null");
@@ -129,6 +135,7 @@ int main() {
 
     // Field must exist
     sentinel_query_t* exists_query = sentinel_query_builder_new();
+    CHECK_NULL(exists_query, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_exists(exists_query, "level", 1));
     char* exists_result = sentinel_collection_query(users, exists_query);
     printf("Users with 'level' field: %s\n", exists_result ? exists_result : "null");
@@ -138,6 +145,7 @@ int main() {
     // Test 5: Complex query with multiple filters (AND logic)
     printf("\n=== Test 5: Complex AND Query ===\n");
     sentinel_query_t* complex_and = sentinel_query_builder_new();
+    CHECK_NULL(complex_and, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_equals(complex_and, "active", "true"));
     CHECK_ERROR(sentinel_query_builder_filter_greater_than(complex_and, "age", "25"));
     CHECK_ERROR(sentinel_query_builder_filter_less_than(complex_and, "age", "40"));
@@ -153,9 +161,11 @@ int main() {
 
     // Create two queries for OR operation
     sentinel_query_t* query_a = sentinel_query_builder_new();
+    CHECK_NULL(query_a, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_equals(query_a, "city", "\"New York\""));
 
     sentinel_query_t* query_b = sentinel_query_builder_new();
+    CHECK_NULL(query_b, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_equals(query_b, "city", "\"Chicago\""));
 
     // Combine with OR
@@ -175,6 +185,7 @@ int main() {
     // Test 7: Sorting and pagination with advanced filters
     printf("\n=== Test 7: Advanced Sorting & Pagination ===\n");
     sentinel_query_t* advanced_query = sentinel_query_builder_new();
+    CHECK_NULL(advanced_query, "Failed to create query builder");
     CHECK_ERROR(sentinel_query_builder_filter_greater_or_equal(advanced_query, "score", "85"));
     CHECK_ERROR(sentinel_query_builder_filter_exists(advanced_query, "tags", 1));
     CHECK_ERROR(sentinel_query_builder_sort(advanced_query, "score", 1)); // Descending
