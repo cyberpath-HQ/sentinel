@@ -428,9 +428,10 @@ lock = threading.Lock()
 
 def init_store():
     global store
-    store = asyncio.new_event_loop()
-    asyncio.set_event_loop(store)
-    return store.run_until_complete(Store.create("./data", None))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = loop.run_until_complete(Store.create("./data", None))
+    return store
 
 with lock:
     if not store:
