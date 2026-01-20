@@ -780,8 +780,10 @@ pub unsafe extern "C" fn sentinel_store_collection_async(
         return 0;
     }
 
-    // SAFETY: The store pointer must be valid for the lifetime of the async operation.
-    // We wrap it in Arc to ensure the Store outlives the spawned task.
+    // SAFETY: We take full ownership of the store pointer to prevent the C caller
+    // from freeing it while the async operation is in progress. This prevents
+    // use-after-free. The Arc is cloned and moved into the spawned task, so
+    // the store won't be freed until the async operation completes.
     let store_arc = unsafe {
         let store_box = Box::from_raw(store as *mut Store);
         Arc::new(*store_box)
@@ -866,8 +868,10 @@ pub unsafe extern "C" fn sentinel_collection_insert_async(
         return 0;
     }
 
-    // SAFETY: The collection pointer must be valid for the lifetime of the async operation.
-    // We wrap it in Arc to ensure the Collection outlives the spawned task.
+    // SAFETY: We take full ownership of the collection pointer to prevent the C caller
+    // from freeing it while the async operation is in progress. This prevents
+    // use-after-free. The Arc is cloned and moved into the spawned task, so
+    // the collection won't be freed until the async operation completes.
     let collection_arc = unsafe {
         let collection_box = Box::from_raw(collection as *mut Collection);
         Arc::new(*collection_box)
@@ -966,8 +970,10 @@ pub unsafe extern "C" fn sentinel_collection_get_async(
         return 0;
     }
 
-    // SAFETY: The collection pointer must be valid for the lifetime of the async operation.
-    // We wrap it in Arc to ensure the Collection outlives the spawned task.
+    // SAFETY: We take full ownership of the collection pointer to prevent the C caller
+    // from freeing it while the async operation is in progress. This prevents
+    // use-after-free. The Arc is cloned and moved into the spawned task, so
+    // the collection won't be freed until the async operation completes.
     let collection_arc = unsafe {
         let collection_box = Box::from_raw(collection as *mut Collection);
         Arc::new(*collection_box)
@@ -1086,8 +1092,10 @@ pub unsafe extern "C" fn sentinel_collection_update_async(
         return 0;
     }
 
-    // SAFETY: The collection pointer must be valid for the lifetime of the async operation.
-    // We wrap it in Arc to ensure the Collection outlives the spawned task.
+    // SAFETY: We take full ownership of the collection pointer to prevent the C caller
+    // from freeing it while the async operation is in progress. This prevents
+    // use-after-free. The Arc is cloned and moved into the spawned task, so
+    // the collection won't be freed until the async operation completes.
     let collection_arc = unsafe {
         let collection_box = Box::from_raw(collection as *mut Collection);
         Arc::new(*collection_box)
