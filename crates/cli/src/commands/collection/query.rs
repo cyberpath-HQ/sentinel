@@ -97,10 +97,16 @@ impl QueryArgs {
 /// use sentinel_cli::commands::collection::query::{run, QueryArgs};
 ///
 /// let args = QueryArgs {
-///     filter: vec!["age>18".to_string()],
+///     filter: vec![String::from("age>18")],
 ///     ..Default::default()
 /// };
-/// run("/tmp/my_store".to_string(), "users".to_string(), None, args).await?;
+/// run(
+///     String::from("/tmp/my_store"),
+///     String::from("users"),
+///     None,
+///     args,
+/// )
+/// .await?;
 /// ```
 
 pub async fn run(
