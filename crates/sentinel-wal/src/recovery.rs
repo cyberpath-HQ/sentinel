@@ -45,10 +45,7 @@ pub struct WalRecoveryFailure {
 /// This function replays WAL entries to restore the collection to its
 /// correct state. It only applies operations that haven't been applied yet
 /// and handles conflicts gracefully.
-pub async fn recover_from_wal_safe<D>(
-    wal: &WalManager,
-    document_ops: &D,
-) -> Result<WalRecoveryResult>
+pub async fn recover_from_wal_safe<D>(wal: &WalManager, document_ops: &D) -> Result<WalRecoveryResult>
 where
     D: WalDocumentOps,
 {
@@ -110,9 +107,7 @@ where
 
     debug!(
         "WAL recovery completed: {} recovered, {} skipped, {} failed",
-        recovered,
-        skipped,
-        failed
+        recovered, skipped, failed
     );
 
     Ok(WalRecoveryResult {
@@ -129,10 +124,7 @@ where
 /// - Ok(true) if operation was applied
 /// - Ok(false) if operation was skipped (already applied or conflict)
 /// - Err(_) if operation failed
-async fn replay_wal_entry_safe<D>(
-    entry: &LogEntry,
-    document_ops: &D,
-) -> Result<bool>
+async fn replay_wal_entry_safe<D>(entry: &LogEntry, document_ops: &D) -> Result<bool>
 where
     D: WalDocumentOps,
 {
@@ -140,9 +132,8 @@ where
         EntryType::Insert => {
             if let Some(data_str) = &entry.data {
                 // Parse the JSON data
-                let data: serde_json::Value = serde_json::from_str(data_str).map_err(|e| {
-                    crate::error::WalError::Serialization(format!("Invalid JSON in WAL insert: {}", e))
-                })?;
+                let data: serde_json::Value = serde_json::from_str(data_str)
+                    .map_err(|e| crate::error::WalError::Serialization(format!("Invalid JSON in WAL insert: {}", e)))?;
 
                 // Check if document already exists
                 match document_ops.get_document(entry.document_id_str()).await {
@@ -156,7 +147,9 @@ where
                     },
                     Ok(None) => {
                         // Document doesn't exist, apply insert
-                        document_ops.apply_operation(&EntryType::Insert, entry.document_id_str(), Some(data)).await?;
+                        document_ops
+                            .apply_operation(&EntryType::Insert, entry.document_id_str(), Some(data))
+                            .await?;
                         Ok(true)
                     },
                     Err(e) => {
@@ -176,16 +169,17 @@ where
         EntryType::Update => {
             if let Some(data_str) = &entry.data {
                 // Parse the JSON data
-                let data: serde_json::Value = serde_json::from_str(data_str).map_err(|e| {
-                    crate::error::WalError::Serialization(format!("Invalid JSON in WAL update: {}", e))
-                })?;
+                let data: serde_json::Value = serde_json::from_str(data_str)
+                    .map_err(|e| crate::error::WalError::Serialization(format!("Invalid JSON in WAL update: {}", e)))?;
 
                 // Check if document exists
                 match document_ops.get_document(entry.document_id_str()).await {
                     Ok(Some(existing_doc)) => {
                         // Document exists, check if update is needed
                         if existing_doc != data {
-                            document_ops.apply_operation(&EntryType::Update, entry.document_id_str(), Some(data)).await?;
+                            document_ops
+                                .apply_operation(&EntryType::Update, entry.document_id_str(), Some(data))
+                                .await?;
                             Ok(true)
                         }
                         else {
@@ -219,7 +213,9 @@ where
             match document_ops.get_document(entry.document_id_str()).await {
                 Ok(Some(_)) => {
                     // Document exists, apply delete
-                    document_ops.apply_operation(&EntryType::Delete, entry.document_id_str(), None).await?;
+                    document_ops
+                        .apply_operation(&EntryType::Delete, entry.document_id_str(), None)
+                        .await?;
                     Ok(true)
                 },
                 Ok(None) => {
@@ -245,10 +241,7 @@ where
 ///
 /// This is a more aggressive recovery that attempts to resolve conflicts
 /// by overwriting conflicting states.
-pub async fn recover_from_wal_force<D>(
-    wal: &WalManager,
-    document_ops: &D,
-) -> Result<WalRecoveryResult>
+pub async fn recover_from_wal_force<D>(wal: &WalManager, document_ops: &D) -> Result<WalRecoveryResult>
 where
     D: WalDocumentOps,
 {
@@ -266,7 +259,8 @@ where
                     Ok(applied) => {
                         if applied {
                             recovered += 1;
-                        } else {
+                        }
+                        else {
                             skipped += 1;
                         }
                     },
@@ -295,9 +289,7 @@ where
 
     debug!(
         "Forced WAL recovery completed: {} recovered, {} skipped, {} failed",
-        recovered,
-        skipped,
-        failed
+        recovered, skipped, failed
     );
 
     Ok(WalRecoveryResult {
@@ -309,22 +301,20 @@ where
 }
 
 /// Force replay a WAL entry (overwrites conflicts)
-async fn replay_wal_entry_force<D>(
-    entry: &LogEntry,
-    document_ops: &D,
-) -> Result<bool>
+async fn replay_wal_entry_force<D>(entry: &LogEntry, document_ops: &D) -> Result<bool>
 where
     D: WalDocumentOps,
 {
     match entry.entry_type {
         EntryType::Insert | EntryType::Update => {
             if let Some(data_str) = &entry.data {
-                let data: serde_json::Value = serde_json::from_str(data_str).map_err(|e| {
-                    crate::error::WalError::Serialization(format!("Invalid JSON in WAL entry: {}", e))
-                })?;
+                let data: serde_json::Value = serde_json::from_str(data_str)
+                    .map_err(|e| crate::error::WalError::Serialization(format!("Invalid JSON in WAL entry: {}", e)))?;
 
                 // For force recovery, always apply the operation
-                document_ops.apply_operation(&entry.entry_type, entry.document_id_str(), Some(data)).await?;
+                document_ops
+                    .apply_operation(&entry.entry_type, entry.document_id_str(), Some(data))
+                    .await?;
                 Ok(true)
             }
             else {
@@ -333,13 +323,190 @@ where
         },
         EntryType::Delete => {
             // Force delete (ignore if document doesn't exist)
-            match document_ops.apply_operation(&EntryType::Delete, entry.document_id_str(), None).await {
+            match document_ops
+                .apply_operation(&EntryType::Delete, entry.document_id_str(), None)
+                .await
+            {
                 Ok(_) => Ok(true),
-                Err(crate::error::WalError::Io { .. }) => Ok(false), // Assume not found
+                Err(crate::error::WalError::Io {
+                    ..
+                }) => Ok(false), // Assume not found
                 Err(e) => Err(e),
             }
         },
         // Transaction control entries don't affect document state
         EntryType::Begin | EntryType::Commit | EntryType::Rollback => Ok(false),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, sync::Mutex};
+
+    use super::*;
+    use crate::{EntryType, LogEntry};
+
+    // Mock implementation of WalDocumentOps for testing
+    struct MockDocumentOps {
+        documents: Mutex<HashMap<String, serde_json::Value>>,
+    }
+
+    impl MockDocumentOps {
+        fn new() -> Self {
+            Self {
+                documents: Mutex::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl WalDocumentOps for MockDocumentOps {
+        async fn get_document(&self, id: &str) -> Result<Option<serde_json::Value>> {
+            Ok(self.documents.lock().unwrap().get(id).cloned())
+        }
+
+        async fn apply_operation(
+            &self,
+            operation: &EntryType,
+            id: &str,
+            data: Option<serde_json::Value>,
+        ) -> Result<()> {
+            let mut docs = self.documents.lock().unwrap();
+            match operation {
+                EntryType::Insert | EntryType::Update => {
+                    if let Some(data) = data {
+                        docs.insert(id.to_string(), data);
+                    }
+                },
+                EntryType::Delete => {
+                    docs.remove(id);
+                },
+                _ => {}, // No-op for other operations
+            }
+            Ok(())
+        }
+    }
+
+    fn create_test_entry(entry_type: EntryType, doc_id: &str, data: Option<&str>) -> LogEntry {
+        use crate::entry::{FixedBytes256, FixedBytes32};
+        LogEntry {
+            entry_type,
+            collection: FixedBytes256::from(b"test" as &[u8]),
+            document_id: FixedBytes256::from(doc_id.as_bytes()),
+            transaction_id: FixedBytes32::from(b"txn-123" as &[u8]),
+            data: data.map(|s| s.to_string()),
+            timestamp: chrono::Utc::now().timestamp_millis() as u64,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_insert_new_document() {
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Insert, "doc1", Some(r#"{"name": "test"}"#));
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(result);
+
+        let doc = ops.get_document("doc1").await.unwrap();
+        assert_eq!(doc.unwrap()["name"], "test");
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_insert_existing_document() {
+        let ops = MockDocumentOps::new();
+        // Pre-insert document
+        ops.apply_operation(
+            &EntryType::Insert,
+            "doc1",
+            Some(serde_json::json!({"name": "existing"})),
+        )
+        .await
+        .unwrap();
+
+        let entry = create_test_entry(EntryType::Insert, "doc1", Some(r#"{"name": "duplicate"}"#));
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(!result); // Should be skipped
+
+        let doc = ops.get_document("doc1").await.unwrap();
+        assert_eq!(doc.unwrap()["name"], "existing"); // Should remain unchanged
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_update_existing_document() {
+        let ops = MockDocumentOps::new();
+        // Pre-insert document
+        ops.apply_operation(
+            &EntryType::Insert,
+            "doc1",
+            Some(serde_json::json!({"name": "old"})),
+        )
+        .await
+        .unwrap();
+
+        let entry = create_test_entry(EntryType::Update, "doc1", Some(r#"{"name": "updated"}"#));
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(result);
+
+        let doc = ops.get_document("doc1").await.unwrap();
+        assert_eq!(doc.unwrap()["name"], "updated");
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_update_nonexistent_document() {
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Update, "doc1", Some(r#"{"name": "updated"}"#));
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(!result); // Should be skipped
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_delete_existing_document() {
+        let ops = MockDocumentOps::new();
+        // Pre-insert document
+        ops.apply_operation(
+            &EntryType::Insert,
+            "doc1",
+            Some(serde_json::json!({"name": "test"})),
+        )
+        .await
+        .unwrap();
+
+        let entry = create_test_entry(EntryType::Delete, "doc1", None);
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(result);
+
+        let doc = ops.get_document("doc1").await.unwrap();
+        assert!(doc.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_delete_nonexistent_document() {
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Delete, "doc1", None);
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(!result); // Should be skipped
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_transaction_control() {
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Begin, "doc1", None);
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(!result); // Transaction control should be skipped
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_invalid_json() {
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Insert, "doc1", Some("invalid json"));
+
+        let result = replay_wal_entry_safe(&entry, &ops).await;
+        assert!(result.is_err());
     }
 }

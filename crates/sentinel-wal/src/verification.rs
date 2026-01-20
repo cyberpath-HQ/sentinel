@@ -290,3 +290,108 @@ async fn verify_transaction_consistency(ops: &[LogEntry]) -> Result<Option<WalVe
 
     Ok(None)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{EntryType, LogEntry};
+
+    fn create_test_entry(entry_type: EntryType, doc_id: &str, txn_id: &str) -> LogEntry {
+        use crate::entry::{FixedBytes32, FixedBytes256};
+        LogEntry {
+            entry_type,
+            collection: FixedBytes256::from(b"test" as &[u8]),
+            document_id: FixedBytes256::from(doc_id.as_bytes()),
+            transaction_id: FixedBytes32::from(txn_id.as_bytes()),
+            data: None,
+            timestamp: chrono::Utc::now().timestamp_millis() as u64,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_verify_transaction_consistency_valid() {
+        let ops = vec![
+            create_test_entry(EntryType::Begin, "doc1", "txn1"),
+            create_test_entry(EntryType::Insert, "doc1", "txn1"),
+            create_test_entry(EntryType::Commit, "doc1", "txn1"),
+        ];
+
+        let result = verify_transaction_consistency(&ops).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_verify_transaction_consistency_missing_begin() {
+        let ops = vec![
+            create_test_entry(EntryType::Insert, "doc1", "txn1"),
+            create_test_entry(EntryType::Commit, "doc1", "txn1"),
+        ];
+
+        let result = verify_transaction_consistency(&ops).await.unwrap();
+        assert!(result.is_some());
+        let issue = result.unwrap();
+        assert!(issue.description.contains("missing begin"));
+        assert!(!issue.is_critical);
+    }
+
+    #[tokio::test]
+    async fn test_verify_transaction_consistency_missing_commit() {
+        let ops = vec![
+            create_test_entry(EntryType::Begin, "doc1", "txn1"),
+            create_test_entry(EntryType::Insert, "doc1", "txn1"),
+        ];
+
+        let result = verify_transaction_consistency(&ops).await.unwrap();
+        assert!(result.is_some());
+        let issue = result.unwrap();
+        assert!(issue.description.contains("missing commit"));
+        assert!(!issue.is_critical);
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_insert() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        let mut entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        entry.data = Some(r#"{"name": "test"}"#.to_string());
+
+        let result = verify_wal_entry_consistency(&entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_none());
+        assert!(wal_states.contains_key("doc1"));
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_update() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        // First insert
+        let insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+
+        // Then update
+        let mut update_entry = create_test_entry(EntryType::Update, "doc1", "txn2");
+        update_entry.data = Some(r#"{"updated": true}"#.to_string());
+
+        let result = verify_wal_entry_consistency(&update_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_delete() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        // First insert
+        let insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+
+        // Then delete
+        let delete_entry = create_test_entry(EntryType::Delete, "doc1", "txn2");
+
+        let result = verify_wal_entry_consistency(&delete_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_none());
+        assert!(!wal_states.contains_key("doc1"));
+    }
+}
