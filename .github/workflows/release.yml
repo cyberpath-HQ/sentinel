@@ -96,6 +96,18 @@ jobs:
         run: |
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${{ matrix.platform.cross }}-gcc" >> $GITHUB_ENV
 
+      - name: Install MUSL toolchain
+        if: contains(matrix.platform.rust-target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Configure MUSL linker
+        if: contains(matrix.platform.rust-target, 'musl')
+        run: |
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-gcc" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> $GITHUB_ENV
+
       - name: Build CLI binary
         run: |
           cargo build --release --target ${{ matrix.platform.rust-target }} --package sentinel-cli
