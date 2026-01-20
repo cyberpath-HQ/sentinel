@@ -3,12 +3,10 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
     use tokio::fs;
+    use futures::TryStreamExt;
 
     use super::*;
-    use crate::Store;
-    use crate::Collection;
-    use crate::SentinelError;
-    use futures::TryStreamExt;
+    use crate::{Collection, SentinelError, Store};
 
     async fn setup_collection() -> (Collection, tempfile::TempDir) {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -1198,7 +1196,10 @@ mod tests {
         // Tamper with the file
         let file_path = collection.path.join("sig-invalid.json");
         let mut content = tokio::fs::read_to_string(&file_path).await.unwrap();
-        content = content.replace("\"signature\":", "\"signature\": \"bad_sig\", \"original_signature\":");
+        content = content.replace(
+            "\"signature\":",
+            "\"signature\": \"bad_sig\", \"original_signature\":",
+        );
         tokio::fs::write(&file_path, &content).await.unwrap();
 
         // Re-read the document (disable verification to read the tampered file)
@@ -1295,6 +1296,9 @@ mod tests {
             .insert("doc-2", json!({"data": 2}))
             .await
             .unwrap();
+
+        // Flush to ensure event processor has processed the events
+        collection.flush_metadata().await.unwrap();
 
         let count = collection.count().await.unwrap();
         assert_eq!(count, 2);
@@ -1682,12 +1686,10 @@ mod tests {
 mod persistence_tests {
     use tempfile::tempdir;
     use tokio::fs;
+    use futures::TryStreamExt;
 
     use super::*;
-    use crate::Store;
-    use crate::Collection;
-    use crate::CollectionMetadata;
-    use futures::TryStreamExt;
+    use crate::{Collection, CollectionMetadata, Store};
 
     #[tokio::test]
     async fn test_metadata_persistence_across_restarts() {
@@ -1721,6 +1723,9 @@ mod persistence_tests {
 
             // Delete one document
             collection.delete("doc3").await.unwrap();
+
+            // Flush pending metadata changes (async event processor uses debouncing)
+            collection.flush_metadata().await.unwrap();
 
             // Check metadata is correct in memory
             let metadata_path = store_path
@@ -1768,6 +1773,9 @@ mod persistence_tests {
                 .insert("doc4", serde_json::json!({"name": "Diana", "age": 28}))
                 .await
                 .unwrap();
+
+            // Flush pending metadata changes
+            collection.flush_metadata().await.unwrap();
         }
 
         // Third "application session" - final verification
