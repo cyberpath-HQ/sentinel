@@ -85,11 +85,11 @@ makepkg -si
 **Alpine:**
 
 ```bash
-# Add repository
-echo "@cyberpath https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-1.0.0-beta.1.apk" | sudo tee -a /etc/apk/repositories
+# Download the Alpine package
+wget https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-alpine-x86_64.apk
 
-# Install
-sudo apk add --repository @cyberpath sentinel
+# Install the package
+sudo apk add --no-cache ./sentinel-alpine-x86_64.apk
 ```
 
 ### macOS
@@ -164,7 +164,7 @@ sudo ldconfig
 macOS:
 
 ```bash
-curl -L https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-cxx-macos-universal.tar.gz | tar -xzf
+curl -L https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-cxx-macos-universal.tar.gz | tar -xzf -
 sudo cp -r include/sentinel-cxx /usr/local/include/
 sudo cp lib/libsentinel-cxx.dylib /usr/local/lib/
 ```
