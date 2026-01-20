@@ -117,6 +117,48 @@ jobs:
           retention-days: 5
 
   # =============================================================================
+  # Build CXX libraries for all platforms
+  # =============================================================================
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rust_target: x86_64-unknown-linux-gnu
+            system: linux-x86_64
+          - os: macos-latest
+            rust_target: x86_64-apple-darwin
+            system: macos-x86_64
+          - os: macos-14
+            rust_target: aarch64-apple-darwin
+            system: macos-aarch64
+          - os: windows-latest
+            rust_target: x86_64-pc-windows-gnu
+            system: windows-x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build C/C++ bindings
+        run: cargo build --release --target ${{ matrix.rust_target }} --package sentinel-cxx
+
+      - name: Upload C/C++ artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cxx-libs-${{ matrix.system }}
+          path: |
+            target/${{ matrix.rust_target }}/release/libsentinel_cxx*
+            target/${{ matrix.rust_target }}/release/sentinel-cxx.h
+
+  # =============================================================================
   # Trigger semantic-release with all CLI binaries
   # =============================================================================
   release:
@@ -141,6 +183,22 @@ jobs:
           path: cli-artifacts
           pattern: cli-*
           merge-multiple: false
+
+      - name: Download C/C++ artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Organize C/C++ artifacts
+        run: |
+          mkdir -p target/x86_64-unknown-linux-gnu/release
+          cp artifacts/cxx-libs-linux-x86_64/* target/x86_64-unknown-linux-gnu/release/ || true
+          mkdir -p target/x86_64-apple-darwin/release
+          cp artifacts/cxx-libs-macos-x86_64/* target/x86_64-apple-darwin/release/ || true
+          mkdir -p target/aarch64-apple-darwin/release
+          cp artifacts/cxx-libs-macos-aarch64/* target/aarch64-apple-darwin/release/ || true
+          mkdir -p target/x86_64-pc-windows-gnu/release
+          cp artifacts/cxx-libs-windows-x86_64/* target/x86_64-pc-windows-gnu/release/ || true
 
       - name: Organize CLI binaries
         run: |
