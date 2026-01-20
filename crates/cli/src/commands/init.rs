@@ -308,8 +308,8 @@ mod tests {
         let store_path = temp_dir.path().join("store_with_key");
 
         // Generate a signing key for testing
-        let key = sentinel_crypto::SigningKeyManager::generate_key();
-        let key_hex = sentinel_crypto::SigningKeyManager::export_key(&key);
+        let key = sentinel_dbms::SigningKeyManager::generate_key();
+        let key_hex = sentinel_dbms::SigningKeyManager::export_key(&key);
 
         let args = InitArgs {
             path: store_path.to_string_lossy().to_string(),
