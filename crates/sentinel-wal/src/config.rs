@@ -27,9 +27,9 @@ impl std::str::FromStr for WalFailureMode {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "disabled" => Ok(WalFailureMode::Disabled),
-            "warn" => Ok(WalFailureMode::Warn),
-            "strict" => Ok(WalFailureMode::Strict),
+            "disabled" => Ok(Self::Disabled),
+            "warn" => Ok(Self::Warn),
+            "strict" => Ok(Self::Strict),
             _ => Err(format!("Invalid WAL failure mode: {}", s)),
         }
     }
@@ -37,10 +37,10 @@ impl std::str::FromStr for WalFailureMode {
 
 impl std::fmt::Display for WalFailureMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WalFailureMode::Disabled => write!(f, "disabled"),
-            WalFailureMode::Warn => write!(f, "warn"),
-            WalFailureMode::Strict => write!(f, "strict"),
+        match *self {
+            Self::Disabled => write!(f, "disabled"),
+            Self::Warn => write!(f, "warn"),
+            Self::Strict => write!(f, "strict"),
         }
     }
 }
