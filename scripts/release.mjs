@@ -562,6 +562,48 @@ function buildNodeJsModule(workspaceRoot) {
   return join(jsBindings, 'native');
 }
 
+/**
+ * Tests language bindings before publishing
+ * @param {string} workspaceRoot - Root directory of the workspace
+ */
+function testLanguageBindings(workspaceRoot) {
+  section('Testing Language Bindings');
+
+  const crates = [
+    { name: 'sentinel-cxx', description: 'C/C++ bindings', testCmd: 'cargo test --release -p sentinel-cxx' },
+    { name: 'sentinel-python', description: 'Python bindings', testCmd: 'cargo test --release -p sentinel-python' },
+    { name: 'sentinel-js', description: 'Node.js bindings', testCmd: 'cargo test --release -p sentinel-js' },
+  ];
+
+  let allPassed = true;
+
+  for (const crate of crates) {
+    const manifestPath = join(workspaceRoot, 'crates', crate.name, 'Cargo.toml');
+
+    if (!existsSync(manifestPath)) {
+      warn(`${crate.description} not found, skipping tests`);
+      continue;
+    }
+
+    info(`Testing ${crate.description}...`);
+
+    try {
+      run(crate.testCmd, { cwd: workspaceRoot });
+      success(`${crate.description} tests passed`);
+    } catch {
+      error(`❌ ${crate.description} tests failed`);
+      allPassed = false;
+    }
+  }
+
+  if (!allPassed) {
+    console.error('\n❌ Language binding tests failed!');
+    process.exit(1);
+  }
+
+  success('All language binding tests passed');
+}
+
 // =============================================================================
 // Publishing Functions
 // =============================================================================
@@ -707,6 +749,9 @@ async function main() {
 
   const wheelsDir = buildPythonWheel(workspaceRoot);
   const nodeDir = buildNodeJsModule(workspaceRoot);
+
+  // Test language bindings before publishing
+  testLanguageBindings(workspaceRoot);
 
   // Publish everything
   section('Publishing to Registries');
