@@ -46,14 +46,15 @@ function section(name) {
  * Prints a command being executed with visual emphasis
  * @param {string} cmd - Command to display
  * @param {object} options - execSync options
- * @returns {import('child_process').SpawnSyncReturns<string>|null} - Command result or null if dry-run
+ * @param {boolean} skipInDryRun - Whether to skip this command in dry-run mode (for publishing)
+ * @returns {import('child_process').SpawnSyncReturns<string>|null} - Command result or null if skipped
  */
-function run(cmd, options = {}) {
+function run(cmd, options = {}, skipInDryRun = false) {
   const prefix = isDryRun ? '🔍 [DRY RUN]' : '⚡';
   console.log(`${prefix} Executing: ${cmd}`);
   console.log(`─`.repeat(60));
 
-  if (isDryRun) {
+  if (isDryRun && skipInDryRun) {
     return null;
   }
 
@@ -94,6 +95,20 @@ function success(message) {
 // =============================================================================
 
 /**
+ * Builds all Rust crates needed for release
+ * @param {string} workspaceRoot - Root directory of the workspace
+ */
+function buildRustCrates(workspaceRoot) {
+  section('Building Rust Crates');
+
+  run('cargo build --release --manifest-path crates/sentinel-crypto/Cargo.toml', { cwd: workspaceRoot });
+  run('cargo build --release --manifest-path crates/sentinel/Cargo.toml', { cwd: workspaceRoot });
+  run('cargo build --release --manifest-path crates/cli/Cargo.toml', { cwd: workspaceRoot });
+
+  success('Built all Rust crates');
+}
+
+/**
  * Publishes Rust crates to crates.io
  * @param {string} workspaceRoot - Root directory of the workspace
  */
@@ -101,14 +116,14 @@ function publishRustCrates(workspaceRoot) {
   section('Publishing Rust Crates to crates.io');
 
   if (isDryRun) {
-    info('Would publish the following crates:');
+    info('Would publish the following crates to crates.io:');
     console.log('  • sentinel-crypto');
     console.log('  • sentinel');
     console.log('  • cli');
   } else {
-    run('cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml', { cwd: workspaceRoot });
-    run('cargo publish --manifest-path crates/sentinel/Cargo.toml', { cwd: workspaceRoot });
-    run('cargo publish --manifest-path crates/cli/Cargo.toml', { cwd: workspaceRoot });
+    run('cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml', { cwd: workspaceRoot }, true);
+    run('cargo publish --manifest-path crates/sentinel/Cargo.toml', { cwd: workspaceRoot }, true);
+    run('cargo publish --manifest-path crates/cli/Cargo.toml', { cwd: workspaceRoot }, true);
     success('Published Rust crates to crates.io');
   }
 }
@@ -250,7 +265,7 @@ function publishPythonToPypi(wheelsDir) {
   }
 
   if (process.env.TWINE_USERNAME && process.env.TWINE_PASSWORD) {
-    run(`twine upload ${wheelsDir}/*.whl --skip-existing --non-interactive`);
+    run(`twine upload ${wheelsDir}/*.whl --skip-existing --non-interactive`, {}, true);
     success('Published Python wheel to PyPI');
   } else {
     warn('TWINE_USERNAME or TWINE_PASSWORD not set, skipping PyPI upload');
@@ -298,7 +313,7 @@ function publishNodeJsToNpm(workspaceRoot) {
   }
 
   if (process.env.NPM_TOKEN) {
-    run('npm publish', { cwd: jsBindings });
+    run('npm publish', { cwd: jsBindings }, true);
     success('Published Node.js native module to npm');
   } else {
     warn('NPM_TOKEN not set, skipping npm upload');
@@ -322,19 +337,22 @@ async function main() {
   const workspaceRoot = join(__dirname, '..');
 
   console.log(`\n🚀 Sentinel Release v${nextRelease}`);
-  console.log(`   Mode: ${isDryRun ? '🔍 DRY RUN (no publishing)' : '⚡ LIVE RELEASE'}\n`);
+  console.log(`   Mode: ${isDryRun ? '🔍 DRY RUN (builds run, no publishing)' : '⚡ LIVE RELEASE'}\n`);
 
-  // Phase 1: Publish Rust crates
+  // Phase 1: Build Rust crates
+  buildRustCrates(workspaceRoot);
+
+  // Phase 2: Publish Rust crates (skipped in dry-run)
   publishRustCrates(workspaceRoot);
 
-  // Phase 2: Build C/C++ development package
+  // Phase 3: Build C/C++ development package
   const cxxZipPath = buildCxxDevPackage(workspaceRoot, nextRelease);
 
-  // Phase 3: Build and publish Python wheel
+  // Phase 4: Build and publish Python wheel
   const wheelsDir = buildPythonWheel(workspaceRoot);
   publishPythonToPypi(wheelsDir);
 
-  // Phase 4: Build and publish Node.js native module
+  // Phase 5: Build and publish Node.js native module
   buildNodeJsModule(workspaceRoot);
   publishNodeJsToNpm(workspaceRoot);
 
