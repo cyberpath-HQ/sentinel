@@ -78,6 +78,6 @@ pub use sentinel_wal::{
 };
 
 /// The current version of the Sentinel metadata format.
-pub const META_SENTINEL_VERSION: u32 = 1;
+pub const META_SENTINEL_VERSION: u32 = 2;
 /// The current version of the Sentinel document format.
 pub const DOCUMENT_SENTINEL_VERSION: u32 = 1;
