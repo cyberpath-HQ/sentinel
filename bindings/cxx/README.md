@@ -13,7 +13,7 @@ Complete C and C++ bindings for Cyberpath Sentinel, providing full access to all
   - **Sorting**: Ascending/descending order on any field
   - **Pagination**: Limit and offset for result pagination
   - **Complex Queries**: Combine multiple filters with AND logic
-- **Asynchronous Operations**: True non-blocking async operations with callbacks for all functions
+- **Asynchronous Operations**: True non-blocking async operations available alongside synchronous APIs
 - **Error Handling**: Comprehensive error reporting with detailed messages
 - **Memory Management**: Automatic cleanup with RAII in C++ and manual management in C
 
@@ -22,7 +22,13 @@ Complete C and C++ bindings for Cyberpath Sentinel, providing full access to all
 - **Memory Safety**: No memory leaks or undefined behavior
 - **Cross-Platform**: Works on Linux, macOS, Windows
 - **Performance**: Minimal overhead compared to native Rust usage
-- **Stability**: All operations are synchronous with proper blocking
+- **Stability**: Stable synchronous and asynchronous APIs with proper blocking (sync) and callback-based (async) operation modes
+
+### 📋 Operation Modes
+The C/C++ bindings provide both synchronous and asynchronous operation modes:
+- **Synchronous Mode**: Traditional blocking operations that return results immediately (recommended for simple use cases)
+- **Asynchronous Mode**: Non-blocking operations with callbacks for high-performance and concurrent applications
+- **Flexible Usage**: Choose the appropriate mode for each operation based on your application's requirements
 
 ### ✅ Developer Experience
 - **C API**: Simple C functions with clear naming conventions
