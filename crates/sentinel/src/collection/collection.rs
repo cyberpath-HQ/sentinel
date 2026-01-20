@@ -353,7 +353,9 @@ impl Collection {
                                 size_bytes,
                             }) => {
                                 tracing::debug!("Processing document inserted event: {} (size: {})", collection, size_bytes);
-                                // In-memory counters are updated inline in insert(), but we track for metadata save
+                                // Update atomic counters asynchronously
+                                total_documents.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                total_size_bytes.fetch_add(size_bytes, std::sync::atomic::Ordering::Relaxed);
                                 changed = true;
                             },
                             Some(crate::events::StoreEvent::DocumentUpdated {
@@ -363,6 +365,9 @@ impl Collection {
                             }) => {
                                 tracing::debug!("Processing document updated event: {} (old: {}, new: {})",
                                     collection, old_size_bytes, new_size_bytes);
+                                // Update atomic counters asynchronously
+                                total_size_bytes.fetch_sub(old_size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                total_size_bytes.fetch_add(new_size_bytes, std::sync::atomic::Ordering::Relaxed);
                                 changed = true;
                             },
                             Some(crate::events::StoreEvent::DocumentDeleted {
@@ -370,6 +375,9 @@ impl Collection {
                                 size_bytes,
                             }) => {
                                 tracing::debug!("Processing document deleted event: {} (size: {})", collection, size_bytes);
+                                // Update atomic counters asynchronously
+                                total_documents.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                                total_size_bytes.fetch_sub(size_bytes, std::sync::atomic::Ordering::Relaxed);
                                 changed = true;
                             },
                             None => {
