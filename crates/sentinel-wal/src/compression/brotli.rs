@@ -7,8 +7,7 @@
 
 use async_trait::async_trait;
 
-use crate::compression::CompressionTrait;
-use crate::Result;
+use crate::{compression::CompressionTrait, Result};
 
 /// Brotli compressor
 pub struct BrotliCompressor;
@@ -17,7 +16,7 @@ pub struct BrotliCompressor;
 impl CompressionTrait for BrotliCompressor {
     async fn compress(&self, data: &[u8]) -> Result<Vec<u8>> {
         use async_compression::tokio::bufread::BrotliEncoder;
-        use tokio::io::AsyncReadExt;
+        use tokio::io::AsyncReadExt as _;
 
         let mut encoder = BrotliEncoder::new(std::io::Cursor::new(data));
         let mut compressed: Vec<u8> = Vec::new();
@@ -30,7 +29,7 @@ impl CompressionTrait for BrotliCompressor {
 
     async fn decompress(&self, data: &[u8]) -> Result<Vec<u8>> {
         use async_compression::tokio::bufread::BrotliDecoder;
-        use tokio::io::AsyncReadExt;
+        use tokio::io::AsyncReadExt as _;
 
         let mut decoder = BrotliDecoder::new(std::io::Cursor::new(data));
         let mut decompressed: Vec<u8> = Vec::new();
