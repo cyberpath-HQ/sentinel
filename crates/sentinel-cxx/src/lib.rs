@@ -2,7 +2,7 @@ use std::{
     ffi::{CStr, CString},
     os::raw::c_char,
     ptr,
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
 use sentinel_dbms::{Collection, Filter, Query, Store};
@@ -780,7 +780,14 @@ pub unsafe extern "C" fn sentinel_store_collection_async(
         return 0;
     }
 
-    let store_ref = unsafe { &*(store as *mut Store) };
+    // SAFETY: The store pointer must be valid for the lifetime of the async operation.
+    // We wrap it in Arc to ensure the Store outlives the spawned task.
+    let store_arc = unsafe {
+        let store_box = Box::from_raw(store as *mut Store);
+        Arc::new(*store_box)
+    };
+
+    let store_ref = Arc::clone(&store_arc);
     let name_str = match unsafe { CStr::from_ptr(name) }.to_str() {
         Ok(s) => s.to_string(),
         Err(e) => {
@@ -859,7 +866,14 @@ pub unsafe extern "C" fn sentinel_collection_insert_async(
         return 0;
     }
 
-    let collection_ref = unsafe { &*(collection as *mut Collection) };
+    // SAFETY: The collection pointer must be valid for the lifetime of the async operation.
+    // We wrap it in Arc to ensure the Collection outlives the spawned task.
+    let collection_arc = unsafe {
+        let collection_box = Box::from_raw(collection as *mut Collection);
+        Arc::new(*collection_box)
+    };
+
+    let collection_ref = Arc::clone(&collection_arc);
     let id_str = match unsafe { CStr::from_ptr(id) }.to_str() {
         Ok(s) => s.to_string(),
         Err(e) => {
@@ -952,7 +966,14 @@ pub unsafe extern "C" fn sentinel_collection_get_async(
         return 0;
     }
 
-    let collection_ref = unsafe { &*(collection as *mut Collection) };
+    // SAFETY: The collection pointer must be valid for the lifetime of the async operation.
+    // We wrap it in Arc to ensure the Collection outlives the spawned task.
+    let collection_arc = unsafe {
+        let collection_box = Box::from_raw(collection as *mut Collection);
+        Arc::new(*collection_box)
+    };
+
+    let collection_ref = Arc::clone(&collection_arc);
     let id_str = match unsafe { CStr::from_ptr(id) }.to_str() {
         Ok(s) => s.to_string(),
         Err(e) => {
@@ -1065,7 +1086,14 @@ pub unsafe extern "C" fn sentinel_collection_update_async(
         return 0;
     }
 
-    let collection_ref = unsafe { &*(collection as *mut Collection) };
+    // SAFETY: The collection pointer must be valid for the lifetime of the async operation.
+    // We wrap it in Arc to ensure the Collection outlives the spawned task.
+    let collection_arc = unsafe {
+        let collection_box = Box::from_raw(collection as *mut Collection);
+        Arc::new(*collection_box)
+    };
+
+    let collection_ref = Arc::clone(&collection_arc);
     let id_str = match unsafe { CStr::from_ptr(id) }.to_str() {
         Ok(s) => s.to_string(),
         Err(e) => {
