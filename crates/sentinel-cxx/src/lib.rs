@@ -1471,6 +1471,10 @@ pub unsafe extern "C" fn sentinel_collection_query_async(
 
 /// Combine two queries with OR logic
 /// Creates a new query that matches either the left OR right query
+///
+/// When combining queries with multiple filters (which are internally ANDed),
+/// this function properly ORs the two filter groups together rather than
+/// flattening and OR-ing every individual filter.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn sentinel_query_or(
     left: *mut sentinel_query_t,
@@ -1487,10 +1491,26 @@ pub unsafe extern "C" fn sentinel_query_or(
     // Create a new query with combined filters using OR
     let mut combined_filters = Vec::new();
 
-    // If either query has multiple filters, we need to combine them properly
-    // For simplicity, we'll combine all filters from both queries with OR
-    if left_query.filters.len() == 1 && right_query.filters.len() == 1 {
+    // Handle the case where either query has multiple filters
+    // Each query's filters should be treated as an AND group
+    let left_has_multiple = left_query.filters.len() > 1;
+    let right_has_multiple = right_query.filters.len() > 1;
+
+    if left_query.filters.is_empty() && right_query.filters.is_empty() {
+        // Both queries have no filters - return empty result (matches nothing)
+        // This is correct since an empty OR would match nothing
+    }
+    else if left_query.filters.is_empty() {
+        // Left has no filters, return right as-is
+        combined_filters.extend(right_query.filters.clone());
+    }
+    else if right_query.filters.is_empty() {
+        // Right has no filters, return left as-is
+        combined_filters.extend(left_query.filters.clone());
+    }
+    else if left_query.filters.len() == 1 && right_query.filters.len() == 1 {
         // Simple case: both queries have single filters
+        // OR the two individual filters
         let left_filter = left_query.filters[0].clone();
         let right_filter = right_query.filters[0].clone();
         combined_filters.push(sentinel_dbms::Filter::Or(
@@ -1498,22 +1518,48 @@ pub unsafe extern "C" fn sentinel_query_or(
             Box::new(right_filter),
         ));
     }
-    else {
-        // Complex case: multiple filters, combine them all with OR in a tree structure
-        let mut all_filters = left_query.filters.clone();
-        all_filters.extend(right_query.filters.clone());
+    else if left_has_multiple && right_has_multiple {
+        // Both have multiple filters - create AND groups and OR them
+        let mut left_and = left_query.filters[0].clone();
+        for filter in &left_query.filters[1 ..] {
+            left_and = sentinel_dbms::Filter::And(Box::new(left_and), Box::new(filter.clone()));
+        }
 
-        if all_filters.len() >= 2 {
-            // Combine all filters with OR in a tree structure
-            let mut combined = all_filters[0].clone();
-            for filter in &all_filters[1 ..] {
-                combined = sentinel_dbms::Filter::Or(Box::new(combined), Box::new(filter.clone()));
-            }
-            combined_filters.push(combined);
+        let mut right_and = right_query.filters[0].clone();
+        for filter in &right_query.filters[1 ..] {
+            right_and = sentinel_dbms::Filter::And(Box::new(right_and), Box::new(filter.clone()));
         }
-        else if all_filters.len() == 1 {
-            combined_filters.push(all_filters[0].clone());
+
+        combined_filters.push(sentinel_dbms::Filter::Or(
+            Box::new(left_and),
+            Box::new(right_and),
+        ));
+    }
+    else if left_has_multiple {
+        // Left has multiple filters (AND group), right has single filter
+        let mut left_and = left_query.filters[0].clone();
+        for filter in &left_query.filters[1 ..] {
+            left_and = sentinel_dbms::Filter::And(Box::new(left_and), Box::new(filter.clone()));
         }
+
+        let right_filter = right_query.filters[0].clone();
+        combined_filters.push(sentinel_dbms::Filter::Or(
+            Box::new(left_and),
+            Box::new(right_filter),
+        ));
+    }
+    else {
+        // Right has multiple filters (AND group), left has single filter
+        let mut right_and = right_query.filters[0].clone();
+        for filter in &right_query.filters[1 ..] {
+            right_and = sentinel_dbms::Filter::And(Box::new(right_and), Box::new(filter.clone()));
+        }
+
+        let left_filter = left_query.filters[0].clone();
+        combined_filters.push(sentinel_dbms::Filter::Or(
+            Box::new(left_filter),
+            Box::new(right_and),
+        ));
     }
 
     let new_query = Query {
