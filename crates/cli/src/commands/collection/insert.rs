@@ -47,12 +47,18 @@ pub struct InsertArgs {
 ///
 /// // Single document insert
 /// let args = InsertArgs {
-///     id:   Some("user1".to_string()),
+///     id:   Some(String::from("user1")),
 ///     data: Some(r#"{"name": "Alice"}"#.to_string()),
 ///     bulk: None,
 ///     wal:  WalArgs::default(),
 /// };
-/// run("/tmp/my_store".to_string(), "users".to_string(), None, args).await?;
+/// run(
+///     String::from("/tmp/my_store"),
+///     String::from("users"),
+///     None,
+///     args,
+/// )
+/// .await?;
 /// ```
 
 /// Parse a JSON string into a serde_json::Value
