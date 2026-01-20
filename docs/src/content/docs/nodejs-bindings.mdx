@@ -82,7 +82,7 @@ main().catch(console.error);
 With TypeScript:
 
 ```typescript
-import { Store } from "@cyberpath/sentinel";
+import { SentinelStore } from "@cyberpath/sentinel";
 
 async function main(): Promise<void> {
   const store = await SentinelStore.create("./my-database", null);
@@ -399,7 +399,7 @@ const { Store, SentinelError } = require("@cyberpath/sentinel");
 
 async function main() {
   try {
-const store = await SentinelSentinelStore.create("./my-database");
+    const store = await SentinelStore.create("./my-database", null);
     const users = await store.collection("users");
 
     // Try to get a non-existent document
