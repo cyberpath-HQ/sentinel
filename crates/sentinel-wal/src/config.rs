@@ -53,34 +53,71 @@ impl std::fmt::Display for WalFailureMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionWalConfig {
     /// Operational mode for WAL write operations (insert/update/delete)
-    pub write_mode:             WalFailureMode,
+    pub write_mode:            WalFailureMode,
     /// Operational mode for WAL verification operations
-    pub verification_mode:      WalFailureMode,
+    pub verification_mode:     WalFailureMode,
     /// Whether to automatically verify documents against WAL on read
-    pub auto_verify:            bool,
+    pub auto_verify:           bool,
     /// Whether to enable WAL-based recovery features
-    pub enable_recovery:        bool,
+    pub enable_recovery:       bool,
     /// Optional maximum WAL file size in bytes
-    pub max_wal_size_bytes:     Option<u64>,
+    pub max_wal_size_bytes:    Option<u64>,
     /// Optional compression algorithm for rotated WAL files
-    pub compression_algorithm:  Option<crate::CompressionAlgorithm>,
+    pub compression_algorithm: Option<crate::CompressionAlgorithm>,
     /// Optional maximum number of records per WAL file
-    pub max_records_per_file:   Option<usize>,
+    pub max_records_per_file:  Option<usize>,
     /// WAL file format
-    pub format:                 crate::manager::WalFormat,
+    pub format:                crate::manager::WalFormat,
 }
 
 impl Default for CollectionWalConfig {
     fn default() -> Self {
         Self {
-            write_mode:             WalFailureMode::Strict,
-            verification_mode:      WalFailureMode::Warn,
-            auto_verify:            false,
-            enable_recovery:        true,
-            max_wal_size_bytes:     Some(10 * 1024 * 1024), // 10MB
-            compression_algorithm:  Some(crate::CompressionAlgorithm::Zstd),
-            max_records_per_file:   Some(1000),
-            format:                 crate::manager::WalFormat::default(),
+            write_mode:            WalFailureMode::Strict,
+            verification_mode:     WalFailureMode::Warn,
+            auto_verify:           false,
+            enable_recovery:       true,
+            max_wal_size_bytes:    Some(10 * 1024 * 1024), // 10MB
+            compression_algorithm: Some(crate::CompressionAlgorithm::Zstd),
+            max_records_per_file:  Some(1000),
+            format:                crate::manager::WalFormat::default(),
+        }
+    }
+}
+
+/// Overrides for CollectionWalConfig, where None means "use existing value".
+#[derive(Debug, Clone, Default)]
+pub struct CollectionWalConfigOverrides {
+    pub write_mode:            Option<WalFailureMode>,
+    pub verification_mode:     Option<WalFailureMode>,
+    pub auto_verify:           Option<bool>,
+    pub enable_recovery:       Option<bool>,
+    pub max_wal_size_bytes:    Option<Option<u64>>, // None means don't override, Some(None) means set to None
+    pub compression_algorithm: Option<Option<crate::CompressionAlgorithm>>,
+    pub max_records_per_file:  Option<Option<usize>>,
+    pub format:                Option<crate::manager::WalFormat>,
+}
+
+impl CollectionWalConfig {
+    /// Apply overrides to this config, returning a new config with overrides applied.
+    pub fn apply_overrides(&self, overrides: &CollectionWalConfigOverrides) -> Self {
+        Self {
+            write_mode:            overrides.write_mode.unwrap_or(self.write_mode),
+            verification_mode:     overrides
+                .verification_mode
+                .unwrap_or(self.verification_mode),
+            auto_verify:           overrides.auto_verify.unwrap_or(self.auto_verify),
+            enable_recovery:       overrides.enable_recovery.unwrap_or(self.enable_recovery),
+            max_wal_size_bytes:    overrides
+                .max_wal_size_bytes
+                .unwrap_or(self.max_wal_size_bytes),
+            compression_algorithm: overrides
+                .compression_algorithm
+                .unwrap_or(self.compression_algorithm),
+            max_records_per_file:  overrides
+                .max_records_per_file
+                .unwrap_or(self.max_records_per_file),
+            format:                overrides.format.unwrap_or(self.format),
         }
     }
 }
