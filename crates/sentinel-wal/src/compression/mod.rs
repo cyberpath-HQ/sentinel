@@ -13,7 +13,7 @@ pub use deflate::DeflateCompressor;
 pub use gzip::GzipCompressor;
 
 /// Compression algorithms available for WAL file rotation
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CompressionAlgorithm {
     /// Zstandard compression: Best overall choice for WAL files.
     /// Provides excellent compression ratio (better than gzip) with fast compression/decompression
@@ -47,11 +47,11 @@ impl std::str::FromStr for CompressionAlgorithm {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "zstd" => Ok(CompressionAlgorithm::Zstd),
-            "lz4" => Ok(CompressionAlgorithm::Lz4),
-            "brotli" => Ok(CompressionAlgorithm::Brotli),
-            "deflate" => Ok(CompressionAlgorithm::Deflate),
-            "gzip" => Ok(CompressionAlgorithm::Gzip),
+            "zstd" => Ok(Self::Zstd),
+            "lz4" => Ok(Self::Lz4),
+            "brotli" => Ok(Self::Brotli),
+            "deflate" => Ok(Self::Deflate),
+            "gzip" => Ok(Self::Gzip),
             _ => Err(format!("Invalid compression algorithm: {}", s)),
         }
     }
@@ -59,12 +59,12 @@ impl std::str::FromStr for CompressionAlgorithm {
 
 impl std::fmt::Display for CompressionAlgorithm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CompressionAlgorithm::Zstd => write!(f, "zstd"),
-            CompressionAlgorithm::Lz4 => write!(f, "lz4"),
-            CompressionAlgorithm::Brotli => write!(f, "brotli"),
-            CompressionAlgorithm::Deflate => write!(f, "deflate"),
-            CompressionAlgorithm::Gzip => write!(f, "gzip"),
+        match *self {
+            Self::Zstd => write!(f, "zstd"),
+            Self::Lz4 => write!(f, "lz4"),
+            Self::Brotli => write!(f, "brotli"),
+            Self::Deflate => write!(f, "deflate"),
+            Self::Gzip => write!(f, "gzip"),
         }
     }
 }
