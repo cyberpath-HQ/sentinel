@@ -7,8 +7,7 @@
 
 use async_trait::async_trait;
 
-use crate::compression::CompressionTrait;
-use crate::Result;
+use crate::{compression::CompressionTrait, Result};
 
 /// DEFLATE compressor
 pub struct DeflateCompressor;
@@ -17,7 +16,7 @@ pub struct DeflateCompressor;
 impl CompressionTrait for DeflateCompressor {
     async fn compress(&self, data: &[u8]) -> Result<Vec<u8>> {
         use async_compression::tokio::bufread::DeflateEncoder;
-        use tokio::io::AsyncReadExt;
+        use tokio::io::AsyncReadExt as _;
 
         let mut encoder = DeflateEncoder::new(std::io::Cursor::new(data));
         let mut compressed: Vec<u8> = Vec::new();
@@ -30,7 +29,7 @@ impl CompressionTrait for DeflateCompressor {
 
     async fn decompress(&self, data: &[u8]) -> Result<Vec<u8>> {
         use async_compression::tokio::bufread::DeflateDecoder;
-        use tokio::io::AsyncReadExt;
+        use tokio::io::AsyncReadExt as _;
 
         let mut decoder = DeflateDecoder::new(std::io::Cursor::new(data));
         let mut decompressed: Vec<u8> = Vec::new();
