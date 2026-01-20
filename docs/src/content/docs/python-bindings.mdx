@@ -1,0 +1,551 @@
+---
+title: Python Bindings
+description: Complete guide to using Cyberpath Sentinel with Python. Installation, usage examples, and API reference.
+section: Language Bindings
+order: 2
+keywords: ["python", "bindings", "pip", "installation", "api", "examples"]
+related: ["language-bindings", "nodejs-bindings", "cpp-bindings", "releases"]
+---
+
+The Python bindings provide a native Python interface to Cyberpath Sentinel, enabling you to use Sentinel's
+filesystem-backed document database in your Python applications. Built using PyO3, these bindings offer full async
+support and integrate seamlessly with the Python ecosystem.
+
+## Installation
+
+### From PyPI (Recommended)
+
+The simplest way to install the Python bindings is via pip:
+
+```bash
+pip install sentinel-dbms
+```
+
+This installs a binary wheel compatible with Python 3.8+ on common platforms:
+
+- **Linux**: x86_64 (manylinux2014), aarch64
+- **macOS**: x86_64 (Intel), aarch64 (Apple Silicon)
+- **Windows**: x86_64
+
+### From Source
+
+To build from source, you'll need Rust and Python development headers:
+
+```bash
+# Clone the repository
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel/bindings/python
+
+# Install maturin for building
+pip install maturin
+
+# Build and install
+maturin develop
+```
+
+Or for a specific Python version:
+
+```bash
+maturin develop --interpreter python3.11
+```
+
+## Quick Start
+
+### Creating a Store
+
+```python
+import asyncio
+from sentinel_python import Store
+
+async def main():
+    # Create a new store
+    # If passphrase is None, documents won't be signed
+    store = await Store.create("./my-database", None)
+
+    print(f"Store created at {store.path()}")
+    return store
+
+# Run the async function
+store = asyncio.run(main())
+```
+
+### Working with Collections
+
+```python
+import asyncio
+from sentinel_python import Store
+
+async def main():
+    store = await Store.create("./my-database", None)
+
+    # Get or create a collection
+    users = await store.collection("users")
+
+    # List all collections
+    collections = await store.list_collections()
+    print(f"Collections: {collections}")
+
+asyncio.run(main())
+```
+
+### Document Operations
+
+```python
+import asyncio
+from sentinel_python import Store
+
+async def main():
+    store = await Store.create("./my-database", None)
+    users = await store.collection("users")
+
+    # Insert a document
+    await users.insert("alice", {
+        "name": "Alice Johnson",
+        "email": "alice@example.com",
+        "role": "admin",
+        "department": "Engineering",
+        "active": True,
+        "age": 30
+    })
+
+    # Get a document
+    doc = await users.get("alice")
+    if doc:
+        print(f"Found: {doc.data()['name']}")
+        print(f"Email: {doc.data()['email']}")
+        print(f"Version: {doc.version()}")
+        print(f"Created: {doc.created_at()}")
+
+    # Update a document
+    await users.update("alice", {
+        "name": "Alice Johnson",
+        "email": "alice.johnson@example.com",  # Updated email
+        "role": "senior_admin",  # Promoted
+        "department": "Engineering",
+        "active": True,
+        "age": 31  # Birthday!
+    })
+
+    # Delete a document
+    await users.delete("alice")
+    print("Document deleted")
+
+asyncio.run(main())
+```
+
+### Bulk Operations
+
+Insert multiple documents efficiently:
+
+```python
+import asyncio
+from sentinel_python import Store
+
+async def main():
+    store = await Store.create("./my-database", None)
+    users = await store.collection("users")
+
+    # Bulk insert multiple documents
+    documents = [
+        ("bob", {"name": "Bob Smith", "role": "user"}),
+        ("charlie", {"name": "Charlie Brown", "role": "user"}),
+        ("diana", {"name": "Diana Prince", "role": "admin"}),
+        ("eve", {"name": "Eve Wilson", "role": "user"}),
+    ]
+
+    await users.bulk_insert(documents)
+    print(f"Inserted {len(documents)} documents")
+
+    # Get multiple documents by ID
+    ids = ["bob", "charlie", "eve"]
+    results = await users.get_many(ids)
+
+    for i, doc in enumerate(results):
+        if doc:
+            print(f"Found: {doc.data()['name']}")
+        else:
+            print(f"Not found: {ids[i]}")
+
+asyncio.run(main())
+```
+
+## Querying Documents
+
+### Basic Queries
+
+```python
+import asyncio
+from sentinel_python import Store, QueryBuilder
+
+async def main():
+    store = await Store.create("./my-database", None)
+    users = await store.collection("users")
+
+    # Insert test data
+    await users.bulk_insert([
+        ("user1", {"name": "Alice", "age": 30, "role": "admin", "active": True}),
+        ("user2", {"name": "Bob", "age": 25, "role": "user", "active": True}),
+        ("user3", {"name": "Charlie", "age": 35, "role": "user", "active": False}),
+        ("user4", {"name": "Diana", "age": 28, "role": "admin", "active": True}),
+    ])
+
+    # Build a query
+    query = (
+        QueryBuilder()
+        .filter("age", "greater_than", 26)
+        .filter("active", "equals", True)
+        .sort("age", "ascending")
+        .limit(10)
+        .build()
+    )
+
+    result = await users.query(query)
+    documents = result.documents  # Access as property, not method!
+
+    print(f"Found {len(documents)} active users over 26:")
+    for doc in documents:
+        print(f"  - {doc.data()['name']}, age {doc.data()['age']}")
+
+asyncio.run(main())
+```
+
+### Query Operators
+
+The Python bindings support these operators:
+
+| Operator                 | Description      | Example                                              |
+| ------------------------ | ---------------- | ---------------------------------------------------- |
+| `equals`                 | Exact match      | `.filter("role", "equals", "admin")`                 |
+| `not_equals`             | Inequality       | `.filter("active", "not_equals", False)`             |
+| `greater_than`           | > comparison     | `.filter("age", "greater_than", 25)`                 |
+| `less_than`              | < comparison     | `.filter("age", "less_than", 30)`                    |
+| `greater_than_or_equals` | >= comparison    | `.filter("age", "greater_than_or_equals", 25)`       |
+| `less_than_or_equals`    | &lt;= comparison | `.filter("age", "less_than_or_equals", 30)`          |
+| `contains`               | String contains  | `.filter("name", "contains", "Al")`                  |
+| `starts_with`            | String prefix    | `.filter("email", "starts_with", "admin")`           |
+| `ends_with`              | String suffix    | `.filter("email", "ends_with", "@company.com")`      |
+| `in_list`                | Value in array   | `.filter("role", "in_list", ["admin", "moderator"])` |
+| `exists`                 | Field exists     | `.filter("phone", "exists", True)`                   |
+
+### Complex Queries
+
+Combine filters with AND logic:
+
+```python
+import asyncio
+from sentinel_python import Store, QueryBuilder
+
+async def main():
+    store = await Store.create("./my-database", None)
+    users = await store.collection("users")
+
+    # Complex query: admins who are active and over 30
+    query = (
+        QueryBuilder()
+        .filter("role", "equals", "admin")
+        .filter("active", "equals", True)
+        .filter("age", "greater_than", 30)
+        .sort("age", "descending")
+        .build()
+    )
+
+    result = await users.query(query)
+    for doc in result.documents:
+        print(f"{doc.data()['name']} (age {doc.data()['age']})")
+
+asyncio.run(main())
+```
+
+## Streaming Operations
+
+Process large datasets efficiently:
+
+```python
+import asyncio
+from sentinel_python import Store
+
+async def main():
+    store = await Store.create("./my-database", None)
+    users = await store.collection("users")
+
+    # Insert many test documents
+    for i in range(100):
+        await users.insert(f"user-{i:03d}", {"name": f"User {i}", "index": i})
+
+    # Stream all documents
+    print("Processing all users:")
+    async for doc in users.all():
+        print(f"  - {doc.id()}: {doc.data()['name']}")
+
+    # Count documents
+    count = await users.count()
+    print(f"\nTotal users: {count}")
+
+asyncio.run(main())
+```
+
+## Cryptographic Operations
+
+### Hashing
+
+```python
+import asyncio
+from sentinel_python import Store
+
+async def main():
+    store = await Store.create("./my-database", None)
+
+    # Hash data
+    data = "Hello, Sentinel!"
+    hash_result = await store.hash_data(data)
+    print(f"Hash: {hash_result}")
+
+    # Verify hash
+    is_valid = await store.verify_hash(data, hash_result)
+    print(f"Verification: {is_valid}")
+
+asyncio.run(main())
+```
+
+### Signing
+
+Create a store with a passphrase to enable signing:
+
+```python
+import asyncio
+from sentinel_python import Store
+
+async def main():
+    # Create store with signing enabled
+    store = await Store.create("./secure-database", "my-secret-passphrase")
+    users = await store.collection("users")
+
+    # Documents will be automatically signed
+    await users.insert("signed-doc", {"important": "data"})
+
+    # Verify signature
+    doc = await users.get("signed-doc")
+    if doc:
+        signature = doc.signature()
+        print(f"Signature: {signature[:50]}...")  # First 50 chars
+
+        # Verify the document
+        is_valid = await store.verify_signature(doc)
+        print(f"Signature valid: {is_valid}")
+
+asyncio.run(main())
+```
+
+### Encryption
+
+```python
+import asyncio
+from sentinel_python import Store
+
+async def main():
+    # Create store with encryption
+    store = await Store.create("./encrypted-database", "secure-passphrase")
+    users = await store.collection("users")
+
+    # Documents are automatically encrypted
+    await users.insert("secret", {"ssn": "123-45-6789", "credit_card": "4111111111111111"})
+
+    # Verify the file is encrypted
+    with open("./encrypted-database/data/users/secret.json", "r") as f:
+        content = f.read()
+        print("File content (should be encrypted):")
+        print(content[:100] + "...")
+
+asyncio.run(main())
+```
+
+## Error Handling
+
+```python
+import asyncio
+from sentinel_python import Store, SentinelError
+
+async def main():
+    try:
+        store = await Store.create("./my-database", None)
+        users = await store.collection("users")
+
+        # Try to get a non-existent document
+        doc = await users.get("nonexistent")
+        if doc is None:
+            print("Document not found (expected)")
+
+    except SentinelError as e:
+        print(f"Sentinel error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+
+asyncio.run(main())
+```
+
+## Integration Examples
+
+### With FastAPI
+
+```python
+from fastapi import FastAPI
+from sentinel_python import Store
+import asyncio
+
+app = FastAPI()
+store = None
+
+@app.on_event("startup")
+async def startup():
+    global store
+    store = await Store.create("./data", None)
+
+@app.get("/users/{user_id}")
+async def get_user(user_id: str):
+    users = await store.collection("users")
+    doc = await users.get(user_id)
+    if doc:
+        return doc.data()
+    return {"error": "User not found"}
+
+@app.post("/users")
+async def create_user(user_id: str, user_data: dict):
+    users = await store.collection("users")
+    await users.insert(user_id, user_data)
+    return {"status": "created"}
+```
+
+### With Flask
+
+```python
+from flask import Flask, request, jsonify
+from sentinel_python import Store
+import threading
+
+app = Flask(__name__)
+store = None
+lock = threading.Lock()
+
+def init_store():
+    global store
+    store = asyncio.new_event_loop()
+    asyncio.set_event_loop(store)
+    return store.run_until_complete(Store.create("./data", None))
+
+with lock:
+    if not store:
+        init_store()
+
+@app.route("/users/<user_id>", methods=["GET"])
+def get_user(user_id):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    users = loop.run_until_complete(store.collection("users"))
+    doc = loop.run_until_complete(users.get(user_id))
+    loop.close()
+
+    if doc:
+        return jsonify(doc.data())
+    return jsonify({"error": "Not found"}), 404
+```
+
+## API Reference
+
+### Store
+
+```python
+class Store:
+    async def create(path: str, passphrase: str | None) -> Store
+    async def collection(name: str) -> Collection
+    async def list_collections() -> list[str]
+    async def delete_collection(name: str) -> None
+    async def hash_data(data: str) -> str
+    async def verify_hash(data: str, hash: str) -> bool
+    async def sign(data: str, passphrase: str) -> str
+    async def verify_signature(doc: Document) -> bool
+    def path() -> str
+```
+
+### Collection
+
+```python
+class Collection:
+    async def insert(id: str, data: dict) -> Document
+    async def get(id: str) -> Document | None
+    async def update(id: str, data: dict) -> Document
+    async def delete(id: str) -> None
+    async def bulk_insert(documents: list[tuple[str, dict]]) -> None
+    async def get_many(ids: list[str]) -> list[Document | None]
+    async def count() -> int
+    async def list() -> list[str]
+    async def query(query: Query) -> QueryResult
+    async def all() -> AsyncIterator[Document]
+    def filter(predicate: Callable) -> FilterIterator
+```
+
+### QueryBuilder
+
+```python
+class QueryBuilder:
+    def __init__() -> QueryBuilder
+    def filter(field: str, operator: str, value: Any) -> QueryBuilder
+    def sort(field: str, order: str) -> QueryBuilder  # order: "ascending" or "descending"
+    def limit(count: int) -> QueryBuilder
+    def offset(count: int) -> QueryBuilder
+    def build() -> Query
+```
+
+### Document
+
+```python
+class Document:
+    def id() -> str
+    def version() -> int
+    def created_at() -> str
+    def updated_at() -> str
+    def hash() -> str
+    def signature() -> str
+    def data() -> dict
+```
+
+## Performance Tips
+
+1. **Use bulk_insert**: For multiple documents, `bulk_insert` is significantly faster than individual inserts
+2. **Filter Early**: Apply filters in the query rather than loading all documents
+3. **Use Projections**: Specify only the fields you need in results
+4. **Stream Large Results**: Use `all()` or `filter()` with async iteration for large datasets
+5. **Connection Pooling**: Reuse store instances rather than creating new ones
+
+## Troubleshooting
+
+### ImportError: libssl not found
+
+On some systems, you may need to install OpenSSL:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install libssl-dev
+
+# macOS with Homebrew
+brew install openssl
+export OPENSSL_DIR=$(brew --prefix openssl)
+```
+
+### Build Fails with maturin
+
+Ensure you have the required tools:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install python3-dev python3-pip build-essential
+
+# macOS
+xcode-select --install
+```
+
+## Next Steps
+
+- **[Language Bindings Overview](/docs/language-bindings)**: Compare all bindings
+- **[Node.js Bindings](/docs/nodejs-bindings)**: JavaScript/TypeScript bindings
+- **[C/C++ Bindings](/docs/cpp-bindings)**: Native C/C++ bindings
+- **[API Reference](/docs/api-reference)**: Complete Rust API documentation
