@@ -119,7 +119,7 @@ jobs:
   # =============================================================================
   # Build CXX libraries for all platforms
   # =============================================================================
-  build:
+  build-cxx-libs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -164,7 +164,9 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: build-cli
+    needs: 
+      - build-cli
+      - build-cxx-libs
     permissions:
       contents: write
       issues: write
