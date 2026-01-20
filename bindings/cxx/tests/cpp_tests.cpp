@@ -1,17 +1,18 @@
 #include <sentinel/sentinel.hpp>
 #include <iostream>
+#include <filesystem>
 
-int main() {
-    std::cout << "C++ bindings compilation test passed!" << std::endl;
-    std::cout << "Note: Full C++ tests disabled due to header compatibility issues." << std::endl;
-    std::cout << "C functionality is tested via C examples and bindings." << std::endl;
-    return 0;
-}
+namespace SimpleFS {
+    static bool exists(const std::string& path) {
+        return std::filesystem::exists(path);
+    }
 
     static bool remove_all(const std::string& path) {
-        // Simple implementation - just remove the directory
-        std::string cmd = "rm -rf " + path;
-        return system(cmd.c_str()) == 0;
+        // Use std::filesystem::remove_all for portable and safe directory removal
+        // This avoids command injection vulnerabilities from using system("rm -rf")
+        std::error_code ec;
+        auto result = std::filesystem::remove_all(path, ec);
+        return !ec;
     }
 };
 
@@ -30,6 +31,11 @@ public:
         if (SimpleFS::exists(test_db_path)) {
             SimpleFS::remove_all(test_db_path);
         }
+    }
+
+    // Get the test database path for store creation
+    const std::string& get_test_db_path() const {
+        return test_db_path;
     }
 
 private:
