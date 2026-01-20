@@ -4,24 +4,12 @@ use clap::{Args, Parser, Subcommand};
 ///
 /// This module contains submodules for each CLI command, each implementing
 /// the logic for a specific operation on the Sentinel DBMS.
-/// Create collection command module.
-mod create_collection;
-/// Delete command module.
-mod delete;
+/// Collection command module.
+mod collection;
 /// Generate command module.
 mod generate;
-/// Get command module.
-mod get;
 /// Init command module.
 mod init;
-/// Insert command module.
-mod insert;
-/// List command module.
-mod list;
-/// Query command module.
-mod query;
-/// Update command module.
-mod update;
 /// WAL command module.
 mod wal;
 
@@ -167,32 +155,11 @@ pub enum Commands {
     /// This command provides subcommands for generating keys and other cryptographic materials.
     #[command(visible_alias = "gen")]
     Generate(generate::GenArgs),
-    /// Create a new collection within an existing store.
+    /// Collection management operations.
     ///
-    /// Collections are logical groupings of documents within a store.
-    CreateCollection(create_collection::CreateCollectionArgs),
-    /// Insert a new document into a collection.
-    ///
-    /// The document data must be valid JSON.
-    Insert(insert::InsertArgs),
-    /// Retrieve a document from a collection.
-    ///
-    /// If the document exists, its JSON data is printed to stdout.
-    Get(get::GetArgs),
-    /// Update an existing document in a collection.
-    ///
-    /// The entire document is replaced with the new data.
-    Update(update::UpdateArgs),
-    /// Delete a document from a collection.
-    Delete(delete::DeleteArgs),
-    /// List all documents in a collection.
-    ///
-    /// Prints the IDs of all documents in the specified collection.
-    List(list::ListArgs),
-    /// Query documents in a collection with filters and sorting.
-    ///
-    /// Allows complex querying with filters, sorting, pagination, and projection.
-    Query(query::QueryArgs),
+    /// Provides commands for creating collections, and performing CRUD operations
+    /// on documents within collections.
+    Collection(collection::CollectionArgs),
     /// WAL (Write-Ahead Logging) management operations.
     ///
     /// Provides commands for checkpointing, verification, recovery, and configuration
@@ -263,13 +230,7 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
     match cli.command {
         Commands::Init(args) => init::run(args).await,
         Commands::Generate(args) => generate::run(args).await,
-        Commands::CreateCollection(args) => create_collection::run(args).await,
-        Commands::Insert(args) => insert::run(args, &cli.wal).await,
-        Commands::Get(args) => get::run(args, &cli.wal).await,
-        Commands::Update(args) => update::run(args, &cli.wal).await,
-        Commands::Delete(args) => delete::run(args, &cli.wal).await,
-        Commands::List(args) => list::run(args, &cli.wal).await,
-        Commands::Query(args) => query::run(args, &cli.wal).await,
+        Commands::Collection(args) => collection::run(args).await,
         Commands::Wal(args) => wal::run(args).await,
     }
 }
