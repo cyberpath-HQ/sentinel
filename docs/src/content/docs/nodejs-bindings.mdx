@@ -1,0 +1,675 @@
+---
+title: Node.js Bindings
+description: Complete guide to using Cyberpath Sentinel with Node.js. Installation, usage examples, and API reference.
+section: Language Bindings
+order: 3
+keywords: ["nodejs", "bindings", "npm", "installation", "api", "examples", "typescript"]
+related: ["language-bindings", "python-bindings", "cpp-bindings", "releases"]
+---
+
+The Node.js bindings provide a native JavaScript/TypeScript interface to Cyberpath Sentinel, enabling you to use
+Sentinel's filesystem-backed document database in your Node.js applications. Built using N-API, these bindings offer
+full async support and work with Node.js 18+ on all major platforms.
+
+> **Note**
+>
+> As Sentinel is a filesystem-based database, ensure your Node.js environment has appropriate permissions to read/write
+> to the desired database directory.
+>
+> Additionally as no filesystem is available in browser environments, these bindings are not compatible with frontend
+> frameworks like React, Angular, Vue etc.
+
+## Installation
+
+### From npm (Recommended)
+
+The simplest way to install the Node.js bindings is via npm:
+
+```bash
+npm install @cyberpath/sentinel
+```
+
+This installs a prebuilt binary compatible with:
+
+- **Linux**: x86_64, aarch64
+- **macOS**: x86_64 (Intel), aarch64 (Apple Silicon)
+- **Windows**: x86_64, arm64
+
+### From Source
+
+To build from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel/bindings/nodejs
+
+# Install dependencies and build
+npm install
+npm run build
+```
+
+### TypeScript Support
+
+TypeScript types are included:
+
+```typescript
+import { Store, Collection, Document } from "@cyberpath/sentinel";
+
+const store = await Store.create("./my-database", null);
+const users = await store.collection("users");
+```
+
+## Quick Start
+
+### Creating a Store
+
+```javascript
+const { Store } = require("@cyberpath/sentinel");
+
+async function main() {
+  // Create a new store
+  // If passphrase is null, documents won't be signed
+  const store = await Store.create("./my-database", null);
+
+  console.log(`Store created at ${store.path()}`);
+  return store;
+}
+
+main().catch(console.error);
+```
+
+With TypeScript:
+
+```typescript
+import { Store } from "@cyberpath/sentinel";
+
+async function main(): Promise<void> {
+  const store = await Store.create("./my-database", null);
+  console.log(`Store created at ${store.path()}`);
+}
+
+main().catch(console.error);
+```
+
+### Working with Collections
+
+```javascript
+const { Store } = require("@cyberpath/sentinel");
+
+async function main() {
+  const store = await Store.create("./my-database", null);
+
+  // Get or create a collection
+  const users = await store.collection("users");
+
+  // List all collections
+  const collections = await store.listCollections();
+  console.log("Collections:", collections);
+
+  // Delete a collection
+  await store.deleteCollection("temporary");
+}
+
+main().catch(console.error);
+```
+
+### Document Operations
+
+```javascript
+const { Store } = require("@cyberpath/sentinel");
+
+async function main() {
+  const store = await Store.create("./my-database", null);
+  const users = await store.collection("users");
+
+  // Insert a document
+  await users.insert("alice", {
+    name: "Alice Johnson",
+    email: "alice@example.com",
+    role: "admin",
+    department: "Engineering",
+    active: true,
+    age: 30,
+  });
+
+  // Get a document
+  const doc = await users.get("alice");
+  if (doc) {
+    console.log(`Found: ${doc.data().name}`);
+    console.log(`Email: ${doc.data().email}`);
+    console.log(`Version: ${doc.version()}`);
+    console.log(`Created: ${doc.createdAt()}`);
+  }
+
+  // Update a document
+  await users.update("alice", {
+    name: "Alice Johnson",
+    email: "alice.johnson@example.com",
+    role: "senior_admin",
+    department: "Engineering",
+    active: true,
+    age: 31,
+  });
+
+  // Delete a document
+  await users.delete("alice");
+  console.log("Document deleted");
+}
+
+main().catch(console.error);
+```
+
+### Bulk Operations
+
+Insert multiple documents efficiently:
+
+```javascript
+const { Store } = require("@cyberpath/sentinel");
+
+async function main() {
+  const store = await Store.create("./my-database", null);
+  const users = await store.collection("users");
+
+  // Bulk insert multiple documents
+  const documents = [
+    ["bob", { name: "Bob Smith", role: "user" }],
+    ["charlie", { name: "Charlie Brown", role: "user" }],
+    ["diana", { name: "Diana Prince", role: "admin" }],
+    ["eve", { name: "Eve Wilson", role: "user" }],
+  ];
+
+  await users.bulkInsert(documents);
+  console.log(`Inserted ${documents.length} documents`);
+
+  // Get multiple documents by ID
+  const ids = ["bob", "charlie", "eve"];
+  const results = await users.getMany(ids);
+
+  for (let i = 0; i < ids.length; i++) {
+    if (results[i]) {
+      console.log(`Found: ${results[i].data().name}`);
+    } else {
+      console.log(`Not found: ${ids[i]}`);
+    }
+  }
+}
+
+main().catch(console.error);
+```
+
+## Querying Documents
+
+### Basic Queries
+
+```javascript
+const { Store, QueryBuilder } = require("@cyberpath/sentinel");
+
+async function main() {
+  const store = await Store.create("./my-database", null);
+  const users = await store.collection("users");
+
+  // Insert test data
+  await users.bulkInsert([
+    ["user1", { name: "Alice", age: 30, role: "admin", active: true }],
+    ["user2", { name: "Bob", age: 25, role: "user", active: true }],
+    ["user3", { name: "Charlie", age: 35, role: "user", active: false }],
+    ["user4", { name: "Diana", age: 28, role: "admin", active: true }],
+  ]);
+
+  // Build a query
+  const query = new QueryBuilder()
+    .filter("age", "greater_than", 26)
+    .filter("active", "equals", true)
+    .sort("age", "ascending")
+    .limit(10)
+    .build();
+
+  const result = await users.query(query);
+  const documents = result.documents;
+
+  console.log(`Found ${documents.length} active users over 26:`);
+  documents.forEach((doc) => {
+    console.log(`  - ${doc.data().name}, age ${doc.data().age}`);
+  });
+}
+
+main().catch(console.error);
+```
+
+### Query Operators
+
+The Node.js bindings support these operators:
+
+| Operator                 | Description      | Example                                              |
+| ------------------------ | ---------------- | ---------------------------------------------------- |
+| `equals`                 | Exact match      | `.filter('role', 'equals', 'admin')`                 |
+| `not_equals`             | Inequality       | `.filter('active', 'not_equals', false)`             |
+| `greater_than`           | > comparison     | `.filter('age', 'greater_than', 25)`                 |
+| `less_than`              | < comparison     | `.filter('age', 'less_than', 30)`                    |
+| `greater_than_or_equals` | >= comparison    | `.filter('age', 'greater_than_or_equals', 25)`       |
+| `less_than_or_equals`    | &lt;= comparison | `.filter('age', 'less_than_or_equals', 30)`          |
+| `contains`               | String contains  | `.filter('name', 'contains', 'Al')`                  |
+| `starts_with`            | String prefix    | `.filter('email', 'starts_with', 'admin')`           |
+| `ends_with`              | String suffix    | `.filter('email', 'ends_with', '@company.com')`      |
+| `in_list`                | Value in array   | `.filter('role', 'in_list', ['admin', 'moderator'])` |
+| `exists`                 | Field exists     | `.filter('phone', 'exists', true)`                   |
+
+### Complex Queries
+
+Combine filters with AND logic:
+
+```javascript
+const { Store, QueryBuilder } = require("@cyberpath/sentinel");
+
+async function main() {
+  const store = await Store.create("./my-database", null);
+  const users = await store.collection("users");
+
+  // Complex query: admins who are active and over 30
+  const query = new QueryBuilder()
+    .filter("role", "equals", "admin")
+    .filter("active", "equals", true)
+    .filter("age", "greater_than", 30)
+    .sort("age", "descending")
+    .build();
+
+  const result = await users.query(query);
+  result.documents.forEach((doc) => {
+    console.log(`${doc.data().name} (age ${doc.data().age})`);
+  });
+}
+
+main().catch(console.error);
+```
+
+## Streaming Operations
+
+Process large datasets efficiently:
+
+```javascript
+const { Store } = require("@cyberpath/sentinel");
+
+async function main() {
+  const store = await Store.create("./my-database", null);
+  const users = await store.collection("users");
+
+  // Insert many test documents
+  for (let i = 0; i < 100; i++) {
+    await users.insert(`user-${i.toString().padStart(3, "0")}`, {
+      name: `User ${i}`,
+      index: i,
+    });
+  }
+
+  // Stream all documents
+  console.log("Processing all users:");
+  for await (const doc of users.all()) {
+    console.log(`  - ${doc.id()}: ${doc.data().name}`);
+  }
+
+  // Count documents
+  const count = await users.count();
+  console.log(`\nTotal users: ${count}`);
+}
+
+main().catch(console.error);
+```
+
+## Cryptographic Operations
+
+### Hashing
+
+```javascript
+const { Store } = require("@cyberpath/sentinel");
+
+async function main() {
+  const store = await Store.create("./my-database", null);
+
+  // Hash data
+  const data = "Hello, Sentinel!";
+  const hashResult = await store.hashData(data);
+  console.log(`Hash: ${hashResult}`);
+
+  // Verify hash
+  const isValid = await store.verifyHash(data, hashResult);
+  console.log(`Verification: ${isValid}`);
+}
+
+main().catch(console.error);
+```
+
+### Signing
+
+Create a store with a passphrase to enable signing:
+
+```javascript
+const { Store } = require("@cyberpath/sentinel");
+
+async function main() {
+  // Create store with signing enabled
+  const store = await Store.create("./secure-database", "my-secret-passphrase");
+  const users = await store.collection("users");
+
+  // Documents will be automatically signed
+  await users.insert("signed-doc", { important: "data" });
+
+  // Verify signature
+  const doc = await users.get("signed-doc");
+  if (doc) {
+    const signature = doc.signature();
+    console.log(`Signature: ${signature.substring(0, 50)}...`);
+
+    // Verify the document
+    const isValid = await store.verifySignature(doc);
+    console.log(`Signature valid: ${isValid}`);
+  }
+}
+
+main().catch(console.error);
+```
+
+### Encryption
+
+```javascript
+const { Store } = require("@cyberpath/sentinel");
+const fs = require("fs");
+
+async function main() {
+  // Create store with encryption
+  const store = await Store.create("./encrypted-database", "secure-passphrase");
+  const users = await store.collection("users");
+
+  // Documents are automatically encrypted
+  await users.insert("secret", { ssn: "123-45-6789", credit_card: "4111111111111111" });
+
+  // Verify the file is encrypted
+  const content = fs.readFileSync("./encrypted-database/data/users/secret.json", "utf8");
+  console.log("File content (should be encrypted):");
+  console.log(content.substring(0, 100) + "...");
+}
+
+main().catch(console.error);
+```
+
+## Error Handling
+
+```javascript
+const { Store, SentinelError } = require("@cyberpath/sentinel");
+
+async function main() {
+  try {
+    const store = await Store.create("./my-database", null);
+    const users = await store.collection("users");
+
+    // Try to get a non-existent document
+    const doc = await users.get("nonexistent");
+    if (doc === null) {
+      console.log("Document not found (expected)");
+    }
+  } catch (error) {
+    if (error instanceof SentinelError) {
+      console.log(`Sentinel error: ${error.message}`);
+    } else {
+      console.log(`Unexpected error: ${error.message}`);
+    }
+  }
+}
+
+main().catch(console.error);
+```
+
+## Integration Examples
+
+### With Express
+
+```javascript
+const express = require("express");
+const { Store } = require("@cyberpath/sentinel");
+
+const app = express();
+let store;
+
+async function initialize() {
+  store = await Store.create("./data", null);
+}
+
+initialize().then(() => {
+  app.use(express.json());
+
+  app.get("/users/:userId", async (req, res) => {
+    try {
+      const users = await store.collection("users");
+      const doc = await users.get(req.params.userId);
+      if (doc) {
+        res.json(doc.data());
+      } else {
+        res.status(404).json({ error: "User not found" });
+      }
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/users", async (req, res) => {
+    try {
+      const { userId, userData } = req.body;
+      const users = await store.collection("users");
+      await users.insert(userId, userData);
+      res.status(201).json({ status: "created" });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.listen(3000, () => {
+    console.log("Server running on port 3000");
+  });
+});
+```
+
+### With Fastify
+
+```javascript
+const fastify = require("fastify")({ logger: true });
+const { Store } = require("@cyberpath/sentinel");
+
+let store;
+
+async function initialize() {
+  store = await Store.create("./data", null);
+}
+
+initialize().then(() => {
+  fastify.get("/users/:userId", async (request, reply) => {
+    const users = await store.collection("users");
+    const doc = await users.get(request.params.userId);
+    if (doc) {
+      return doc.data();
+    }
+    reply.status(404).send({ error: "User not found" });
+  });
+
+  fastify.post("/users", async (request, reply) => {
+    const { userId, userData } = request.body;
+    const users = await store.collection("users");
+    await users.insert(userId, userData);
+    reply.status(201).send({ status: "created" });
+  });
+
+  fastify.listen({ port: 3000 }, (err) => {
+    if (err) {
+      fastify.log.error(err);
+      process.exit(1);
+    }
+  });
+});
+```
+
+### With Koa
+
+```javascript
+const Koa = require("koa");
+const Router = require("@koa/router");
+const { Store } = require("@cyberpath/sentinel");
+
+const app = new Koa();
+const router = new Router();
+let store;
+
+async function initialize() {
+  store = await Store.create("./data", null);
+}
+
+initialize().then(() => {
+  router.get("/users/:userId", async (ctx) => {
+    const users = await store.collection("users");
+    const doc = await users.get(ctx.params.userId);
+    if (doc) {
+      ctx.body = doc.data();
+    } else {
+      ctx.status = 404;
+      ctx.body = { error: "User not found" };
+    }
+  });
+
+  router.post("/users", async (ctx) => {
+    const { userId, userData } = ctx.request.body;
+    const users = await store.collection("users");
+    await users.insert(userId, userData);
+    ctx.status = 201;
+    ctx.body = { status: "created" };
+  });
+
+  app.use(router.routes());
+  app.use(router.allowedMethods());
+
+  app.listen(3000, () => {
+    console.log("Server running on port 3000");
+  });
+});
+```
+
+## Performance Tips
+
+1. **Use bulkInsert**: For multiple documents, `bulkInsert` is significantly faster than individual inserts
+2. **Filter Early**: Apply filters in the query rather than loading all documents
+3. **Use Projections**: Specify only the fields you need in results
+4. **Stream Large Results**: Use `all()` with `for await...of` for large datasets
+5. **Connection Pooling**: Reuse store instances rather than creating new ones
+6. **Batch Operations**: Group related operations to minimize async overhead
+
+## Troubleshooting
+
+### ENOENT: no such file or directory
+
+Make sure you're using absolute paths or paths relative to your project root:
+
+```javascript
+const path = require("path");
+const store = await Store.create(path.resolve("./data"), null);
+```
+
+### Build Fails on macOS
+
+If you encounter build issues on macOS:
+
+```bash
+# Install Xcode command line tools
+xcode-select --install
+
+# Or reinstall node-gyp
+npm install -g node-gyp
+```
+
+### TypeScript Errors
+
+If TypeScript can't find the types, add to your `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "typeRoots": ["./node_modules/@types", "./node_modules/@cyberpath"]
+  }
+}
+```
+
+## API Reference
+
+### Store
+
+```javascript
+class Store {
+  static async create(path: string, passphrase: string | null): Store
+  async collection(name: string): Collection
+  async listCollections(): string[]
+  async deleteCollection(name: string): void
+  async hashData(data: string): string
+  async verifyHash(data: string, hash: string): boolean
+  async sign(data: string, passphrase: string): string
+  async verifySignature(doc: Document): boolean
+  path(): string
+}
+```
+
+### Collection
+
+```javascript
+class Collection {
+  async insert(id: string, data: object): Document
+  async get(id: string): Document | null
+  async update(id: string, data: object): Document
+  async delete(id: string): void
+  async bulkInsert(documents: Array<[string, object]>): void
+  async getMany(ids: string[]): Array<Document | null>
+  async count(): number
+  async list(): string[]
+  async query(query: Query): QueryResult
+  all(): AsyncIterator<Document>
+  filter(predicate: Function): FilterIterator
+}
+```
+
+### QueryBuilder
+
+```javascript
+class QueryBuilder {
+  constructor()
+  filter(field: string, operator: string, value: any): QueryBuilder
+  sort(field: string, order: string): QueryBuilder  // order: "ascending" or "descending"
+  limit(count: number): QueryBuilder
+  offset(count: number): QueryBuilder
+  build(): Query
+}
+```
+
+### Document
+
+```javascript
+class Document {
+  id(): string
+  version(): number
+  createdAt(): string
+  updatedAt(): string
+  hash(): string
+  signature(): string
+  data(): object
+}
+```
+
+### QueryResult
+
+```javascript
+class QueryResult {
+  documents: Document[]
+  totalCount: number
+  hasMore: boolean
+}
+```
+
+## Next Steps
+
+- **[Language Bindings Overview](/docs/language-bindings)**: Compare all bindings
+- **[Python Bindings](/docs/python-bindings)**: Python SDK documentation
+- **[C/C++ Bindings](/docs/cpp-bindings)**: Native C/C++ bindings
+- **[API Reference](/docs/api-reference)**: Complete Rust API documentation
