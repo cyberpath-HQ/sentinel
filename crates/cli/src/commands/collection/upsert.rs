@@ -37,11 +37,17 @@ pub struct UpsertArgs {
 /// use sentinel_cli::commands::collection::upsert::{run, UpsertArgs};
 ///
 /// let args = UpsertArgs {
-///     id:   "user1".to_string(),
+///     id:   String::from("user1"),
 ///     data: r#"{"name": "Bob"}"#.to_string(),
 ///     wal:  WalArgs::default(),
 /// };
-/// run("/tmp/my_store".to_string(), "users".to_string(), None, args).await?;
+/// run(
+///     String::from("/tmp/my_store"),
+///     String::from("users"),
+///     None,
+///     args,
+/// )
+/// .await?;
 /// ```
 
 pub async fn run(
