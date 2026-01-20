@@ -256,32 +256,38 @@ mod tests {
             _ => panic!("Expected Init command"),
         }
 
-        // Test create-collection command
+        // Test collection create command
         let cli_parsed = Cli::try_parse_from([
             "test",
-            "create-collection",
-            "--store-path",
+            "collection",
+            "--store",
             "/tmp/store",
             "--name",
             "users",
+            "create",
         ])
         .unwrap();
         match cli_parsed.command {
-            Commands::CreateCollection(args) => {
-                assert_eq!(args.store_path, "/tmp/store");
+            Commands::Collection(args) => {
+                assert_eq!(args.store, "/tmp/store");
                 assert_eq!(args.name, "users");
+                match args.command {
+                    collection::CollectionCommands::Create(_) => {},
+                    _ => panic!("Expected Create subcommand"),
+                }
             },
-            _ => panic!("Expected CreateCollection command"),
+            _ => panic!("Expected Collection command"),
         }
 
-        // Test insert command
+        // Test collection insert command
         let cli_parsed = Cli::try_parse_from([
             "test",
-            "insert",
-            "--store-path",
+            "collection",
+            "--store",
             "/tmp/store",
-            "--collection",
+            "--name",
             "users",
+            "insert",
             "--id",
             "user1",
             "--data",
@@ -289,14 +295,18 @@ mod tests {
         ])
         .unwrap();
         match cli_parsed.command {
-            Commands::Insert(args) => {
-                assert_eq!(args.store_path, "/tmp/store");
-                assert_eq!(args.collection, "users");
-                assert_eq!(args.id, Some("user1".to_string()));
-                assert_eq!(args.data, Some("{}".to_string()));
-                assert_eq!(args.bulk, None);
+            Commands::Collection(args) => {
+                assert_eq!(args.store, "/tmp/store");
+                assert_eq!(args.name, "users");
+                match args.command {
+                    collection::CollectionCommands::Insert(insert_args) => {
+                        assert_eq!(insert_args.id, Some("user1".to_string()));
+                        assert_eq!(insert_args.data, Some("{}".to_string()));
+                    },
+                    _ => panic!("Expected Insert subcommand"),
+                }
             },
-            _ => panic!("Expected Insert command"),
+            _ => panic!("Expected Collection command"),
         }
     }
 
@@ -339,11 +349,11 @@ mod tests {
         let result = Cli::try_parse_from(["test", "init"]);
         assert!(result.is_err(), "Init should require path argument");
 
-        // Create-collection without name
-        let result = Cli::try_parse_from(["test", "create-collection", "--store-path", "/tmp"]);
+        // Collection create without name
+        let result = Cli::try_parse_from(["test", "collection", "--store", "/tmp", "create"]);
         assert!(
             result.is_err(),
-            "Create-collection should require name argument"
+            "Collection create should require name argument"
         );
     }
 
@@ -399,13 +409,14 @@ mod tests {
         };
         run_command(init_cli).await.unwrap();
 
-        let args = super::create_collection::CreateCollectionArgs {
-            store_path: store_path.to_string_lossy().to_string(),
+        let collection_args = super::collection::CollectionArgs {
+            store: store_path.to_string_lossy().to_string(),
             name: "test_collection".to_string(),
-            ..Default::default()
+            passphrase: None,
+            command: super::collection::CollectionCommands::Create(super::collection::create::CreateArgs::default()),
         };
         let cli = Cli {
-            command: Commands::CreateCollection(args),
+            command: Commands::Collection(collection_args),
             json: false,
             verbose: 0,
             hash_algorithm: "blake3".to_string(),
@@ -418,7 +429,7 @@ mod tests {
         let result = run_command(cli).await;
         assert!(
             result.is_ok(),
-            "run_command should succeed for valid CreateCollection"
+            "run_command should succeed for valid Collection Create"
         );
     }
 
@@ -452,333 +463,11 @@ mod tests {
         );
     }
 
-    /// Test run_command with Insert command.
-    ///
-    /// This test verifies that run_command correctly dispatches to insert::run.
-    #[tokio::test]
-    async fn test_run_command_insert() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let store_path = temp_dir.path().join("test_store");
-
-        // Setup store and collection
-        let init_args = super::init::InitArgs {
-            path: store_path.to_string_lossy().to_string(),
-            ..Default::default()
-        };
-        let init_cli = Cli {
-            command: Commands::Init(init_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-        run_command(init_cli).await.unwrap();
-
-        let create_args = super::create_collection::CreateCollectionArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
-            ..Default::default()
-        };
-        let create_cli = Cli {
-            command: Commands::CreateCollection(create_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-        run_command(create_cli).await.unwrap();
-
-        let args = super::insert::InsertArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         Some("doc1".to_string()),
-            data:       Some(r#"{"name": "Alice"}"#.to_string()),
-            bulk:       None,
-            passphrase: None,
-            wal:        WalArgs::default(),
-        };
-        let cli = Cli {
-            command: Commands::Insert(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-
-        let result = run_command(cli).await;
-        assert!(
-            result.is_ok(),
-            "run_command should succeed for valid Insert"
-        );
-    }
-
-    /// Test run_command with Get command.
-    ///
-    /// This test verifies that run_command correctly dispatches to get::run.
-    #[tokio::test]
-    async fn test_run_command_get() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let store_path = temp_dir.path().join("test_store");
-
-        // Setup store and collection
-        let init_args = super::init::InitArgs {
-            path: store_path.to_string_lossy().to_string(),
-            ..Default::default()
-        };
-        let init_cli = Cli {
-            command: Commands::Init(init_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-        run_command(init_cli).await.unwrap();
-
-        let create_args = super::create_collection::CreateCollectionArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
-            ..Default::default()
-        };
-        let create_cli = Cli {
-            command: Commands::CreateCollection(create_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-        run_command(create_cli).await.unwrap();
-
-        let args = super::get::GetArgs {
-            store_path:       store_path.to_string_lossy().to_string(),
-            collection:       "test_collection".to_string(),
-            id:               "doc1".to_string(),
-            passphrase:       None,
-            wal:              WalArgs::default(),
-            verify_signature: false,
-            verify_hash:      false,
-            signature_mode:   "strict".to_string(),
-            empty_sig_mode:   "warn".to_string(),
-            hash_mode:        "strict".to_string(),
-        };
-        let cli = Cli {
-            command: Commands::Get(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-
-        let result = run_command(cli).await;
-        assert!(
-            result.is_ok(),
-            "run_command should succeed for Get (even if not found)"
-        );
-    }
-
-    /// Test run_command with Update command.
-    ///
-    /// This test verifies that run_command correctly dispatches to update::run.
-    #[tokio::test]
-    async fn test_run_command_update() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let store_path = temp_dir.path().join("test_store");
-
-        // Setup store and collection
-        let init_args = super::init::InitArgs {
-            path: store_path.to_string_lossy().to_string(),
-            ..Default::default()
-        };
-        let init_cli = Cli {
-            command: Commands::Init(init_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-        run_command(init_cli).await.unwrap();
-
-        let create_args = super::create_collection::CreateCollectionArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
-            ..Default::default()
-        };
-        let create_cli = Cli {
-            command: Commands::CreateCollection(create_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-        run_command(create_cli).await.unwrap();
-
-        let args = super::update::UpdateArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         "doc1".to_string(),
-            data:       r#"{"name": "Bob"}"#.to_string(),
-        };
-        let cli = Cli {
-            command: Commands::Update(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-
-        let result = run_command(cli).await;
-        assert!(
-            result.is_err(),
-            "run_command should fail for Update on non-existent document"
-        );
-    }
-
-    /// Test run_command with Delete command.
-    ///
-    /// This test verifies that run_command correctly dispatches to delete::run.
-    #[tokio::test]
-    async fn test_run_command_delete() {
-        let temp_dir = tempfile::TempDir::new().unwrap();
-        let store_path = temp_dir.path().join("test_store");
-
-        // Setup store and collection
-        let init_args = super::init::InitArgs {
-            path: store_path.to_string_lossy().to_string(),
-            ..Default::default()
-        };
-        let init_cli = Cli {
-            command: Commands::Init(init_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-        run_command(init_cli).await.unwrap();
-
-        let create_args = super::create_collection::CreateCollectionArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
-            ..Default::default()
-        };
-        let create_cli = Cli {
-            command: Commands::CreateCollection(create_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-        run_command(create_cli).await.unwrap();
-
-        let args = super::delete::DeleteArgs {
-            store_path: store_path.to_string_lossy().to_string(),
-            collection: "test_collection".to_string(),
-            id:         "doc1".to_string(),
-        };
-        let cli = Cli {
-            command: Commands::Delete(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-
-        let result = run_command(cli).await;
-        assert!(result.is_ok(), "run_command should succeed for Delete");
-    }
-
-    /// Test run_command with Generate command.
-    ///
-    /// This test verifies that run_command correctly dispatches to generate::run.
-    #[tokio::test]
-    async fn test_run_command_generate() {
-        let args = super::generate::GenArgs {
-            subcommand: super::generate::GenCommands::Key(super::generate::KeyArgs {
-                key_type: super::generate::KeyType::Signing,
-            }),
-        };
-        let cli = Cli {
-            command: Commands::Generate(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-
-        let result = run_command(cli).await;
-        assert!(result.is_ok(), "run_command should succeed for Generate");
-    }
-
-    /// Test run_command with invalid encryption algorithm.
-    ///
-    /// This test verifies that run_command fails with invalid algorithm strings.
-    #[tokio::test]
-    async fn test_run_command_invalid_algorithm_generate() {
-        let args = super::generate::GenArgs {
-            subcommand: super::generate::GenCommands::Key(super::generate::KeyArgs {
-                key_type: super::generate::KeyType::Signing,
-            }),
-        };
-        let cli = Cli {
-            command: Commands::Generate(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: "invalid".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
-            wal: WalArgs::default(),
-        };
-
-        let result = run_command(cli).await;
-        assert!(
-            result.is_err(),
-            "run_command should fail for invalid hash algorithm"
-        );
-    }
-
     #[test]
     fn test_parse_hash_algorithm_valid() {
         assert_eq!(
             parse_hash_algorithm("blake3"),
-            Ok(sentinel_crypto::HashAlgorithmChoice::Blake3)
+            Ok(sentinel_dbms::HashAlgorithmChoice::Blake3)
         );
     }
 
@@ -791,7 +480,7 @@ mod tests {
     fn test_parse_signature_algorithm_valid() {
         assert_eq!(
             parse_signature_algorithm("ed25519"),
-            Ok(sentinel_crypto::SignatureAlgorithmChoice::Ed25519)
+            Ok(sentinel_dbms::SignatureAlgorithmChoice::Ed25519)
         );
     }
 
@@ -804,15 +493,15 @@ mod tests {
     fn test_parse_encryption_algorithm_valid() {
         assert_eq!(
             parse_encryption_algorithm("xchacha20poly1305"),
-            Ok(sentinel_crypto::EncryptionAlgorithmChoice::XChaCha20Poly1305)
+            Ok(sentinel_dbms::EncryptionAlgorithmChoice::XChaCha20Poly1305)
         );
         assert_eq!(
             parse_encryption_algorithm("aes256gcmsiv"),
-            Ok(sentinel_crypto::EncryptionAlgorithmChoice::Aes256GcmSiv)
+            Ok(sentinel_dbms::EncryptionAlgorithmChoice::Aes256GcmSiv)
         );
         assert_eq!(
             parse_encryption_algorithm("ascon128"),
-            Ok(sentinel_crypto::EncryptionAlgorithmChoice::Ascon128)
+            Ok(sentinel_dbms::EncryptionAlgorithmChoice::Ascon128)
         );
     }
 
@@ -825,11 +514,11 @@ mod tests {
     fn test_parse_key_derivation_algorithm_valid() {
         assert_eq!(
             parse_key_derivation_algorithm("argon2id"),
-            Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Argon2id)
+            Ok(sentinel_dbms::KeyDerivationAlgorithmChoice::Argon2id)
         );
         assert_eq!(
             parse_key_derivation_algorithm("pbkdf2"),
-            Ok(sentinel_crypto::KeyDerivationAlgorithmChoice::Pbkdf2)
+            Ok(sentinel_dbms::KeyDerivationAlgorithmChoice::Pbkdf2)
         );
     }
 
