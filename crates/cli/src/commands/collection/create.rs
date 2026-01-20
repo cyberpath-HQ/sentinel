@@ -31,7 +31,13 @@ pub struct CreateArgs {
 /// use sentinel_cli::commands::collection::create::{run, CreateArgs};
 ///
 /// let args = CreateArgs::default();
-/// run("/tmp/my_store".to_string(), "users".to_string(), None, args).await?;
+/// run(
+///     String::from("/tmp/my_store"),
+///     String::from("users"),
+///     None,
+///     args,
+/// )
+/// .await?;
 /// ```
 
 /// Build CollectionWalConfigOverrides from CLI arguments
