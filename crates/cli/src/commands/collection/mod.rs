@@ -70,11 +70,43 @@ pub enum CollectionCommands {
     ///
     /// Allows complex querying with filters, sorting, pagination, and projection.
     Query(query::QueryArgs),
+
+    /// Count documents in a collection
+    ///
+    /// Returns the total number of documents in the specified collection.
+    Count(count::CountArgs),
+
+    /// Bulk insert documents into a collection
+    ///
+    /// Inserts multiple documents from a JSON file containing an array of document objects.
+    #[command(name = "bulk-insert")]
+    BulkInsert(bulk_insert::BulkInsertArgs),
+
+    /// Get multiple documents by IDs
+    ///
+    /// Retrieves multiple documents from the collection by their IDs.
+    #[command(name = "get-many")]
+    GetMany(get_many::GetManyArgs),
+
+    /// Aggregate documents in a collection
+    ///
+    /// Performs aggregation operations (count, sum, avg, min, max) on documents matching filters.
+    Aggregate(aggregate::AggregateArgs),
+
+    /// Show collection information and statistics
+    ///
+    /// Displays metadata and statistics for the collection.
+    Info(info::InfoArgs),
 }
 
+mod aggregate;
+mod bulk_insert;
+mod count;
 pub mod create;
 mod delete;
 mod get;
+mod get_many;
+mod info;
 mod insert;
 mod list;
 mod query;
@@ -94,5 +126,14 @@ pub async fn run(args: CollectionArgs) -> sentinel_dbms::Result<()> {
         CollectionCommands::Delete(sub_args) => delete::run(args.store, args.name, args.passphrase, sub_args).await,
         CollectionCommands::List(sub_args) => list::run(args.store, args.name, args.passphrase, sub_args).await,
         CollectionCommands::Query(sub_args) => query::run(args.store, args.name, args.passphrase, sub_args).await,
+        CollectionCommands::Count(sub_args) => count::run(args.store, args.name, args.passphrase, sub_args).await,
+        CollectionCommands::BulkInsert(sub_args) => {
+            bulk_insert::run(args.store, args.name, args.passphrase, sub_args).await
+        },
+        CollectionCommands::GetMany(sub_args) => get_many::run(args.store, args.name, args.passphrase, sub_args).await,
+        CollectionCommands::Aggregate(sub_args) => {
+            aggregate::run(args.store, args.name, args.passphrase, sub_args).await
+        },
+        CollectionCommands::Info(sub_args) => info::run(args.store, args.name, args.passphrase, sub_args).await,
     }
 }
