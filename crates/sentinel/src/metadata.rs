@@ -79,7 +79,7 @@ impl CollectionMetadata {
 
                     // this is currently a no-op, but we set the version to 2
                     // when we add new fields in future versions
-                    self.version = 1;
+                    self.version = 2;
                 },
                 // Add future version migrations here as needed
                 // 2 => { /* migration logic */ self.version = 3; }
@@ -185,7 +185,7 @@ impl StoreMetadata {
 
                     // this is currently a no-op, but we set the version to 2
                     // when we add new fields in future versions
-                    self.version = 1;
+                    self.version = 2;
                 },
                 // Add future version migrations here as needed
                 // 2 => { /* migration logic */ self.version = 3; }
