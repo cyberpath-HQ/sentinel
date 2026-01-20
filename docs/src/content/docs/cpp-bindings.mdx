@@ -80,7 +80,7 @@ target_link_libraries(my_app sentinel-cxx::sentinel-cxx)
 ### Creating a Store
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 
 int main() {
@@ -102,7 +102,7 @@ int main() {
 ### Working with Collections
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 #include <vector>
 
@@ -132,7 +132,7 @@ int main() {
 ### Document Operations
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 #include <map>
 
@@ -178,7 +178,7 @@ int main() {
 Insert multiple documents efficiently:
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 #include <vector>
 #include <map>
@@ -219,7 +219,7 @@ int main() {
 ### Basic Queries
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 
 int main() {
@@ -277,7 +277,7 @@ The C/C++ bindings support these operators:
 Combine filters with AND logic:
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 
 int main() {
@@ -308,7 +308,7 @@ int main() {
 Process large datasets efficiently:
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 
 int main() {
@@ -340,7 +340,7 @@ int main() {
 ### Hashing
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 
 int main() {
@@ -364,7 +364,7 @@ int main() {
 Create a store with a passphrase to enable signing:
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 
 int main() {
@@ -393,7 +393,7 @@ int main() {
 ### Encryption
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 #include <fstream>
 
@@ -419,7 +419,7 @@ int main() {
 ## Error Handling
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 
 int main() {
@@ -447,7 +447,7 @@ int main() {
 For operations that can fail, use the result types:
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 #include <memory>
 
@@ -465,7 +465,7 @@ void handle_store_creation(sentinel_cxx::Result<sentinel_cxx::Store> result) {
 ### With a C++ Web Server
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <iostream>
 #include <memory>
 
@@ -531,15 +531,18 @@ int main() {
     sentinel_collection_t* users = sentinel_store_collection(store, "users");
 
     // Insert document
-    sentinel_document_t* doc = sentinel_collection_insert(users, "alice",
+    sentinel_error_t err = sentinel_collection_insert(users, "alice",
         "{\"name\": \"Alice Johnson\", \"email\": \"alice@example.com\"}");
+    if (err != SENTINEL_OK) {
+        fprintf(stderr, "Failed to insert document\n");
+        return 1;
+    }
 
     // Get document
-    doc = sentinel_collection_get(users, "alice");
-    if (doc) {
-        const char* data = sentinel_document_data(doc);
-        printf("Found: %s\n", data);
-        sentinel_document_destroy(doc);
+    char* doc_data = sentinel_collection_get(users, "alice");
+    if (doc_data) {
+        printf("Found: %s\n", doc_data);
+        sentinel_string_free(doc_data);
     }
 
     sentinel_collection_destroy(users);
@@ -554,7 +557,7 @@ int main() {
 The C++ bindings use smart pointers for automatic memory management:
 
 ```cpp
-#include <sentinel-cxx/sentinel-cxx.hpp>
+#include <sentinel-cxx/sentinel-cxx.h>
 #include <memory>
 
 void example() {
