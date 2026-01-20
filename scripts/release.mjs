@@ -116,6 +116,11 @@ function ensureCargoTool(tool, description) {
 function createDebPackage(workspaceRoot, version) {
   section('Creating Debian Package with cargo-deb');
 
+  if (isDryRun) {
+    info('Would create Debian package using cargo-deb');
+    return null;
+  }
+
   ensureCargoTool('cargo-deb', 'cargo-deb');
 
   // Create a temporary Cargo.toml for the CLI package
@@ -176,6 +181,11 @@ depends = "$auto, libc6 (>= 2.35)"
 function createRpmPackage(workspaceRoot, version) {
   section('Creating RPM Package with cargo-generate-rpm');
 
+  if (isDryRun) {
+    info('Would create RPM package using cargo-generate-rpm');
+    return null;
+  }
+
   ensureCargoTool('cargo-generate-rpm', 'cargo-generate-rpm');
 
   // Create a temporary Cargo.toml for the CLI package
@@ -225,6 +235,11 @@ assets = [
  */
 function createArchPackage(workspaceRoot, version, cliBinary) {
   section('Creating Arch Linux Package');
+
+  if (isDryRun) {
+    info('Would create Arch Linux package');
+    return null;
+  }
 
   const distDir = join(workspaceRoot, 'dist');
   const packageRoot = join(distDir, 'arch');
@@ -276,6 +291,11 @@ package() {
  */
 function createApkPackage(workspaceRoot, version, cliBinary) {
   section('Creating Alpine APK Package');
+
+  if (isDryRun) {
+    info('Would create Alpine APK package structure');
+    return null;
+  }
 
   const distDir = join(workspaceRoot, 'dist');
   const packageRoot = join(distDir, 'alpine');
@@ -545,21 +565,6 @@ function buildNodeJsModule(workspaceRoot) {
 // =============================================================================
 // Publishing Functions
 // =============================================================================
-
-function publishRustCrates(workspaceRoot) {
-  section('Publishing Rust Crates');
-
-  if (isDryRun) {
-    info('Would publish Rust crates to crates.io');
-    return;
-  }
-
-  run('cargo publish --manifest-path crates/sentinel-crypto/Cargo.toml', { cwd: workspaceRoot }, true);
-  run('cargo publish --manifest-path crates/sentinel/Cargo.toml', { cwd: workspaceRoot }, true);
-  run('cargo publish --manifest-path crates/cli/Cargo.toml', { cwd: workspaceRoot }, true);
-
-  success('Published Rust crates to crates.io');
-}
 
 /**
  * Publishes Python wheel to PyPI
