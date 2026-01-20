@@ -23,6 +23,6 @@ pub async fn run(args: DeleteCollectionArgs) -> sentinel_dbms::Result<()> {
     )
     .await?;
     store.delete_collection(&args.collection).await?;
-    println!("Collection '{}' deleted successfully", args.collection);
+    tracing::info!("Collection '{}' deleted successfully", args.collection);
     Ok(())
 }
