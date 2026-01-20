@@ -9,7 +9,7 @@ pub struct VerifyArgs;
 
 /// Execute the WAL verification operation.
 pub async fn run(store_path: String, collection: Option<String>, _args: VerifyArgs) -> sentinel_dbms::Result<()> {
-    use sentinel_dbms::wal::ops::{CollectionWalOps, StoreWalOps};
+    use sentinel_dbms::wal::ops::{CollectionWalOps as _, StoreWalOps as _};
 
     let store =
         sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default()).await?;
@@ -74,7 +74,7 @@ pub async fn run(store_path: String, collection: Option<String>, _args: VerifyAr
             if has_critical {
                 error!("Critical verification issues found");
                 return Err(sentinel_dbms::SentinelError::ConfigError {
-                    message: "Critical verification issues found".to_string(),
+                    message: "Critical verification issues found".to_owned(),
                 });
             }
         }
