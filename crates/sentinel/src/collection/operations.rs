@@ -101,15 +101,7 @@ impl Collection {
         })?;
         debug!("Document {} inserted successfully", id);
 
-        // Update metadata - new document only since overwrites are not allowed
-        *self.updated_at.write().unwrap() = chrono::Utc::now();
-        self.total_documents
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        self.total_size_bytes
-            .fetch_add(json.len() as u64, std::sync::atomic::Ordering::Relaxed);
-
-        // Emit event to store (for store-level metadata sync)
-        // Collection metadata is saved asynchronously by the event processor
+        // Emit event - all metadata updates handled asynchronously by event processor
         self.emit_event(crate::events::StoreEvent::DocumentInserted {
             collection: self.name().to_string(),
             size_bytes: json.len() as u64,
@@ -334,15 +326,7 @@ impl Collection {
                     })?;
                 debug!("Document {} soft deleted successfully", id);
 
-                // Update metadata - in-memory counters only
-                *self.updated_at.write().unwrap() = chrono::Utc::now();
-                self.total_documents
-                    .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                self.total_size_bytes
-                    .fetch_sub(file_size, std::sync::atomic::Ordering::Relaxed);
-
-                // Emit event for metadata synchronization
-                // Collection metadata is saved asynchronously by the event processor
+                // Emit event - all metadata updates handled asynchronously by event processor
                 if let Some(sender) = &self.event_sender {
                     let event = StoreEvent::DocumentDeleted {
                         collection: self.name().to_string(),
@@ -594,15 +578,7 @@ impl Collection {
 
         debug!("Document {} updated successfully", id);
 
-        // Update metadata - in-memory counters only
-        *self.updated_at.write().unwrap() = chrono::Utc::now();
-        self.total_size_bytes
-            .fetch_sub(old_size, std::sync::atomic::Ordering::Relaxed);
-        self.total_size_bytes
-            .fetch_add(new_size, std::sync::atomic::Ordering::Relaxed);
-
-        // Emit event for metadata synchronization
-        // Collection metadata is saved asynchronously by the event processor
+        // Emit event - all metadata updates handled asynchronously by event processor
         if let Some(sender) = &self.event_sender {
             let event = StoreEvent::DocumentUpdated {
                 collection:     self.name().to_string(),
