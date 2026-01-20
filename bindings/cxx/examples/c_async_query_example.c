@@ -5,9 +5,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <unistd.h> // for sleep
+#include <stdatomic.h> // for atomic operations
 
 // Global variables for async callbacks
-static int async_tests_completed = 0;
+static _Atomic int async_tests_completed = 0;
 static const int TOTAL_ASYNC_TESTS = 6;
 
 #define CHECK_ERROR(func_call) \
@@ -25,6 +26,7 @@ static const int TOTAL_ASYNC_TESTS = 6;
 void on_store_created(uint64_t task_id, sentinel_store_t* store, char* user_data) {
     printf("✓ Async store creation completed (task %llu)\n", task_id);
     if (user_data) free(user_data);
+    if (store) sentinel_store_free(store);
     async_tests_completed++;
 }
 
