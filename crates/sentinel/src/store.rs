@@ -290,7 +290,8 @@ impl Store {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let wal_config = StoreWalConfig::default();
-    /// let store = Store::new_with_config("/var/lib/sentinel", None, wal_config).await?;
+    /// let store =
+    ///     Store::new_with_config("/var/lib/sentinel", None, wal_config).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -302,7 +303,10 @@ impl Store {
     where
         P: AsRef<Path>,
     {
-        trace!("Creating new Store at path: {:?} with custom WAL config", root_path.as_ref());
+        trace!(
+            "Creating new Store at path: {:?} with custom WAL config",
+            root_path.as_ref()
+        );
         let root_path = root_path.as_ref().to_path_buf();
         tokio_fs::create_dir_all(&root_path).await.map_err(|e| {
             error!(
@@ -522,90 +526,21 @@ impl Store {
         since = "2.0.2",
         note = "Please use collection_with_config to specify WAL configuration"
     )]
-    pub async fn collection(&self, name: &str) -> Result<Collection> {
-        trace!("Accessing collection: {}", name);
-        validate_collection_name(name)?;
-        let path = self.root_path.join(DATA_DIR).join(name);
-        tokio_fs::create_dir_all(&path).await.map_err(|e| {
-            error!("Failed to create collection directory {:?}: {}", path, e);
-            e
-        })?;
-        debug!("Collection directory ensured: {:?}", path);
+    pub async fn collection(&self, name: &str) -> Result<Collection> { self.collection_with_config(name, None).await }
 
-        // Load or create collection metadata
-        let metadata_path = path.join(COLLECTION_METADATA_FILE);
-        let is_new_collection = !tokio_fs::try_exists(&metadata_path).await.unwrap_or(false);
-        let metadata = if is_new_collection {
-            debug!("Creating new collection metadata for {}", name);
-            let metadata = CollectionMetadata::new(name.to_string());
-            let content = serde_json::to_string_pretty(&metadata)?;
-            tokio_fs::write(&metadata_path, content).await?;
-            metadata
-        }
-        else {
-            debug!("Loading existing collection metadata for {}", name);
-            let content = tokio_fs::read_to_string(&metadata_path).await?;
-            serde_json::from_str(&content)?
-        };
-
-        // If this is a new collection, emit event (metadata will be saved by event handler)
-        if is_new_collection {
-            // Emit collection created event
-            let event = StoreEvent::CollectionCreated {
-                name: name.to_string(),
-            };
-            let _ = self.event_sender.send(event);
-        }
-
-        // Get collection WAL config: prefer metadata's config, fall back to store-derived
-        let collection_wal_config = metadata.wal_config.unwrap_or_else(|| {
-            self.wal_config
-                .collection_configs
-                .get(name)
-                .cloned()
-                .unwrap_or_else(|| self.wal_config.default_collection_config.clone())
-        });
-
-        // Create WAL manager with collection config
-        let wal_path = path.join(WAL_DIR).join(WAL_FILE);
-        let wal_manager = Some(Arc::new(
-            WalManager::new(wal_path, collection_wal_config.clone().into()).await?,
-        ));
-
-        trace!("Collection '{}' accessed successfully", name);
-        let now = chrono::Utc::now();
-
-        // Update store metadata
-        *self.last_accessed_at.write().unwrap() = now;
-
-        let mut collection = Collection {
-            path,
-            signing_key: self.signing_key.clone(),
-            wal_manager,
-            wal_config: collection_wal_config,
-            created_at: now,
-            updated_at: std::sync::RwLock::new(now),
-            last_checkpoint_at: std::sync::RwLock::new(None),
-            total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.document_count)),
-            total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.total_size_bytes)),
-            event_sender: Some(self.event_sender()),
-            event_task: None,
-        };
-        collection.start_event_processor();
-        Ok(collection)
-    }
-
-    /// Retrieves or creates a collection with the specified name and custom WAL configuration.
+    /// Retrieves or creates a collection with the specified name and custom WAL configuration
+    /// overrides.
     ///
-    /// This method provides access to a named collection within the store with custom WAL settings.
-    /// If the collection directory doesn't exist, it will be created automatically under
-    /// the `data/` subdirectory of the store's root path.
+    /// This method provides access to a named collection within the store with custom WAL settings
+    /// that override the stored or default configuration. If the collection directory doesn't
+    /// exist, it will be created automatically under the `data/` subdirectory of the store's
+    /// root path.
     ///
     /// # Parameters
     ///
     /// * `name` - The name of the collection. This will be used as the directory name under
     ///   `data/`. The name should be filesystem-safe.
-    /// * `wal_config` - Optional custom WAL configuration for this collection
+    /// * `wal_overrides` - Optional WAL configuration overrides for this collection
     ///
     /// # Returns
     ///
@@ -619,15 +554,18 @@ impl Store {
     ///
     /// ```no_run
     /// use sentinel_dbms::Store;
-    /// use sentinel_wal::CollectionWalConfig;
+    /// use sentinel_wal::CollectionWalConfigOverrides;
     /// use serde_json::json;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let store = Store::new("/var/lib/sentinel", None).await?;
-    /// let wal_config = CollectionWalConfig::default();
+    /// let wal_overrides = CollectionWalConfigOverrides {
+    ///     write_mode: Some(sentinel_wal::WalFailureMode::Warn),
+    ///     ..Default::default()
+    /// };
     ///
-    /// // Access a users collection with custom WAL config
-    /// let users = store.collection_with_config("users", Some(wal_config)).await?;
+    /// // Access a users collection with WAL overrides
+    /// let users = store.collection_with_config("users", Some(wal_overrides)).await?;
     ///
     /// // Insert a document into the collection
     /// users.insert("user-123", json!({
@@ -640,7 +578,7 @@ impl Store {
     pub async fn collection_with_config(
         &self,
         name: &str,
-        wal_config: Option<sentinel_wal::CollectionWalConfig>,
+        wal_overrides: Option<sentinel_wal::CollectionWalConfigOverrides>,
     ) -> Result<Collection> {
         trace!("Accessing collection: {} with custom WAL config", name);
         validate_collection_name(name)?;
@@ -657,9 +595,17 @@ impl Store {
         let metadata = if is_new_collection {
             debug!("Creating new collection metadata for {}", name);
             let mut metadata = CollectionMetadata::new(name.to_string());
-            // Set custom WAL config if provided
-            if let Some(config) = wal_config {
-                metadata.wal_config = Some(config);
+            // For new collections, if overrides are provided, create a config with overrides applied to
+            // defaults
+            if let Some(overrides) = &wal_overrides {
+                let base_config = self
+                    .wal_config
+                    .collection_configs
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| self.wal_config.default_collection_config.clone());
+                let merged_config = base_config.apply_overrides(overrides);
+                metadata.wal_config = Some(merged_config);
             }
             let content = serde_json::to_string_pretty(&metadata)?;
             tokio_fs::write(&metadata_path, content).await?;
@@ -669,11 +615,21 @@ impl Store {
             debug!("Loading existing collection metadata for {}", name);
             let content = tokio_fs::read_to_string(&metadata_path).await?;
             let mut metadata: CollectionMetadata = serde_json::from_str(&content)?;
-            // Update WAL config if provided (even for existing collections)
-            if let Some(config) = wal_config {
-                metadata.wal_config = Some(config);
-                let content = serde_json::to_string_pretty(&metadata)?;
-                tokio_fs::write(&metadata_path, content).await?;
+            // For existing collections, conditionally update metadata if persist_overrides is true
+            if let Some(overrides) = &wal_overrides {
+                if overrides.persist_overrides {
+                    let base_config = metadata.wal_config.unwrap_or_else(|| {
+                        self.wal_config
+                            .collection_configs
+                            .get(name)
+                            .cloned()
+                            .unwrap_or_else(|| self.wal_config.default_collection_config.clone())
+                    });
+                    let merged_config = base_config.apply_overrides(overrides);
+                    metadata.wal_config = Some(merged_config);
+                    let content = serde_json::to_string_pretty(&metadata)?;
+                    tokio_fs::write(&metadata_path, content).await?;
+                }
             }
             metadata
         };
@@ -687,14 +643,20 @@ impl Store {
             let _ = self.event_sender.send(event);
         }
 
-        // Get collection WAL config: use metadata's config, or provided config, or fall back to store-derived
-        let collection_wal_config = metadata.wal_config.unwrap_or_else(|| {
+        // Get collection WAL config: use metadata's config, or provided config, or fall back to
+        // store-derived
+        let mut collection_wal_config = metadata.wal_config.unwrap_or_else(|| {
             self.wal_config
                 .collection_configs
                 .get(name)
                 .cloned()
                 .unwrap_or_else(|| self.wal_config.default_collection_config.clone())
         });
+
+        // Apply overrides if provided
+        if let Some(overrides) = wal_overrides {
+            collection_wal_config = collection_wal_config.apply_overrides(&overrides);
+        }
 
         // Create WAL manager with collection config
         let wal_path = path.join(WAL_DIR).join(WAL_FILE);

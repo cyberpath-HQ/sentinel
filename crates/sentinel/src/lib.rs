@@ -60,6 +60,7 @@ pub use sentinel_wal::{
     recover_from_wal_safe,
     verify_wal_consistency,
     CollectionWalConfig,
+    CollectionWalConfigOverrides,
     CompressionAlgorithm,
     EntryType,
     LogEntry,
