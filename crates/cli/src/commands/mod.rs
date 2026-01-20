@@ -82,6 +82,10 @@ pub struct WalArgs {
     /// Enable WAL-based recovery features for collections (default: true)
     #[arg(long, global = true)]
     pub wal_enable_recovery: Option<bool>,
+
+    /// Persist WAL configuration overrides to disk for existing collections (default: false)
+    #[arg(long, global = true)]
+    pub wal_persist_overrides: bool,
 }
 
 /// The CLI for the Sentinel document DBMS.
@@ -832,5 +836,23 @@ mod tests {
     #[test]
     fn test_parse_key_derivation_algorithm_invalid() {
         assert!(parse_key_derivation_algorithm("invalid").is_err());
+    }
+}
+
+impl WalArgs {
+    /// Convert WalArgs to CollectionWalConfigOverrides for merging with stored config.
+    pub fn to_overrides(&self) -> sentinel_dbms::CollectionWalConfigOverrides {
+        sentinel_dbms::CollectionWalConfigOverrides {
+            write_mode:            self.wal_write_mode,
+            verification_mode:     self.wal_verify_mode,
+            auto_verify:           self.wal_auto_verify,
+            enable_recovery:       self.wal_enable_recovery,
+            max_wal_size_bytes:    self.wal_max_file_size.map(Some), /* If provided, set to Some(value), else None
+                                                                      * (don't override) */
+            compression_algorithm: self.wal_compression.map(Some),
+            max_records_per_file:  self.wal_max_records.map(Some),
+            format:                self.wal_format,
+            persist_overrides:     self.wal_persist_overrides,
+        }
     }
 }
