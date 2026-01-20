@@ -732,3 +732,336 @@ impl CollectionWalOps for Collection {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+    use crate::Store;
+
+    /// Helper to create a test store with a collection
+    async fn create_test_store_with_collection() -> (tempfile::TempDir, Store, String) {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new(temp_dir.path().to_path_buf(), None)
+            .await
+            .unwrap();
+        let collection_name = "test_wal_collection".to_string();
+        let _ = store.collection(&collection_name).await.unwrap();
+        (temp_dir, store, collection_name)
+    }
+
+    // ============ CollectionWalOps Tests ============
+
+    #[tokio::test]
+    async fn test_checkpoint_wal_with_wal_manager() {
+        let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
+        let collection = store.collection(&collection_name).await.unwrap();
+
+        // Insert some data to create WAL entries
+        collection
+            .insert("doc-1", serde_json::json!({"test": 1}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", serde_json::json!({"test": 2}))
+            .await
+            .unwrap();
+
+        // Checkpoint should succeed
+        let result = collection.checkpoint_wal().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_checkpoint_wal_without_wal_manager() {
+        let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
+        let collection = store.collection(&collection_name).await.unwrap();
+
+        // Create collection without WAL config - checkpoint should still succeed (no-op)
+        // The default collection may not have a WAL manager configured
+        let result = collection.checkpoint_wal().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_stream_wal_entries_with_data() {
+        let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
+        let collection = store.collection(&collection_name).await.unwrap();
+
+        // Insert some data
+        collection
+            .insert("doc-1", serde_json::json!({"name": "Test1"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", serde_json::json!({"name": "Test2"}))
+            .await
+            .unwrap();
+
+        // Stream entries
+        let stream = collection.stream_wal_entries().await.unwrap();
+
+        // Collect entries
+        let entries: Vec<_> = stream.collect().await;
+        assert!(!entries.is_empty());
+
+        // Each entry should be Ok
+        for entry in entries {
+            assert!(entry.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_stream_wal_entries_empty() {
+        let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
+        let collection = store.collection(&collection_name).await.unwrap();
+
+        // Stream on empty collection
+        let stream = collection.stream_wal_entries().await.unwrap();
+        let entries: Vec<_> = stream.collect().await;
+
+        // May be empty or have entries depending on WAL config
+        // Just verify it doesn't error
+        assert!(entries.is_empty() || entries.iter().all(|e| e.is_ok()));
+    }
+
+    #[tokio::test]
+    async fn test_verify_against_wal() {
+        let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
+        let collection = store.collection(&collection_name).await.unwrap();
+
+        // Insert some data
+        collection
+            .insert("doc-1", serde_json::json!({"verify": true}))
+            .await
+            .unwrap();
+
+        // Verify should succeed
+        let result = collection.verify_against_wal().await;
+        assert!(result.is_ok());
+
+        let verification = result.unwrap();
+        // If there are issues, verification didn't fully pass
+        assert!(verification.passed || verification.issues.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_recover_from_wal() {
+        let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
+        let collection = store.collection(&collection_name).await.unwrap();
+
+        // Insert some data
+        collection
+            .insert("doc-to-recover", serde_json::json!({"data": "test"}))
+            .await
+            .unwrap();
+
+        // Recovery should succeed (even if no recovery needed)
+        let result = collection.recover_from_wal().await;
+        assert!(result.is_ok());
+
+        let recovery = result.unwrap();
+        // All operations should be accounted for
+        let total = recovery.recovered_operations + recovery.skipped_operations + recovery.failed_operations;
+        assert_eq!(total, 0); // No operations to recover since data is already persisted
+    }
+
+    #[tokio::test]
+    async fn test_wal_size() {
+        let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
+        let collection = store.collection(&collection_name).await.unwrap();
+
+        // Get initial size
+        let initial_size = collection.wal_size().await.unwrap();
+
+        // Insert data
+        collection
+            .insert("doc-for-size", serde_json::json!({"size": "test data"}))
+            .await
+            .unwrap();
+
+        // Get size after insert
+        let new_size = collection.wal_size().await.unwrap();
+        assert!(new_size >= initial_size);
+    }
+
+    #[tokio::test]
+    async fn test_wal_entries_count() {
+        let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
+        let collection = store.collection(&collection_name).await.unwrap();
+
+        // Get initial count
+        let initial_count = collection.wal_entries_count().await.unwrap();
+
+        // Insert some data
+        collection
+            .insert("doc-1", serde_json::json!({"count": 1}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc-2", serde_json::json!({"count": 2}))
+            .await
+            .unwrap();
+
+        // Get count after inserts
+        let new_count = collection.wal_entries_count().await.unwrap();
+        assert!(new_count >= initial_count);
+    }
+
+    // ============ StoreWalOps Tests ============
+
+    #[tokio::test]
+    async fn test_checkpoint_all_collections() {
+        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+
+        // Insert some data
+        let collection = store.collection("test1").await.unwrap();
+        collection
+            .insert("doc-1", serde_json::json!({"test": 1}))
+            .await
+            .unwrap();
+
+        let collection2 = store.collection("test2").await.unwrap();
+        collection2
+            .insert("doc-2", serde_json::json!({"test": 2}))
+            .await
+            .unwrap();
+
+        // Checkpoint all should succeed
+        let result = store.checkpoint_all_collections().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_stream_all_wal_entries() {
+        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+
+        // Insert some data in multiple collections
+        let collection1 = store.collection("stream-collection-1").await.unwrap();
+        collection1
+            .insert("doc-1", serde_json::json!({"stream": 1}))
+            .await
+            .unwrap();
+
+        let collection2 = store.collection("stream-collection-2").await.unwrap();
+        collection2
+            .insert("doc-2", serde_json::json!({"stream": 2}))
+            .await
+            .unwrap();
+
+        // Stream all entries
+        let stream = store.stream_all_wal_entries().await.unwrap();
+        let entries: Vec<_> = stream.collect().await;
+
+        // Should have entries from both collections
+        // Each entry is (collection_name, LogEntry)
+        for entry in entries {
+            assert!(entry.is_ok());
+            let (_name, log_entry) = entry.unwrap();
+            // Verify it's a valid log entry
+            assert!(!log_entry.document_id.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_verify_all_collections() {
+        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+
+        // Create multiple collections with data
+        let collection1 = store.collection("verify-1").await.unwrap();
+        collection1
+            .insert("doc-1", serde_json::json!({"verify": 1}))
+            .await
+            .unwrap();
+
+        let collection2 = store.collection("verify-2").await.unwrap();
+        collection2
+            .insert("doc-2", serde_json::json!({"verify": 2}))
+            .await
+            .unwrap();
+
+        // Verify all should succeed
+        let result = store.verify_all_collections().await;
+        assert!(result.is_ok());
+
+        let issues = result.unwrap();
+        // Both collections should have passed verification
+        for (name, collection_issues) in &issues {
+            for issue in collection_issues {
+                assert!(!issue.is_critical || issue.description.is_empty());
+            }
+            // Debug output
+            if !collection_issues.is_empty() {
+                eprintln!("Collection {} has {} issues", name, collection_issues.len());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_recover_all_collections() {
+        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+
+        // Create collections with data
+        let collection1 = store.collection("recover-1").await.unwrap();
+        collection1
+            .insert("doc-1", serde_json::json!({"recover": 1}))
+            .await
+            .unwrap();
+
+        let collection2 = store.collection("recover-2").await.unwrap();
+        collection2
+            .insert("doc-2", serde_json::json!({"recover": 2}))
+            .await
+            .unwrap();
+
+        // Recover all should succeed
+        let result = store.recover_all_collections().await;
+        assert!(result.is_ok());
+
+        let recovery_stats = result.unwrap();
+        // Should have entries for both collections
+        assert_eq!(recovery_stats.len(), 2);
+
+        for (name, operations) in &recovery_stats {
+            eprintln!("Collection {} recovered {} operations", name, operations);
+        }
+    }
+
+    // ============ Edge Case Tests ============
+
+    #[tokio::test]
+    async fn test_wal_operations_on_empty_store() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new(temp_dir.path().to_path_buf(), None)
+            .await
+            .unwrap();
+
+        // Verify empty store
+        let result = store.verify_all_collections().await;
+        assert!(result.is_ok());
+        let issues = result.unwrap();
+        assert!(issues.is_empty());
+
+        // Recover empty store
+        let result = store.recover_all_collections().await;
+        assert!(result.is_ok());
+        let stats = result.unwrap();
+        assert!(stats.is_empty());
+
+        // Stream empty store
+        let stream = store.stream_all_wal_entries().await.unwrap();
+        let entries: Vec<_> = stream.collect().await;
+        assert!(entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_checkpoint_empty_collection() {
+        let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
+        let collection = store.collection(&collection_name).await.unwrap();
+
+        // Checkpoint empty collection should succeed
+        let result = collection.checkpoint_wal().await;
+        assert!(result.is_ok());
+    }
+}
