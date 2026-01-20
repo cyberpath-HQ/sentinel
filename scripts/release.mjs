@@ -90,118 +90,130 @@ function success(message) {
   console.log(`✅ ${message}`);
 }
 
+/**
+ * Ensures a cargo utility is installed
+ * @param {string} tool - Name of the cargo tool to install
+ * @param {string} description - Description for logging
+ */
+function ensureCargoTool(tool, description) {
+  try {
+    execSync(`cargo ${tool} --version`, { stdio: 'pipe' });
+    info(`${description} already installed`);
+  } catch {
+    info(`Installing ${description}...`);
+    run(`cargo install ${tool}`);
+    success(`${description} installed`);
+  }
+}
+
 // =============================================================================
 // Package Creation
 // =============================================================================
 
 /**
- * Creates a Debian package for the CLI
+ * Creates a Debian package for the CLI using cargo-deb
  */
-function createDebPackage(workspaceRoot, version, cliBinary) {
-  section('Creating Debian Package');
+function createDebPackage(workspaceRoot, version) {
+  section('Creating Debian Package with cargo-deb');
 
-  const distDir = join(workspaceRoot, 'dist');
-  const packageRoot = join(distDir, 'debian');
-  const packageBuildRoot = join(packageRoot, `sentinel-cli_${version}_amd64`);
+  ensureCargoTool('cargo-deb', 'cargo-deb');
 
-  run(`rm -rf ${packageRoot}`);
-  mkdirSync(packageRoot, { recursive: true });
-  mkdirSync(join(packageBuildRoot, 'DEBIAN'), { recursive: true });
-  mkdirSync(join(packageBuildRoot, 'usr', 'bin'), { recursive: true });
+  // Create a temporary Cargo.toml for the CLI package
+  const tempCargoToml = join(workspaceRoot, 'Cargo.deb.toml');
+  const originalCargoToml = join(workspaceRoot, 'crates', 'cli', 'Cargo.toml');
 
-  copyFileSync(cliBinary, join(packageBuildRoot, 'usr', 'bin', 'sentinel'));
-  run(`chmod +x ${join(packageBuildRoot, 'usr', 'bin', 'sentinel')}`);
+  const originalContent = readFileSync(originalCargoToml, 'utf8');
 
-  const controlContent = `Package: sentinel-cli
-Version: ${version}
-Section: utils
-Priority: optional
-Architecture: amd64
-Depends: libc6 (>= 2.35)
-Maintainer: Cyberpath <dev@cyberpath.io>
-Description: Cyberpath Sentinel CLI
- A filesystem-backed document DBMS CLI tool.
- Home: https://cyberpath.io
+  // Add deb package metadata
+  const debMetadata = `
+[package.metadata.deb]
+maintainer = "Cyberpath <support@cyberpath-hq.com>"
+copyright = "2026, Cyberpath"
+license-file = ["LICENSE", "4"]
+depends = "$auto, libc6 (>= 2.35)"
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/sentinel", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/sentinel-cli/", "644"],
+]
+extended-description = """\
+A filesystem-backed document DBMS CLI tool.
+Home: https://sentinel.cyberpath-hq.com"""
+
+[package.metadata.deb.variants.x86_64-unknown-linux-gnu]
+depends = "$auto, libc6 (>= 2.35)"
 `;
 
-  writeFileSync(join(packageBuildRoot, 'DEBIAN', 'control'), controlContent);
+  writeFileSync(tempCargoToml, originalContent + debMetadata);
 
-  const postinstContent = `#!/bin/bash
-set -e
-echo "Sentinel CLI v${version} installed successfully!"
-echo "Run 'sentinel --help' to get started."
-`;
+  try {
+    run(`cargo deb --manifest-path ${tempCargoToml} --target x86_64-unknown-linux-gnu --no-build`, { cwd: workspaceRoot });
 
-  writeFileSync(join(packageBuildRoot, 'DEBIAN', 'postinst'), postinstContent);
-  run(`chmod +x ${join(packageBuildRoot, 'DEBIAN', 'postinst')}`);
+    const debFile = join(workspaceRoot, 'target', 'debian', `sentinel-cli_${version}_amd64.deb`);
 
-  run(`dpkg-deb --build ${packageBuildRoot} ${join(packageRoot, `sentinel-cli_${version}_amd64.deb`)}`);
+    if (existsSync(debFile)) {
+      const finalDebFile = join(workspaceRoot, 'dist', 'debian', `sentinel-cli_${version}_amd64.deb`);
+      mkdirSync(dirname(finalDebFile), { recursive: true });
+      copyFileSync(debFile, finalDebFile);
+      success(`Created Debian package: sentinel-cli_${version}_amd64.deb`);
+      return finalDebFile;
+    }
+  } finally {
+    // Clean up temp file
+    if (existsSync(tempCargoToml)) {
+      rmSync(tempCargoToml);
+    }
+  }
 
-  success(`Created Debian package: sentinel-cli_${version}_amd64.deb`);
-
-  return join(packageRoot, `sentinel-cli_${version}_amd64.deb`);
+  warn('Debian package creation failed');
+  return null;
 }
 
 /**
- * Creates an RPM package for the CLI
+ * Creates an RPM package for the CLI using cargo-generate-rpm
  */
-function createRpmPackage(workspaceRoot, version, cliBinary) {
-  section('Creating RPM Package');
+function createRpmPackage(workspaceRoot, version) {
+  section('Creating RPM Package with cargo-generate-rpm');
 
-  const distDir = join(workspaceRoot, 'dist');
-  const packageRoot = join(distDir, 'rpm');
-  const packageSpecRoot = join(packageRoot, `sentinel-cli-${version}`);
+  ensureCargoTool('cargo-generate-rpm', 'cargo-generate-rpm');
 
-  run(`rm -rf ${packageRoot}`);
-  mkdirSync(packageRoot, { recursive: true });
-  mkdirSync(join(packageSpecRoot, 'BUILD'), { recursive: true });
-  mkdirSync(join(packageSpecRoot, 'RPMS'), { recursive: true });
-  mkdirSync(join(packageSpecRoot, 'SOURCES'), { recursive: true });
-  mkdirSync(join(packageSpecRoot, 'SPECS'), { recursive: true });
-  mkdirSync(join(packageSpecRoot, 'SRPMS'), { recursive: true });
+  // Create a temporary Cargo.toml for the CLI package
+  const tempCargoToml = join(workspaceRoot, 'Cargo.rpm.toml');
+  const originalCargoToml = join(workspaceRoot, 'crates', 'cli', 'Cargo.toml');
 
-  const binaryDir = join(packageSpecRoot, 'RPMS', 'x86_64');
-  mkdirSync(binaryDir, { recursive: true });
-  copyFileSync(cliBinary, join(binaryDir, 'sentinel'));
-  run(`chmod +x ${join(binaryDir, 'sentinel')}`);
+  const originalContent = readFileSync(originalCargoToml, 'utf8');
 
-  const specContent = `Name: sentinel-cli
-Version: ${version}
-Release: 1%{?dist}
-Summary: Cyberpath Sentinel CLI
-License: Apache-2.0
-URL: https://cyberpath.io
-Source0: %{name}-%{version}.tar.gz
-
-%description
-A filesystem-backed document DBMS CLI tool.
-
-%install
-mkdir -p %{buildroot}/usr/bin
-cp %{_builddir}/sentinel %{buildroot}/usr/bin/
-chmod +x %{buildroot}/usr/bin/sentinel
-
-%files
-/usr/bin/sentinel
-
-%changelog
-* $(date '+%a %b %d %Y') Cyberpath <dev@cyberpath.io> - ${version}
-- Initial package
+  // Add RPM package metadata
+  const rpmMetadata = `
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/sentinel", dest = "/usr/bin/sentinel", mode = "755" },
+]
 `;
 
-  writeFileSync(join(packageSpecRoot, 'SPECS', 'sentinel-cli.spec'), specContent);
+  writeFileSync(tempCargoToml, originalContent + rpmMetadata);
 
-  run(`tar -czf ${join(packageSpecRoot, 'SOURCES', `sentinel-cli-${version}.tar.gz`)} -C ${packageSpecRoot} .`);
+  try {
+    run(`cargo generate-rpm --manifest-path ${tempCargoToml} --target x86_64-unknown-linux-gnu`, { cwd: workspaceRoot });
 
-  const rpmBuildCmd = `rpmbuild --define "_topdir ${packageSpecRoot}" -bb ${join(packageSpecRoot, 'SPECS', 'sentinel-cli.spec')}`;
-  run(rpmBuildCmd);
+    const rpmFiles = readdirSync(join(workspaceRoot, 'target'), { recursive: true })
+      .filter(file => file.endsWith('.rpm'))
+      .map(file => join(workspaceRoot, 'target', file));
 
-  const rpmFile = join(packageSpecRoot, 'RPMS', 'x86_64', `sentinel-cli-${version}-1.x86_64.rpm`);
-
-  if (existsSync(rpmFile)) {
-    copyFileSync(rpmFile, join(packageRoot, `sentinel-cli-${version}-1.x86_64.rpm`));
-    success(`Created RPM package: sentinel-cli-${version}-1.x86_64.rpm`);
-    return join(packageRoot, `sentinel-cli-${version}-1.x86_64.rpm`);
+    if (rpmFiles.length > 0) {
+      const rpmFile = rpmFiles[0];
+      const finalRpmFile = join(workspaceRoot, 'dist', 'rpm', basename(rpmFile));
+      mkdirSync(dirname(finalRpmFile), { recursive: true });
+      copyFileSync(rpmFile, finalRpmFile);
+      success(`Created RPM package: ${basename(rpmFile)}`);
+      return finalRpmFile;
+    }
+  } finally {
+    // Clean up temp file
+    if (existsSync(tempCargoToml)) {
+      rmSync(tempCargoToml);
+    }
   }
 
   warn('RPM package creation failed');
@@ -225,14 +237,14 @@ function createArchPackage(workspaceRoot, version, cliBinary) {
   copyFileSync(cliBinary, join(pkgbuildRoot, 'usr', 'bin', 'sentinel'));
   run(`chmod +x ${join(pkgbuildRoot, 'usr', 'bin', 'sentinel')}`);
 
-  const pkgbuildContent = `# Contributor: Cyberpath <dev@cyberpath.io>
-# Maintainer: Cyberpath <dev@cyberpath.io>
+  const pkgbuildContent = `# Contributor: Cyberpath <support@cyberpath-hq.com>
+# Maintainer: Cyberpath <support@cyberpath-hq.com>
 
 pkgname=sentinel-cli
 pkgver=${version}
 pkgrel=1
 pkgdesc="Cyberpath Sentinel CLI - A filesystem-backed document DBMS"
-url="https://cyberpath.io"
+url="https://sentinel.cyberpath-hq.com"
 arch=('x86_64')
 license=('Apache-2.0')
 depends=('glibc')
@@ -247,11 +259,16 @@ package() {
 
   writeFileSync(join(pkgbuildRoot, 'PKGBUILD'), pkgbuildContent);
 
-  copyFileSync(join(pkgbuildRoot, 'PKGBUILD'), join(packageRoot, `sentinel-cli-${version}-1-x86_64.pkg.tar.zst`));
+  // Create a basic .pkg.tar.zst archive (simplified for now)
+  const pkgFileName = `sentinel-cli-${version}-1-x86_64.pkg.tar.zst`;
+  const pkgFilePath = join(packageRoot, pkgFileName);
 
-  success(`Created Arch package: sentinel-cli-${version}-1-x86_64.pkg.tar.zst`);
+  // For now, just create a simple archive - in production you'd use makepkg
+  run(`cd ${packageRoot} && tar -cf - sentinel-cli | zstd -T0 -o ${pkgFileName}`, { cwd: packageRoot });
 
-  return join(packageRoot, `sentinel-cli-${version}-1-x86_64.pkg.tar.zst`);
+  success(`Created Arch package: ${pkgFileName}`);
+
+  return pkgFilePath;
 }
 
 /**
@@ -271,14 +288,14 @@ function createApkPackage(workspaceRoot, version, cliBinary) {
   copyFileSync(cliBinary, join(apkbuildRoot, 'usr', 'bin', 'sentinel'));
   run(`chmod +x ${join(apkbuildRoot, 'usr', 'bin', 'sentinel')}`);
 
-  const apkbuildContent = `# Contributor: Cyberpath <dev@cyberpath.io>
-# Maintainer: Cyberpath <dev@cyberpath.io>
+  const apkbuildContent = `# Contributor: Cyberpath <support@cyberpath-hq.com>
+# Maintainer: Cyberpath <support@cyberpath-hq.com>
 
 pkgname=sentinel-cli
 pkgver=${version}
 pkgrel=0
 pkgdesc="Cyberpath Sentinel CLI - A filesystem-backed document DBMS"
-url="https://cyberpath.io"
+url="https://sentinel.cyberpath-hq.com"
 arch="x86_64"
 license="Apache-2.0"
 depends="musl"
@@ -330,7 +347,7 @@ sentinel --version
 
 ## Documentation
 
-See https://cyberpath.io/docs for full documentation.
+See https://sentinel.cyberpath-hq.com/docs for full documentation.
 `;
 
   writeFileSync(join(stagingDir, 'README.md'), readmeContent);
@@ -660,19 +677,17 @@ async function main() {
   // Create distribution packages
   section('Creating Distribution Packages');
 
-  const linuxBinary = cliBinaries['linux x64 (glibc)'];
-
-  if (linuxBinary) {
-    const debPath = createDebPackage(workspaceRoot, nextRelease, linuxBinary);
+  if (cliBinaries['linux x64 (glibc)']) {
+    const debPath = createDebPackage(workspaceRoot, nextRelease);
     if (debPath) assets.push(debPath);
 
-    const rpmPath = createRpmPackage(workspaceRoot, nextRelease, linuxBinary);
+    const rpmPath = createRpmPackage(workspaceRoot, nextRelease);
     if (rpmPath) assets.push(rpmPath);
 
-    const archPath = createArchPackage(workspaceRoot, nextRelease, linuxBinary);
+    const archPath = createArchPackage(workspaceRoot, nextRelease, cliBinaries['linux x64 (glibc)']);
     if (archPath) assets.push(archPath);
 
-    const apkPath = createApkPackage(workspaceRoot, nextRelease, linuxBinary);
+    const apkPath = createApkPackage(workspaceRoot, nextRelease, cliBinaries['linux x64 (glibc)']);
     if (apkPath) assets.push(apkPath);
   } else {
     warn('No Linux binary available, skipping package creation');
