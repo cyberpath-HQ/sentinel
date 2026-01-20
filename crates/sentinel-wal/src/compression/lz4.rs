@@ -7,8 +7,7 @@
 
 use async_trait::async_trait;
 
-use crate::compression::CompressionTrait;
-use crate::Result;
+use crate::{compression::CompressionTrait, Result};
 
 /// LZ4 compressor
 pub struct Lz4Compressor;
@@ -17,7 +16,7 @@ pub struct Lz4Compressor;
 impl CompressionTrait for Lz4Compressor {
     async fn compress(&self, data: &[u8]) -> Result<Vec<u8>> {
         use async_compression::tokio::bufread::Lz4Encoder;
-        use tokio::io::AsyncReadExt;
+        use tokio::io::AsyncReadExt as _;
 
         let mut encoder = Lz4Encoder::new(std::io::Cursor::new(data));
         let mut compressed: Vec<u8> = Vec::new();
@@ -30,7 +29,7 @@ impl CompressionTrait for Lz4Compressor {
 
     async fn decompress(&self, data: &[u8]) -> Result<Vec<u8>> {
         use async_compression::tokio::bufread::Lz4Decoder;
-        use tokio::io::AsyncReadExt;
+        use tokio::io::AsyncReadExt as _;
 
         let mut decoder = Lz4Decoder::new(std::io::Cursor::new(data));
         let mut decompressed: Vec<u8> = Vec::new();
