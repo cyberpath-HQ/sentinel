@@ -188,27 +188,28 @@ fn test_cxx_bindings_build(build_dir: &Path, cxx_bindings_dir: &Path) {
         "CMake configuration failed after retry"
     );
 
-    // Build with make
-    let make_result = Command::new("make")
-        .args(&["-j", &num_cpus::get().to_string()])
+    // Build with cmake --build (cross-platform)
+    let build_result = Command::new("cmake")
+        .args(&["--build", ".", "--parallel", &num_cpus::get().to_string()])
         .current_dir(build_dir)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status()
-        .expect("Failed to run make");
+        .expect("Failed to run cmake --build");
 
-    assert!(make_result.success(), "C/C++ build failed");
+    assert!(build_result.success(), "C/C++ build failed");
 
     // Verify that key executables were built
+    let exe_suffix = std::env::consts::EXE_SUFFIX;
     let always_expected = vec![
-        "c_example",
-        "c_query_example",
-        "c_complex_query_example",
-        "test_c_bindings",
+        format!("c_example{}", exe_suffix),
+        format!("c_query_example{}", exe_suffix),
+        format!("c_complex_query_example{}", exe_suffix),
+        format!("test_c_bindings{}", exe_suffix),
     ];
 
     // Check always-expected executables
-    for exe_name in always_expected {
+    for exe_name in &always_expected {
         let exe_path = build_dir.join(exe_name);
         assert!(exe_path.exists(), "Executable {} was not built", exe_name);
         assert!(
@@ -219,9 +220,12 @@ fn test_cxx_bindings_build(build_dir: &Path, cxx_bindings_dir: &Path) {
     }
 
     // Async examples should be built now
-    let async_examples = vec!["c_async_example", "c_async_query_example"];
-    for exe_name in async_examples {
-        let exe_path = build_dir.join(exe_name);
+    let async_examples = vec![
+        format!("c_async_example{}", exe_suffix),
+        format!("c_async_query_example{}", exe_suffix),
+    ];
+    for exe_name in &async_examples {
+        let exe_path = build_dir.join(&exe_name);
         assert!(
             exe_path.exists(),
             "Async executable {} was not built",
@@ -279,7 +283,27 @@ fn test_cxx_bindings_tests(build_dir: &Path) {
 }
 
 fn run_example_test(build_dir: &Path, exe_name: &str, description: &str) {
-    let exe_path = build_dir.join(exe_name);
+    let exe_suffix = std::env::consts::EXE_SUFFIX;
+    // Append platform-specific executable suffix (e.g., .exe on Windows)
+    // Note: EXE_SUFFIX includes the leading dot (e.g., ".exe" on Windows, "" on Linux)
+    let exe_path = if exe_suffix.is_empty() {
+        build_dir.join(exe_name)
+    } else {
+        let ext = exe_suffix.trim_start_matches('.');
+        build_dir.join(exe_name).with_extension(ext)
+    };
+
+    // The build test should have created all executables already
+    if !exe_path.exists() {
+        panic!(
+            "{} executable not found at {:?} - build test may have failed",
+            description, exe_path
+        );
+    }
+        else {
+            &exe_suffix[1 ..] // Remove the leading dot
+        },
+    );
 
     // The build test should have created all executables already
     if !exe_path.exists() {
