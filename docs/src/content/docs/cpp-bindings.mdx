@@ -535,6 +535,8 @@ int main() {
         "{\"name\": \"Alice Johnson\", \"email\": \"alice@example.com\"}");
     if (err != SENTINEL_OK) {
         fprintf(stderr, "Failed to insert document\n");
+        sentinel_collection_destroy(users);
+        sentinel_store_destroy(store);
         return 1;
     }
 
