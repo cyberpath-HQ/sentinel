@@ -95,7 +95,7 @@ pub async fn run(
                     }
                 }
                 else {
-                    "".to_string()
+                    String::from("")
                 };
                 println!("{:<30} {:<6} {}", id, found, preview);
             }
