@@ -78,7 +78,13 @@ impl ListArgs {
 /// use sentinel_cli::commands::collection::list::{run, ListArgs};
 ///
 /// let args = ListArgs::default();
-/// run("/tmp/my_store".to_string(), "users".to_string(), None, args).await?;
+/// run(
+///     String::from("/tmp/my_store"),
+///     String::from("users"),
+///     None,
+///     args,
+/// )
+/// .await?;
 /// ```
 
 pub async fn run(
