@@ -54,9 +54,9 @@ npm run build
 TypeScript types are included:
 
 ```typescript
-import { Store, Collection, Document } from "@cyberpath/sentinel";
+import { SentinelStore, SentinelCollection, SentinelDocument } from "@cyberpath/sentinel";
 
-const store = await Store.create("./my-database", null);
+const store = await SentinelStore.create("./my-database", null);
 const users = await store.collection("users");
 ```
 
@@ -65,12 +65,12 @@ const users = await store.collection("users");
 ### Creating a Store
 
 ```javascript
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 async function main() {
   // Create a new store
   // If passphrase is null, documents won't be signed
-  const store = await Store.create("./my-database", null);
+  const store = await SentinelStore.create("./my-database", null);
 
   console.log(`Store created at ${store.path()}`);
   return store;
@@ -85,7 +85,7 @@ With TypeScript:
 import { Store } from "@cyberpath/sentinel";
 
 async function main(): Promise<void> {
-  const store = await Store.create("./my-database", null);
+  const store = await SentinelStore.create("./my-database", null);
   console.log(`Store created at ${store.path()}`);
 }
 
@@ -95,10 +95,10 @@ main().catch(console.error);
 ### Working with Collections
 
 ```javascript
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 async function main() {
-  const store = await Store.create("./my-database", null);
+  const store = await SentinelStore.create("./my-database", null);
 
   // Get or create a collection
   const users = await store.collection("users");
@@ -117,10 +117,10 @@ main().catch(console.error);
 ### Document Operations
 
 ```javascript
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 async function main() {
-  const store = await Store.create("./my-database", null);
+  const store = await SentinelStore.create("./my-database", null);
   const users = await store.collection("users");
 
   // Insert a document
@@ -136,8 +136,8 @@ async function main() {
   // Get a document
   const doc = await users.get("alice");
   if (doc) {
-    console.log(`Found: ${doc.data().name}`);
-    console.log(`Email: ${doc.data().email}`);
+    console.log(`Found: ${doc.data.name}`);
+    console.log(`Email: ${doc.data.email}`);
     console.log(`Version: ${doc.version()}`);
     console.log(`Created: ${doc.createdAt()}`);
   }
@@ -165,10 +165,10 @@ main().catch(console.error);
 Insert multiple documents efficiently:
 
 ```javascript
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 async function main() {
-  const store = await Store.create("./my-database", null);
+  const store = await SentinelStore.create("./my-database", null);
   const users = await store.collection("users");
 
   // Bulk insert multiple documents
@@ -203,10 +203,10 @@ main().catch(console.error);
 ### Basic Queries
 
 ```javascript
-const { Store, QueryBuilder } = require("@cyberpath/sentinel");
+const { SentinelStore, QueryBuilder, Operator } = require("@cyberpath/sentinel");
 
 async function main() {
-  const store = await Store.create("./my-database", null);
+  const store = await SentinelStore.create("./my-database", null);
   const users = await store.collection("users");
 
   // Insert test data
@@ -219,8 +219,8 @@ async function main() {
 
   // Build a query
   const query = new QueryBuilder()
-    .filter("age", "greater_than", 26)
-    .filter("active", "equals", true)
+    .filter("age", Operator.GreaterThan, 26)
+    .filter("active", Operator.Equals, true)
     .sort("age", "ascending")
     .limit(10)
     .build();
@@ -230,7 +230,7 @@ async function main() {
 
   console.log(`Found ${documents.length} active users over 26:`);
   documents.forEach((doc) => {
-    console.log(`  - ${doc.data().name}, age ${doc.data().age}`);
+    console.log(`  - ${doc.data.name}, age ${doc.data.age}`);
   });
 }
 
@@ -241,42 +241,42 @@ main().catch(console.error);
 
 The Node.js bindings support these operators:
 
-| Operator                 | Description      | Example                                              |
-| ------------------------ | ---------------- | ---------------------------------------------------- |
-| `equals`                 | Exact match      | `.filter('role', 'equals', 'admin')`                 |
-| `not_equals`             | Inequality       | `.filter('active', 'not_equals', false)`             |
-| `greater_than`           | > comparison     | `.filter('age', 'greater_than', 25)`                 |
-| `less_than`              | < comparison     | `.filter('age', 'less_than', 30)`                    |
-| `greater_than_or_equals` | >= comparison    | `.filter('age', 'greater_than_or_equals', 25)`       |
-| `less_than_or_equals`    | &lt;= comparison | `.filter('age', 'less_than_or_equals', 30)`          |
-| `contains`               | String contains  | `.filter('name', 'contains', 'Al')`                  |
-| `starts_with`            | String prefix    | `.filter('email', 'starts_with', 'admin')`           |
-| `ends_with`              | String suffix    | `.filter('email', 'ends_with', '@company.com')`      |
-| `in_list`                | Value in array   | `.filter('role', 'in_list', ['admin', 'moderator'])` |
-| `exists`                 | Field exists     | `.filter('phone', 'exists', true)`                   |
+| Operator                 | Description      | Example                                                      |
+| ------------------------ | ---------------- | ------------------------------------------------------------ |
+| `Operator.Equals`        | Exact match      | `.filter('role', Operator.Equals, 'admin')`                  |
+| `Operator.NotEquals`     | Inequality       | `.filter('active', Operator.NotEquals, false)`               |
+| `Operator.GreaterThan`   | > comparison     | `.filter('age', Operator.GreaterThan, 25)`                   |
+| `Operator.LessThan`      | < comparison     | `.filter('age', Operator.LessThan, 30)`                      |
+| `Operator.GreaterOrEqual`| >= comparison    | `.filter('age', Operator.GreaterOrEqual, 25)`                 |
+| `Operator.LessOrEqual`   | &lt;= comparison | `.filter('age', Operator.LessOrEqual, 30)`                   |
+| `Operator.Contains`      | String contains  | `.filter('name', Operator.Contains, 'Al')`                   |
+| `Operator.StartsWith`    | String prefix    | `.filter('email', Operator.StartsWith, 'admin')`             |
+| `Operator.EndsWith`      | String suffix    | `.filter('email', Operator.EndsWith, '@company.com')`        |
+| `Operator.In`            | Value in array   | `.filter('role', Operator.In, ['admin', 'moderator'])`       |
+| `Operator.Exists`        | Field exists     | `.filter('phone', Operator.Exists, true)`                    |
 
 ### Complex Queries
 
 Combine filters with AND logic:
 
 ```javascript
-const { Store, QueryBuilder } = require("@cyberpath/sentinel");
+const { SentinelStore, QueryBuilder, Operator } = require("@cyberpath/sentinel");
 
 async function main() {
-  const store = await Store.create("./my-database", null);
+  const store = await SentinelStore.create("./my-database", null);
   const users = await store.collection("users");
 
   // Complex query: admins who are active and over 30
   const query = new QueryBuilder()
-    .filter("role", "equals", "admin")
-    .filter("active", "equals", true)
-    .filter("age", "greater_than", 30)
+    .filter("role", Operator.Equals, "admin")
+    .filter("active", Operator.Equals, true)
+    .filter("age", Operator.GreaterThan, 30)
     .sort("age", "descending")
     .build();
 
   const result = await users.query(query);
   result.documents.forEach((doc) => {
-    console.log(`${doc.data().name} (age ${doc.data().age})`);
+    console.log(`${doc.data.name} (age ${doc.data.age})`);
   });
 }
 
@@ -288,10 +288,10 @@ main().catch(console.error);
 Process large datasets efficiently:
 
 ```javascript
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 async function main() {
-  const store = await Store.create("./my-database", null);
+  const store = await SentinelStore.create("./my-database", null);
   const users = await store.collection("users");
 
   // Insert many test documents
@@ -305,7 +305,7 @@ async function main() {
   // Stream all documents
   console.log("Processing all users:");
   for await (const doc of users.all()) {
-    console.log(`  - ${doc.id()}: ${doc.data().name}`);
+    console.log(`  - ${doc.id()}: ${doc.data.name}`);
   }
 
   // Count documents
@@ -321,10 +321,10 @@ main().catch(console.error);
 ### Hashing
 
 ```javascript
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 async function main() {
-  const store = await Store.create("./my-database", null);
+  const store = await SentinelStore.create("./my-database", null);
 
   // Hash data
   const data = "Hello, Sentinel!";
@@ -344,11 +344,11 @@ main().catch(console.error);
 Create a store with a passphrase to enable signing:
 
 ```javascript
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 async function main() {
   // Create store with signing enabled
-  const store = await Store.create("./secure-database", "my-secret-passphrase");
+  const store = await SentinelStore.create("./secure-database", "my-secret-passphrase");
   const users = await store.collection("users");
 
   // Documents will be automatically signed
@@ -372,12 +372,12 @@ main().catch(console.error);
 ### Encryption
 
 ```javascript
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 const fs = require("fs");
 
 async function main() {
   // Create store with encryption
-  const store = await Store.create("./encrypted-database", "secure-passphrase");
+  const store = await SentinelStore.create("./encrypted-database", "secure-passphrase");
   const users = await store.collection("users");
 
   // Documents are automatically encrypted
@@ -399,7 +399,7 @@ const { Store, SentinelError } = require("@cyberpath/sentinel");
 
 async function main() {
   try {
-    const store = await Store.create("./my-database", null);
+const store = await SentinelSentinelStore.create("./my-database");
     const users = await store.collection("users");
 
     // Try to get a non-existent document
@@ -425,13 +425,13 @@ main().catch(console.error);
 
 ```javascript
 const express = require("express");
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 const app = express();
 let store;
 
 async function initialize() {
-  store = await Store.create("./data", null);
+  store = await SentinelStore.create("./data", null);
 }
 
 initialize().then(() => {
@@ -442,7 +442,7 @@ initialize().then(() => {
       const users = await store.collection("users");
       const doc = await users.get(req.params.userId);
       if (doc) {
-        res.json(doc.data());
+        res.json(doc.data);
       } else {
         res.status(404).json({ error: "User not found" });
       }
@@ -472,12 +472,12 @@ initialize().then(() => {
 
 ```javascript
 const fastify = require("fastify")({ logger: true });
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 let store;
 
 async function initialize() {
-  store = await Store.create("./data", null);
+  store = await SentinelStore.create("./data", null);
 }
 
 initialize().then(() => {
@@ -485,7 +485,7 @@ initialize().then(() => {
     const users = await store.collection("users");
     const doc = await users.get(request.params.userId);
     if (doc) {
-      return doc.data();
+      return doc.data;
     }
     reply.status(404).send({ error: "User not found" });
   });
@@ -511,14 +511,14 @@ initialize().then(() => {
 ```javascript
 const Koa = require("koa");
 const Router = require("@koa/router");
-const { Store } = require("@cyberpath/sentinel");
+const { SentinelStore } = require("@cyberpath/sentinel");
 
 const app = new Koa();
 const router = new Router();
 let store;
 
 async function initialize() {
-  store = await Store.create("./data", null);
+  store = await SentinelStore.create("./data", null);
 }
 
 initialize().then(() => {
@@ -526,7 +526,7 @@ initialize().then(() => {
     const users = await store.collection("users");
     const doc = await users.get(ctx.params.userId);
     if (doc) {
-      ctx.body = doc.data();
+      ctx.body = doc.data;
     } else {
       ctx.status = 404;
       ctx.body = { error: "User not found" };
@@ -567,7 +567,7 @@ Make sure you're using absolute paths or paths relative to your project root:
 
 ```javascript
 const path = require("path");
-const store = await Store.create(path.resolve("./data"), null);
+const store = await SentinelStore.create(path.resolve("./data"), null);
 ```
 
 ### Build Fails on macOS
@@ -635,7 +635,7 @@ class Collection {
 ```javascript
 class QueryBuilder {
   constructor()
-  filter(field: string, operator: string, value: any): QueryBuilder
+  filter(field: string, operator: Operator, value: any): QueryBuilder
   sort(field: string, order: string): QueryBuilder  // order: "ascending" or "descending"
   limit(count: number): QueryBuilder
   offset(count: number): QueryBuilder
