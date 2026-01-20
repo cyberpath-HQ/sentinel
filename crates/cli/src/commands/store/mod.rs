@@ -22,34 +22,9 @@ pub enum StoreCommands {
     #[command(visible_alias = "gen")]
     Generate(generate::GenArgs),
     /// List all collections in the store.
-    ListCollections(ListCollectionsArgs),
+    List(list::ListCollectionsArgs),
     /// Delete a collection from the store.
-    DeleteCollection(DeleteCollectionArgs),
-}
-
-/// Arguments for the store list-collections command.
-#[derive(Args)]
-pub struct ListCollectionsArgs {
-    /// Path to the Sentinel store
-    #[arg(short, long)]
-    pub path:       String,
-    /// Passphrase for decrypting the signing key
-    #[arg(long)]
-    pub passphrase: Option<String>,
-}
-
-/// Arguments for the store delete-collection command.
-#[derive(Args)]
-pub struct DeleteCollectionArgs {
-    /// Path to the Sentinel store
-    #[arg(short, long)]
-    pub path:       String,
-    /// Collection name
-    #[arg(short, long)]
-    pub collection: String,
-    /// Passphrase for decrypting the signing key
-    #[arg(long)]
-    pub passphrase: Option<String>,
+    Delete(delete::DeleteCollectionArgs),
 }
 
 /// Run the store command.
@@ -63,39 +38,13 @@ pub async fn run(args: StoreArgs) -> sentinel_dbms::Result<()> {
     match args.subcommand {
         StoreCommands::Init(init_args) => init::run(init_args).await,
         StoreCommands::Generate(gen_args) => generate::run(gen_args).await,
-        StoreCommands::ListCollections(list_args) => run_list_collections(list_args).await,
-        StoreCommands::DeleteCollection(delete_args) => run_delete_collection(delete_args).await,
+        StoreCommands::List(list_args) => list::run(list_args).await,
+        StoreCommands::Delete(delete_args) => delete::run(delete_args).await,
     }
-}
-
-/// Run the store list-collections command.
-pub async fn run_list_collections(args: ListCollectionsArgs) -> sentinel_dbms::Result<()> {
-    let store = sentinel_dbms::Store::new_with_config(
-        &args.path,
-        args.passphrase.as_deref(),
-        sentinel_dbms::StoreWalConfig::default(),
-    )
-    .await?;
-    let collections = store.list_collections().await?;
-    for collection in collections {
-        println!("{}", collection);
-    }
-    Ok(())
-}
-
-/// Run the store delete-collection command.
-pub async fn run_delete_collection(args: DeleteCollectionArgs) -> sentinel_dbms::Result<()> {
-    let store = sentinel_dbms::Store::new_with_config(
-        &args.path,
-        args.passphrase.as_deref(),
-        sentinel_dbms::StoreWalConfig::default(),
-    )
-    .await?;
-    store.delete_collection(&args.collection).await?;
-    println!("Collection '{}' deleted successfully", args.collection);
-    Ok(())
 }
 
 // Re-export submodules
+pub mod delete;
 pub mod generate;
 pub mod init;
+pub mod list;
