@@ -138,6 +138,7 @@ pub struct Cli {
     #[arg(long, value_name = "ALGORITHM", default_value = "argon2id", value_parser = ["argon2id", "pbkdf2"], global = true)]
     pub key_derivation_algorithm: String,
 
+    /// WAL (Write-Ahead Log) configuration options for the store.
     #[command(flatten)]
     pub wal: WalArgs,
 }
@@ -297,8 +298,8 @@ mod tests {
                 assert_eq!(args.name, "users");
                 match args.command {
                     collection::CollectionCommands::Insert(insert_args) => {
-                        assert_eq!(insert_args.id, Some("user1".to_string()));
-                        assert_eq!(insert_args.data, Some("{}".to_string()));
+                        assert_eq!(insert_args.id, Some(String::from("user1")));
+                        assert_eq!(insert_args.data, Some(String::from("{}")));
                     },
                     _ => panic!("Expected Insert subcommand"),
                 }
@@ -373,10 +374,10 @@ mod tests {
             command: Commands::Store(args),
             json: false,
             verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
+            hash_algorithm: String::from("blake3"),
+            signature_algorithm: String::from("ed25519"),
+            encryption_algorithm: String::from("xchacha20poly1305"),
+            key_derivation_algorithm: String::from("argon2id"),
             wal: WalArgs::default(),
         };
 
@@ -404,17 +405,17 @@ mod tests {
             command: Commands::Store(store_args),
             json: false,
             verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
+            hash_algorithm: String::from("blake3"),
+            signature_algorithm: String::from("ed25519"),
+            encryption_algorithm: String::from("xchacha20poly1305"),
+            key_derivation_algorithm: String::from("argon2id"),
             wal: WalArgs::default(),
         };
         run_command(init_cli).await.unwrap();
 
         let collection_args = super::collection::CollectionArgs {
             store:      store_path.to_string_lossy().to_string(),
-            name:       "test_collection".to_string(),
+            name:       String::from("test_collection"),
             passphrase: None,
             command:    super::collection::CollectionCommands::Create(super::collection::create::CreateArgs::default()),
         };
@@ -422,10 +423,10 @@ mod tests {
             command: Commands::Collection(collection_args),
             json: false,
             verbose: 0,
-            hash_algorithm: "blake3".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
+            hash_algorithm: String::from("blake3"),
+            signature_algorithm: String::from("ed25519"),
+            encryption_algorithm: String::from("xchacha20poly1305"),
+            key_derivation_algorithm: String::from("argon2id"),
             wal: WalArgs::default(),
         };
 
@@ -455,10 +456,10 @@ mod tests {
             command: Commands::Store(args),
             json: false,
             verbose: 0,
-            hash_algorithm: "invalid".to_string(),
-            signature_algorithm: "ed25519".to_string(),
-            encryption_algorithm: "xchacha20poly1305".to_string(),
-            key_derivation_algorithm: "argon2id".to_string(),
+            hash_algorithm: String::from("invalid"),
+            signature_algorithm: String::from("ed25519"),
+            encryption_algorithm: String::from("xchacha20poly1305"),
+            key_derivation_algorithm: String::from("argon2id"),
             wal: WalArgs::default(),
         };
 
