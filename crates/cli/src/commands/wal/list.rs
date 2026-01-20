@@ -19,7 +19,7 @@ pub struct ListArgs {
 
 /// Execute the WAL list operation.
 pub async fn run(store_path: String, collection: Option<String>, args: ListArgs) -> sentinel_dbms::Result<()> {
-    use sentinel_dbms::wal::ops::{CollectionWalOps, StoreWalOps};
+    use sentinel_dbms::wal::ops::{CollectionWalOps as _, StoreWalOps};
 
     let store =
         sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default()).await?;
@@ -119,7 +119,7 @@ pub async fn run(store_path: String, collection: Option<String>, args: ListArgs)
                         entry.document_id_str(),
                         chrono::DateTime::from_timestamp(entry.timestamp as i64, 0)
                             .map(|dt| dt.to_rfc3339())
-                            .unwrap_or_else(|| "invalid timestamp".to_string())
+                            .unwrap_or_else(|| String::from("invalid timestamp"))
                     );
                 },
                 _ => {
