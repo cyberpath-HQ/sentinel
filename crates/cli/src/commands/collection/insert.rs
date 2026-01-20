@@ -76,7 +76,9 @@ pub async fn run(
         sentinel_dbms::StoreWalConfig::default(),
     )
     .await?;
-    let coll = store.collection_with_config(&collection, None).await?;
+    let coll = store
+        .collection_with_config(&collection, Some(args.wal.to_overrides()))
+        .await?;
 
     if let Some(bulk_file) = args.bulk {
         insert_bulk_documents(coll, &store_path, &collection, bulk_file).await

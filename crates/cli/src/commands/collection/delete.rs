@@ -56,7 +56,9 @@ pub async fn run(
         sentinel_dbms::StoreWalConfig::default(),
     )
     .await?;
-    let coll = store.collection_with_config(&collection, None).await?;
+    let coll = store
+        .collection_with_config(&collection, Some(args.wal.to_overrides()))
+        .await?;
     match coll.delete(&id).await {
         Ok(_) => {
             info!("Document '{}' deleted successfully", id);

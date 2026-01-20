@@ -105,7 +105,9 @@ pub async fn run(
         sentinel_dbms::StoreWalConfig::default(),
     )
     .await?;
-    let coll = store.collection_with_config(&collection, None).await?;
+    let coll = store
+        .collection_with_config(&collection, Some(args.wal.to_overrides()))
+        .await?;
 
     let verification_options = args.to_verification_options().map_err(|e| {
         sentinel_dbms::SentinelError::ConfigError {

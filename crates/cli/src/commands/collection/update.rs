@@ -60,7 +60,9 @@ pub async fn run(
         sentinel_dbms::StoreWalConfig::default(),
     )
     .await?;
-    let coll = store.collection_with_config(&collection, None).await?;
+    let coll = store
+        .collection_with_config(&collection, Some(args.wal.to_overrides()))
+        .await?;
     let value: Value = match serde_json::from_str(&args.data) {
         Ok(v) => v,
         Err(e) => {
