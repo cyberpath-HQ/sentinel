@@ -6,10 +6,8 @@ use clap::{Args, Parser, Subcommand};
 /// the logic for a specific operation on the Sentinel DBMS.
 /// Collection command module.
 mod collection;
-/// Generate command module.
-mod generate;
-/// Init command module.
-mod init;
+/// Store command module.
+mod store;
 /// WAL command module.
 mod wal;
 
@@ -149,16 +147,11 @@ pub struct Cli {
 /// Each variant represents a different operation that can be performed on the Sentinel DBMS.
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Initialize a new store at the specified path.
+    /// Store management operations.
     ///
-    /// This command creates the necessary directory structure and metadata for a new Sentinel
-    /// store.
-    Init(init::InitArgs),
-    /// Generate cryptographic keys and other artifacts.
-    ///
-    /// This command provides subcommands for generating keys and other cryptographic materials.
-    #[command(visible_alias = "gen")]
-    Generate(generate::GenArgs),
+    /// Provides commands for initializing stores, generating keys, listing collections,
+    /// and deleting collections.
+    Store(store::StoreArgs),
     /// Collection management operations.
     ///
     /// Provides commands for creating collections, and performing CRUD operations
@@ -232,8 +225,7 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
     }
 
     match cli.command {
-        Commands::Init(args) => init::run(args).await,
-        Commands::Generate(args) => generate::run(args).await,
+        Commands::Store(args) => store::run(args).await,
         Commands::Collection(args) => collection::run(args).await,
         Commands::Wal(args) => wal::run(args).await,
     }
@@ -249,11 +241,16 @@ mod tests {
     /// and their arguments using clap's testing utilities.
     #[test]
     fn test_cli_parsing() {
-        // Test init command
-        let cli_parsed = Cli::try_parse_from(["test", "init", "--path", "/tmp/store"]).unwrap();
+        // Test store init command
+        let cli_parsed = Cli::try_parse_from(["test", "store", "init", "--path", "/tmp/store"]).unwrap();
         match cli_parsed.command {
-            Commands::Init(args) => assert_eq!(args.path, "/tmp/store"),
-            _ => panic!("Expected Init command"),
+            Commands::Store(args) => {
+                match args.subcommand {
+                    store::StoreCommands::Init(init_args) => assert_eq!(init_args.path, "/tmp/store"),
+                    _ => panic!("Expected Store Init command"),
+                }
+            },
+            _ => panic!("Expected Store command"),
         }
 
         // Test collection create command
@@ -315,10 +312,10 @@ mod tests {
     /// This test checks that the verbose flag is parsed correctly.
     #[test]
     fn test_cli_verbose_parsing() {
-        let cli_parsed = Cli::try_parse_from(["test", "-v", "init", "--path", "/tmp/store"]).unwrap();
+        let cli_parsed = Cli::try_parse_from(["test", "-v", "store", "init", "--path", "/tmp/store"]).unwrap();
         assert_eq!(cli_parsed.verbose, 1);
 
-        let cli_parsed = Cli::try_parse_from(["test", "-vv", "init", "--path", "/tmp/store"]).unwrap();
+        let cli_parsed = Cli::try_parse_from(["test", "-vv", "store", "init", "--path", "/tmp/store"]).unwrap();
         assert_eq!(cli_parsed.verbose, 2);
     }
 
@@ -327,7 +324,7 @@ mod tests {
     /// This test verifies that the JSON output flag is parsed correctly.
     #[test]
     fn test_cli_json_parsing() {
-        let cli_parsed = Cli::try_parse_from(["test", "--json", "init", "--path", "/tmp/store"]).unwrap();
+        let cli_parsed = Cli::try_parse_from(["test", "--json", "store", "init", "--path", "/tmp/store"]).unwrap();
         assert!(cli_parsed.json);
     }
 
@@ -365,12 +362,15 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let store_path = temp_dir.path().join("test_store");
 
-        let args = super::init::InitArgs {
+        let init_args = super::store::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
             ..Default::default()
         };
+        let args = super::store::StoreArgs {
+            subcommand: super::store::StoreCommands::Init(init_args),
+        };
         let cli = Cli {
-            command: Commands::Init(args),
+            command: Commands::Store(args),
             json: false,
             verbose: 0,
             hash_algorithm: "blake3".to_string(),
@@ -393,12 +393,15 @@ mod tests {
         let store_path = temp_dir.path().join("test_store");
 
         // Setup store
-        let init_args = super::init::InitArgs {
+        let init_args = super::store::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
             ..Default::default()
         };
+        let store_args = super::store::StoreArgs {
+            subcommand: super::store::StoreCommands::Init(init_args),
+        };
         let init_cli = Cli {
-            command: Commands::Init(init_args),
+            command: Commands::Store(store_args),
             json: false,
             verbose: 0,
             hash_algorithm: "blake3".to_string(),
@@ -441,12 +444,15 @@ mod tests {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let store_path = temp_dir.path().join("test_store");
 
-        let args = super::init::InitArgs {
+        let init_args = super::store::init::InitArgs {
             path: store_path.to_string_lossy().to_string(),
             ..Default::default()
         };
+        let args = super::store::StoreArgs {
+            subcommand: super::store::StoreCommands::Init(init_args),
+        };
         let cli = Cli {
-            command: Commands::Init(args),
+            command: Commands::Store(args),
             json: false,
             verbose: 0,
             hash_algorithm: "invalid".to_string(),
