@@ -50,7 +50,7 @@ pub async fn run(
 
     let documents_array = json_value.as_array().ok_or_else(|| {
         sentinel_dbms::SentinelError::Internal {
-            message: "JSON file must contain an array of documents".to_string(),
+            message: String::from("JSON file must contain an array of documents"),
         }
     })?;
 
@@ -64,19 +64,19 @@ pub async fn run(
     for doc_value in documents_array {
         let doc_obj = doc_value.as_object().ok_or_else(|| {
             sentinel_dbms::SentinelError::Internal {
-                message: "Each document must be an object".to_string(),
+                message: String::from("Each document must be an object"),
             }
         })?;
 
         let id = doc_obj.get("id").and_then(|v| v.as_str()).ok_or_else(|| {
             sentinel_dbms::SentinelError::Internal {
-                message: "Each document must have an 'id' field with a string value".to_string(),
+                message: String::from("Each document must have an 'id' field with a string value"),
             }
         })?;
 
         let data = doc_obj.get("data").ok_or_else(|| {
             sentinel_dbms::SentinelError::Internal {
-                message: "Each document must have a 'data' field".to_string(),
+                message: String::from("Each document must have a 'data' field"),
             }
         })?;
 
