@@ -1,5 +1,9 @@
 ---
-const id = `table-${Math.random().toString(36).substring(2, 9)}`;
+interface Props {
+  id?: string;
+}
+
+const { id } = Astro.props;
 ---
 
 <div class="border border-border rounded-md">
