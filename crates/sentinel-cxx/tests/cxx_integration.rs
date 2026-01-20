@@ -84,6 +84,8 @@ fn setup_cmake_library_paths(project_root: &Path, cxx_bindings_dir: &Path) {
         let so_lib = base_path.join("libsentinel_cxx.so");
         let a_lib = base_path.join("libsentinel_cxx.a");
         let dylib = base_path.join("libsentinel_cxx.dylib");
+        let dll_lib = base_path.join("libsentinel_cxx.dll");
+        let lib_lib = base_path.join("libsentinel_cxx.lib");
         let h_file = base_path.join("sentinel-cxx.h");
 
         // Copy .so (Linux)
@@ -105,6 +107,20 @@ fn setup_cmake_library_paths(project_root: &Path, cxx_bindings_dir: &Path) {
             copy_file(dylib, lib_dir.join("libsentinel_cxx.dylib"));
             lib_found = true;
             println!("Copied libsentinel_cxx.dylib to lib directory");
+        }
+
+        // Copy .dll (Windows)
+        if dll_lib.exists() {
+            copy_file(dll_lib, lib_dir.join("libsentinel_cxx.dll"));
+            lib_found = true;
+            println!("Copied libsentinel_cxx.dll to lib directory");
+        }
+
+        // Copy .lib (Windows import library)
+        if lib_lib.exists() {
+            copy_file(lib_lib, lib_dir.join("libsentinel_cxx.lib"));
+            lib_found = true;
+            println!("Copied libsentinel_cxx.lib to lib directory");
         }
 
         // Copy header
