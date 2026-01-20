@@ -108,14 +108,12 @@ impl Collection {
         self.total_size_bytes
             .fetch_add(json.len() as u64, std::sync::atomic::Ordering::Relaxed);
 
-        // Emit event to store
+        // Emit event to store (for store-level metadata sync)
+        // Collection metadata is saved asynchronously by the event processor
         self.emit_event(crate::events::StoreEvent::DocumentInserted {
             collection: self.name().to_string(),
             size_bytes: json.len() as u64,
         });
-
-        // Save metadata to disk
-        self.save_metadata().await?;
 
         Ok(())
     }
@@ -336,17 +334,15 @@ impl Collection {
                     })?;
                 debug!("Document {} soft deleted successfully", id);
 
-                // Update metadata
+                // Update metadata - in-memory counters only
                 *self.updated_at.write().unwrap() = chrono::Utc::now();
                 self.total_documents
                     .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                 self.total_size_bytes
                     .fetch_sub(file_size, std::sync::atomic::Ordering::Relaxed);
 
-                // Save metadata to disk
-                self.save_metadata().await?;
-
                 // Emit event for metadata synchronization
+                // Collection metadata is saved asynchronously by the event processor
                 if let Some(sender) = &self.event_sender {
                     let event = StoreEvent::DocumentDeleted {
                         collection: self.name().to_string(),
@@ -598,17 +594,15 @@ impl Collection {
 
         debug!("Document {} updated successfully", id);
 
-        // Update metadata
+        // Update metadata - in-memory counters only
         *self.updated_at.write().unwrap() = chrono::Utc::now();
         self.total_size_bytes
             .fetch_sub(old_size, std::sync::atomic::Ordering::Relaxed);
         self.total_size_bytes
             .fetch_add(new_size, std::sync::atomic::Ordering::Relaxed);
 
-        // Save metadata to disk
-        self.save_metadata().await?;
-
         // Emit event for metadata synchronization
+        // Collection metadata is saved asynchronously by the event processor
         if let Some(sender) = &self.event_sender {
             let event = StoreEvent::DocumentUpdated {
                 collection:     self.name().to_string(),
