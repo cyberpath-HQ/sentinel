@@ -637,31 +637,53 @@ impl WalManager {
                     match format {
                         WalFormat::Binary => {
                             trace!("Streaming binary format entries");
-                            let mut buffer = [0u8; 4];
-                            loop {
-                                // Read length
-                                match reader.read_exact(&mut buffer).await {
-                                    Ok(_) => {
-                                        let len = u32::from_le_bytes(buffer) as usize;
-                                        let mut data = vec![0u8; len];
-                                        match reader.read_exact(&mut data).await {
-                                            Ok(_) => {
-                                                match LogEntry::from_bytes(&data) {
+                            // For binary format, read the entire file and parse using checksums
+                            let mut buffer = Vec::new();
+                            match reader.read_to_end(&mut buffer).await {
+                                Ok(_) => {
+                                    let mut offset = 0;
+                                    while offset < buffer.len() {
+                                        // Find the next entry by checking checksums
+                                        let mut entry_end = offset;
+                                        while entry_end + 4 <= buffer.len() {
+                                            let data = &buffer[offset .. entry_end];
+                                            let checksum_start = entry_end;
+                                            if checksum_start + 4 > buffer.len() {
+                                                break;
+                                            }
+
+                                            let checksum_bytes = &buffer[checksum_start .. checksum_start + 4];
+                                            let expected_checksum = u32::from_le_bytes(checksum_bytes.try_into().unwrap());
+
+                                            let mut hasher = Crc32Hasher::new();
+                                            hasher.update(data);
+                                            let actual_checksum = hasher.finalize();
+
+                                            if actual_checksum == expected_checksum {
+                                                // Found a valid entry
+                                                match LogEntry::from_bytes(&buffer[offset .. entry_end + 4]) {
                                                     Ok(entry) => {
                                                         trace!("Streamed binary entry: {:?}", entry.entry_type);
                                                         yield Ok(entry);
                                                     },
                                                     Err(e) => {
                                                         warn!("Skipping invalid WAL entry: {}", e);
-                                                        // Try to continue, but since length is wrong, may fail
-                                                    }
+                                                    },
                                                 }
+                                                offset = entry_end + 4;
+                                                break;
                                             }
-                                            Err(_) => break, // EOF or error
+                                            else {
+                                                entry_end += 1;
+                                            }
+                                        }
+
+                                        if entry_end >= buffer.len() {
+                                            break;
                                         }
                                     }
-                                    Err(_) => break, // EOF
-                                }
+                                },
+                                Err(e) => yield Err(e.into()),
                             }
                         },
                         WalFormat::JsonLines => {
