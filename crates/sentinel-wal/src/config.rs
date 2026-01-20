@@ -96,6 +96,8 @@ pub struct CollectionWalConfigOverrides {
     pub compression_algorithm: Option<Option<crate::CompressionAlgorithm>>,
     pub max_records_per_file:  Option<Option<usize>>,
     pub format:                Option<crate::manager::WalFormat>,
+    /// Whether to persist the merged configuration to disk (for existing collections)
+    pub persist_overrides:     bool,
 }
 
 impl CollectionWalConfig {
