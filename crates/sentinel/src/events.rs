@@ -108,4 +108,78 @@ mod tests {
         assert!(debug_str.contains("users"));
         assert!(debug_str.contains("512"));
     }
+
+    #[tokio::test]
+    async fn test_event_emitter_with_sender() {
+        use std::sync::Arc;
+
+        use tokio::sync::mpsc;
+
+        // Create a channel to receive events
+        let (sender, mut receiver) = mpsc::channel::<StoreEvent>(10);
+
+        // Create a minimal collection struct for testing
+        struct TestCollection {
+            event_sender: Option<mpsc::Sender<StoreEvent>>,
+        }
+
+        impl TestCollection {
+            fn new(sender: mpsc::Sender<StoreEvent>) -> Self {
+                Self {
+                    event_sender: Some(sender),
+                }
+            }
+        }
+
+        impl EventEmitter for TestCollection {
+            fn emit_event(&self, event: StoreEvent) {
+                if let Some(sender) = &self.event_sender {
+                    let _ = sender.send(event);
+                }
+            }
+        }
+
+        let collection = TestCollection::new(sender);
+
+        // Emit an event
+        let event = StoreEvent::DocumentInserted {
+            collection: "test".to_string(),
+            size_bytes: 100,
+        };
+        collection.emit_event(event.clone());
+
+        // Verify the event was received
+        let received = receiver.recv().await.unwrap();
+        assert_eq!(received, event);
+    }
+
+    #[tokio::test]
+    async fn test_event_emitter_without_sender() {
+        use std::sync::Arc;
+
+        // Create a minimal collection struct without a sender
+        struct TestCollection {
+            event_sender: Option<tokio::sync::mpsc::Sender<StoreEvent>>,
+        }
+
+        impl EventEmitter for TestCollection {
+            fn emit_event(&self, event: StoreEvent) {
+                if let Some(sender) = &self.event_sender {
+                    let _ = sender.send(event);
+                }
+                // If sender is None, this is a no-op (no panic)
+            }
+        }
+
+        let collection = TestCollection {
+            event_sender: None,
+        };
+
+        // Emit an event - should not panic
+        let event = StoreEvent::DocumentInserted {
+            collection: "test".to_string(),
+            size_bytes: 100,
+        };
+        collection.emit_event(event);
+    }
 }
