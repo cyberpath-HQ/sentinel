@@ -1,6 +1,6 @@
 use clap::Args;
 use tracing::{error, info};
-use sentinel_dbms::{CollectionWalConfig, CompressionAlgorithm, WalFailureMode, WalFormat};
+use sentinel_dbms::{CollectionWalConfig, WalFailureMode};
 
 use crate::commands::WalArgs;
 
