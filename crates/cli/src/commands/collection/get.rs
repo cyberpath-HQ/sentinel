@@ -78,14 +78,20 @@ impl GetArgs {
 /// use sentinel_cli::commands::collection::get::{run, GetArgs};
 ///
 /// let args = GetArgs {
-///     id:               "user1".to_string(),
+///     id:               String::from("user1"),
 ///     verify_signature: true,
 ///     verify_hash:      true,
-///     signature_mode:   "strict".to_string(),
-///     hash_mode:        "strict".to_string(),
+///     signature_mode:   String::from("strict"),
+///     hash_mode:        String::from("strict"),
 ///     wal:              WalArgs::default(),
 /// };
-/// run("/tmp/my_store".to_string(), "users".to_string(), None, args).await?;
+/// run(
+///     String::from("/tmp/my_store"),
+///     String::from("users"),
+///     None,
+///     args,
+/// )
+/// .await?;
 /// ```
 
 pub async fn run(
