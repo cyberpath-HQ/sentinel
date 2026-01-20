@@ -780,10 +780,12 @@ pub unsafe extern "C" fn sentinel_store_collection_async(
         return 0;
     }
 
-    // SAFETY: We take full ownership of the store pointer to prevent the C caller
-    // from freeing it while the async operation is in progress. This prevents
-    // use-after-free. The Arc is cloned and moved into the spawned task, so
-    // the store won't be freed until the async operation completes.
+    // SAFETY: We take full ownership of the store pointer. The C caller transfers
+    // ownership to Rust by calling this function. After this call, the C caller
+    // MUST NOT use or free the store pointer - ownership is now held by Rust.
+    // The Arc ensures the store lives for the duration of the async operation.
+    // The callback will receive a NEW collection handle; the original store handle
+    // is consumed and cannot be used by C after this call.
     let store_arc = unsafe {
         let store_box = Box::from_raw(store as *mut Store);
         Arc::new(*store_box)
@@ -868,13 +870,12 @@ pub unsafe extern "C" fn sentinel_collection_insert_async(
         return 0;
     }
 
-    // SAFETY: We take full ownership of the collection pointer to prevent the C caller
-    // from freeing it while the async operation is in progress. This prevents
-    // use-after-free. The Arc is cloned and moved into the spawned task, so
-    // the collection won't be freed until the async operation completes.
+    // SAFETY: We borrow the collection reference without taking ownership.
+    // This prevents use-after-free since the C caller retains ownership.
+    // The Arc ensures the data lives as long as the async task needs it.
     let collection_arc = unsafe {
-        let collection_box = Box::from_raw(collection as *mut Collection);
-        Arc::new(*collection_box)
+        let collection_ref = &*(collection as *mut Collection);
+        Arc::new(collection_ref.clone())
     };
 
     let collection_ref = Arc::clone(&collection_arc);
@@ -970,13 +971,12 @@ pub unsafe extern "C" fn sentinel_collection_get_async(
         return 0;
     }
 
-    // SAFETY: We take full ownership of the collection pointer to prevent the C caller
-    // from freeing it while the async operation is in progress. This prevents
-    // use-after-free. The Arc is cloned and moved into the spawned task, so
-    // the collection won't be freed until the async operation completes.
+    // SAFETY: We borrow the collection reference without taking ownership.
+    // This prevents use-after-free since the C caller retains ownership.
+    // The Arc ensures the data lives as long as the async task needs it.
     let collection_arc = unsafe {
-        let collection_box = Box::from_raw(collection as *mut Collection);
-        Arc::new(*collection_box)
+        let collection_ref = &*(collection as *mut Collection);
+        Arc::new(collection_ref.clone())
     };
 
     let collection_ref = Arc::clone(&collection_arc);
@@ -1092,13 +1092,12 @@ pub unsafe extern "C" fn sentinel_collection_update_async(
         return 0;
     }
 
-    // SAFETY: We take full ownership of the collection pointer to prevent the C caller
-    // from freeing it while the async operation is in progress. This prevents
-    // use-after-free. The Arc is cloned and moved into the spawned task, so
-    // the collection won't be freed until the async operation completes.
+    // SAFETY: We borrow the collection reference without taking ownership.
+    // This prevents use-after-free since the C caller retains ownership.
+    // The Arc ensures the data lives as long as the async task needs it.
     let collection_arc = unsafe {
-        let collection_box = Box::from_raw(collection as *mut Collection);
-        Arc::new(*collection_box)
+        let collection_ref = &*(collection as *mut Collection);
+        Arc::new(collection_ref.clone())
     };
 
     let collection_ref = Arc::clone(&collection_arc);
