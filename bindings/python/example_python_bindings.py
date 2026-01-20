@@ -165,7 +165,7 @@ async def main():
         qb = qb.sort("age", "ascending")
 
         result = await users.query(qb)
-        documents = result.documents()
+        documents = result.documents
         print(f"✅ Found {len(documents)} active users (sorted by age):")
         for doc in documents:
             print(f"   - {doc.data['name']} ({doc.data['age']} years old)")
@@ -177,7 +177,7 @@ async def main():
         qb = qb.limit(5)
 
         result = await products.query(qb)
-        documents = result.documents()
+        documents = result.documents
         print(f"✅ Found {len(documents)} electronics products:")
         for doc in documents:
             print(f"   - {doc.data['name']}: ${doc.data['price']}")
