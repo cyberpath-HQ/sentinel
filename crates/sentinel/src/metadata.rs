@@ -231,3 +231,140 @@ impl StoreMetadata {
         self.touch();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_collection_metadata_new() {
+        let metadata = CollectionMetadata::new("test_collection".to_string());
+        assert_eq!(metadata.version, META_SENTINEL_VERSION);
+        assert_eq!(metadata.name, "test_collection");
+        assert_eq!(metadata.document_count, 0);
+        assert_eq!(metadata.total_size_bytes, 0);
+        assert!(
+            metadata.created_at <=
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+        );
+        assert_eq!(metadata.created_at, metadata.updated_at);
+    }
+
+    #[test]
+    fn test_collection_metadata_add_remove_document() {
+        let mut metadata = CollectionMetadata::new("test".to_string());
+
+        // Add document
+        metadata.add_document(100);
+        assert_eq!(metadata.document_count, 1);
+        assert_eq!(metadata.total_size_bytes, 100);
+        assert!(metadata.updated_at >= metadata.created_at);
+
+        let updated_at = metadata.updated_at;
+
+        // Add another document
+        metadata.add_document(200);
+        assert_eq!(metadata.document_count, 2);
+        assert_eq!(metadata.total_size_bytes, 300);
+        assert!(metadata.updated_at >= updated_at);
+
+        // Remove document
+        metadata.remove_document(100);
+        assert_eq!(metadata.document_count, 1);
+        assert_eq!(metadata.total_size_bytes, 200);
+
+        // Remove last document
+        metadata.remove_document(200);
+        assert_eq!(metadata.document_count, 0);
+        assert_eq!(metadata.total_size_bytes, 0);
+    }
+
+    #[test]
+    fn test_collection_metadata_update_document_size() {
+        let mut metadata = CollectionMetadata::new("test".to_string());
+        metadata.add_document(100);
+
+        metadata.update_document_size(100, 150);
+        assert_eq!(metadata.document_count, 1);
+        assert_eq!(metadata.total_size_bytes, 150);
+    }
+
+    #[test]
+    fn test_collection_metadata_upgrade() {
+        let mut metadata = CollectionMetadata::new("test".to_string());
+        metadata.version = 1;
+
+        assert!(metadata.needs_upgrade());
+        assert!(metadata.upgrade_to_current().is_ok());
+    }
+
+    #[test]
+    fn test_store_metadata_new() {
+        let metadata = StoreMetadata::new();
+        assert_eq!(metadata.version, META_SENTINEL_VERSION);
+        assert_eq!(metadata.collection_count, 0);
+        assert_eq!(metadata.total_documents, 0);
+        assert_eq!(metadata.total_size_bytes, 0);
+        assert!(
+            metadata.created_at <=
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs()
+        );
+    }
+
+    #[test]
+    fn test_store_metadata_operations() {
+        let mut metadata = StoreMetadata::new();
+
+        // Add collection
+        metadata.add_collection();
+        assert_eq!(metadata.collection_count, 1);
+
+        // Update documents
+        metadata.update_documents(5, 1000);
+        assert_eq!(metadata.total_documents, 5);
+        assert_eq!(metadata.total_size_bytes, 1000);
+
+        // Update again
+        metadata.update_documents(3, 500);
+        assert_eq!(metadata.total_documents, 8);
+        assert_eq!(metadata.total_size_bytes, 1500);
+
+        // Negative update (remove documents)
+        metadata.update_documents(-2, -200);
+        assert_eq!(metadata.total_documents, 6);
+        assert_eq!(metadata.total_size_bytes, 1300);
+
+        // Remove collection
+        metadata.remove_collection();
+        assert_eq!(metadata.collection_count, 0);
+    }
+
+    #[test]
+    fn test_store_metadata_upgrade() {
+        let mut metadata = StoreMetadata::new();
+        metadata.version = 1;
+
+        assert!(metadata.needs_upgrade());
+        assert!(metadata.upgrade_to_current().is_ok());
+    }
+
+    #[test]
+    fn test_metadata_serialization() {
+        let collection_meta = CollectionMetadata::new("test".to_string());
+        let serialized = serde_json::to_string(&collection_meta).unwrap();
+        let deserialized: CollectionMetadata = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(collection_meta.name, deserialized.name);
+        assert_eq!(collection_meta.version, deserialized.version);
+
+        let store_meta = StoreMetadata::new();
+        let serialized = serde_json::to_string(&store_meta).unwrap();
+        let deserialized: StoreMetadata = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(store_meta.version, deserialized.version);
+    }
+}

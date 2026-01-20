@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Events emitted by collections to notify the store of metadata changes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum StoreEvent {
     /// A new collection was created.
     CollectionCreated {
@@ -57,5 +57,55 @@ impl EventEmitter for crate::Collection {
         if let Some(sender) = &self.event_sender {
             let _ = sender.send(event);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_store_event_serialization() {
+        let events = vec![
+            StoreEvent::CollectionCreated {
+                name: "test_collection".to_string(),
+            },
+            StoreEvent::CollectionDeleted {
+                name:             "test_collection".to_string(),
+                document_count:   42,
+                total_size_bytes: 1024,
+            },
+            StoreEvent::DocumentInserted {
+                collection: "test_collection".to_string(),
+                size_bytes: 256,
+            },
+            StoreEvent::DocumentUpdated {
+                collection:     "test_collection".to_string(),
+                old_size_bytes: 128,
+                new_size_bytes: 256,
+            },
+            StoreEvent::DocumentDeleted {
+                collection: "test_collection".to_string(),
+                size_bytes: 256,
+            },
+        ];
+
+        for event in events {
+            let serialized = serde_json::to_string(&event).unwrap();
+            let deserialized: StoreEvent = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(event, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_store_event_debug() {
+        let event = StoreEvent::DocumentInserted {
+            collection: "users".to_string(),
+            size_bytes: 512,
+        };
+        let debug_str = format!("{:?}", event);
+        assert!(debug_str.contains("DocumentInserted"));
+        assert!(debug_str.contains("users"));
+        assert!(debug_str.contains("512"));
     }
 }
