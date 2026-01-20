@@ -153,7 +153,7 @@ depends = "$auto, libc6 (>= 2.35)"
   writeFileSync(tempCargoToml, originalContent + debMetadata);
 
   try {
-    run(`cargo deb --manifest-path ${tempCargoToml} --target x86_64-unknown-linux-gnu --no-build`, { cwd: workspaceRoot });
+    run(`cargo deb --manifest-path ${tempCargoToml} --target x86_64-unknown-linux-gnu`, { cwd: workspaceRoot });
 
     const debFile = join(workspaceRoot, 'target', 'debian', `sentinel-cli_${version}_amd64.deb`);
 
@@ -591,7 +591,7 @@ function testLanguageBindings(workspaceRoot) {
       run(crate.testCmd, { cwd: workspaceRoot });
       success(`${crate.description} tests passed`);
     } catch {
-      error(`❌ ${crate.description} tests failed`);
+      console.error(`❌ ${crate.description} tests failed`);
       allPassed = false;
     }
   }
@@ -633,7 +633,7 @@ function publishPythonToPypi(wheelsDir) {
   }
 }
 
-function publishNodeJsToNpm(nodeDir) {
+function publishNodeJsToNpm(workspaceRoot, nodeDir) {
   section('Publishing Node.js to npm');
 
   if (!nodeDir) {
@@ -641,7 +641,7 @@ function publishNodeJsToNpm(nodeDir) {
     return;
   }
 
-  const jsBindings = join(dirname(dirname(__dirname)), 'bindings', 'js');
+  const jsBindings = join(workspaceRoot, 'bindings', 'js');
 
   if (isDryRun) {
     info('Would publish Node.js module to npm');
@@ -758,7 +758,7 @@ async function main() {
 
   publishRustCrates(workspaceRoot);
   publishPythonToPypi(wheelsDir);
-  publishNodeJsToNpm(nodeDir);
+  publishNodeJsToNpm(workspaceRoot, nodeDir);
 
   // Completion
   section(isDryRun ? 'Dry Run Complete!' : 'Release Complete!');
