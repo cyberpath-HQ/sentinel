@@ -62,27 +62,29 @@ use crate::{
 #[derive(Debug)]
 pub struct Store {
     /// The root path of the store.
-    root_path:        PathBuf,
+    root_path:         PathBuf,
     /// The signing key for the store.
-    signing_key:      Option<Arc<sentinel_crypto::SigningKey>>,
+    signing_key:       Option<Arc<sentinel_crypto::SigningKey>>,
     /// When the store was created.
-    created_at:       chrono::DateTime<chrono::Utc>,
+    created_at:        chrono::DateTime<chrono::Utc>,
     /// When the store was last accessed.
-    last_accessed_at: std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
+    last_accessed_at:  std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
     /// Total size of all collections in bytes.
-    total_size_bytes: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    total_size_bytes:  std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Total number of documents across all collections.
-    total_documents:  std::sync::Arc<std::sync::atomic::AtomicU64>,
+    total_documents:   std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// Total number of collections.
-    collection_count: std::sync::Arc<std::sync::atomic::AtomicU64>,
-    /// WAL configuration for the store.
-    wal_config:       sentinel_wal::StoreWalConfig,
+    collection_count:  std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// WAL configuration for the store (effective/runtime config).
+    wal_config:        sentinel_wal::StoreWalConfig,
+    /// WAL configuration for the store (stored/persisted config).
+    stored_wal_config: sentinel_wal::StoreWalConfig,
     /// Channel receiver for events from collections.
-    event_receiver:   Option<mpsc::UnboundedReceiver<StoreEvent>>,
+    event_receiver:    Option<mpsc::UnboundedReceiver<StoreEvent>>,
     /// Channel sender for collections to emit events.
-    event_sender:     mpsc::UnboundedSender<StoreEvent>,
+    event_sender:      mpsc::UnboundedSender<StoreEvent>,
     /// Background task handle for processing events.
-    event_task:       Option<tokio::task::JoinHandle<()>>,
+    event_task:        Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Store {
@@ -185,7 +187,8 @@ impl Store {
             collection_count: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
                 store_metadata.collection_count,
             )),
-            wal_config: store_metadata.wal_config,
+            stored_wal_config: store_metadata.wal_config.clone(),
+            wal_config: store_metadata.wal_config.clone(),
             event_receiver: Some(event_receiver),
             event_sender,
             event_task: None,
@@ -362,7 +365,8 @@ impl Store {
             collection_count: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
                 store_metadata.collection_count,
             )),
-            wal_config: store_metadata.wal_config,
+            wal_config: store_metadata.wal_config.clone(),
+            stored_wal_config: store_metadata.wal_config,
             event_receiver: Some(event_receiver),
             event_sender,
             event_task: None,
@@ -721,7 +725,7 @@ impl Store {
         let total_size_bytes = self.total_size_bytes.clone();
         let total_documents = self.total_documents.clone();
         let collection_count = self.collection_count.clone();
-        let wal_config = self.wal_config.clone();
+        let stored_wal_config = self.stored_wal_config.clone();
         let root_path = self.root_path.clone();
         let created_at = self.created_at;
 
@@ -786,7 +790,7 @@ impl Store {
                                 collection_count: collection_count.load(std::sync::atomic::Ordering::Relaxed),
                                 total_documents: total_documents.load(std::sync::atomic::Ordering::Relaxed),
                                 total_size_bytes: total_size_bytes.load(std::sync::atomic::Ordering::Relaxed),
-                                wal_config: wal_config.clone(),
+                                wal_config: stored_wal_config.clone(),
                             };
 
                             let content = match serde_json::to_string_pretty(&metadata) {
