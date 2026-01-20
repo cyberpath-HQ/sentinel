@@ -410,10 +410,10 @@ mod tests {
         run_command(init_cli).await.unwrap();
 
         let collection_args = super::collection::CollectionArgs {
-            store: store_path.to_string_lossy().to_string(),
-            name: "test_collection".to_string(),
+            store:      store_path.to_string_lossy().to_string(),
+            name:       "test_collection".to_string(),
             passphrase: None,
-            command: super::collection::CollectionCommands::Create(super::collection::create::CreateArgs::default()),
+            command:    super::collection::CollectionCommands::Create(super::collection::create::CreateArgs::default()),
         };
         let cli = Cli {
             command: Commands::Collection(collection_args),
