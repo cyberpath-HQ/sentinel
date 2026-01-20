@@ -96,16 +96,30 @@ jobs:
         run: |
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${{ matrix.platform.cross }}-gcc" >> $GITHUB_ENV
 
-      - name: Install MUSL toolchain
-        if: contains(matrix.platform.rust-target, 'musl')
+      - name: Install MUSL toolchain (x86_64)
+        if: contains(matrix.platform.rust-target, 'musl') && matrix.platform.rust-target != 'aarch64-unknown-linux-musl'
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools
 
-      - name: Configure MUSL linker
-        if: contains(matrix.platform.rust-target, 'musl')
+      - name: Install MUSL toolchain (aarch64)
+        if: matrix.platform.rust-target == 'aarch64-unknown-linux-musl'
+        run: |
+          # Download and install aarch64 musl cross-compiler from musl.cc
+          wget -q https://musl.cc/aarch64-linux-musl-cross.tgz
+          tar -xzf aarch64-linux-musl-cross.tgz
+          sudo mv aarch64-linux-musl-cross /opt/
+          rm aarch64-linux-musl-cross.tgz
+          echo "/opt/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
+
+      - name: Configure MUSL linker (x86_64)
+        if: contains(matrix.platform.rust-target, 'musl') && matrix.platform.rust-target != 'aarch64-unknown-linux-musl'
         run: |
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-gcc" >> $GITHUB_ENV
+
+      - name: Configure MUSL linker (aarch64)
+        if: matrix.platform.rust-target == 'aarch64-unknown-linux-musl'
+        run: |
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc" >> $GITHUB_ENV
 
       - name: Build CLI binary
