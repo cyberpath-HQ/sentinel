@@ -7,8 +7,7 @@
 
 use async_trait::async_trait;
 
-use crate::compression::CompressionTrait;
-use crate::Result;
+use crate::{compression::CompressionTrait, Result};
 
 /// GZIP compressor
 pub struct GzipCompressor;
@@ -17,7 +16,7 @@ pub struct GzipCompressor;
 impl CompressionTrait for GzipCompressor {
     async fn compress(&self, data: &[u8]) -> Result<Vec<u8>> {
         use async_compression::tokio::bufread::GzipEncoder;
-        use tokio::io::AsyncReadExt;
+        use tokio::io::AsyncReadExt as _;
 
         let mut encoder = GzipEncoder::new(std::io::Cursor::new(data));
         let mut compressed: Vec<u8> = Vec::new();
@@ -30,7 +29,7 @@ impl CompressionTrait for GzipCompressor {
 
     async fn decompress(&self, data: &[u8]) -> Result<Vec<u8>> {
         use async_compression::tokio::bufread::GzipDecoder;
-        use tokio::io::AsyncReadExt;
+        use tokio::io::AsyncReadExt as _;
 
         let mut decoder = GzipDecoder::new(std::io::Cursor::new(data));
         let mut decompressed: Vec<u8> = Vec::new();
