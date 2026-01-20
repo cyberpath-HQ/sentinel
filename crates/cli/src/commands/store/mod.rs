@@ -25,6 +25,8 @@ pub enum StoreCommands {
     List(list::ListCollectionsArgs),
     /// Delete a collection from the store.
     Delete(delete::DeleteCollectionArgs),
+    /// Show store statistics and information.
+    Stats(stats::StatsArgs),
 }
 
 /// Run the store command.
@@ -40,6 +42,7 @@ pub async fn run(args: StoreArgs) -> sentinel_dbms::Result<()> {
         StoreCommands::Generate(gen_args) => generate::run(gen_args).await,
         StoreCommands::List(list_args) => list::run(list_args).await,
         StoreCommands::Delete(delete_args) => delete::run(delete_args).await,
+        StoreCommands::Stats(stats_args) => stats::run(stats_args).await,
     }
 }
 
@@ -48,3 +51,4 @@ pub mod delete;
 pub mod generate;
 pub mod init;
 pub mod list;
+pub mod stats;
