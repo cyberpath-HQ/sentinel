@@ -142,11 +142,24 @@ impl Collection {
             .load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    /// Returns a reference to the stored WAL configuration for this collection.
+    ///
+    /// This is the WAL configuration as persisted in the collection metadata,
+    /// without any temporary overrides that may be applied at runtime.
+    pub fn stored_wal_config(&self) -> &sentinel_wal::CollectionWalConfig { &self.stored_wal_config }
+
+    /// Returns the effective WAL configuration for this collection.
+    ///
+    /// This includes the stored configuration plus any runtime overrides that
+    /// may have been applied when the collection was accessed.
+    pub fn wal_config(&self) -> &sentinel_wal::CollectionWalConfig { &self.wal_config }
+
     /// Saves the current collection metadata to disk.
     ///
-    /// This method persists the collection's current state (document count, size, timestamps)
-    /// to the `.metadata.json` file in the collection directory. This ensures that metadata
-    /// remains consistent across restarts and can be used for monitoring and optimization.
+    /// This method persists the collection's current state (document count, size, timestamps,
+    /// and WAL configuration) to the `.metadata.json` file in the collection directory. This
+    /// ensures that metadata remains consistent across restarts and can be used for monitoring
+    /// and optimization.
     ///
     /// # Returns
     ///
@@ -172,6 +185,9 @@ impl Collection {
             .unwrap()
             .as_secs();
 
+        // Update the WAL configuration
+        metadata.wal_config = Some(self.stored_wal_config.clone());
+
         // Save back to disk
         let content = serde_json::to_string_pretty(&metadata)?;
         tokio_fs::write(&metadata_path, content).await?;
@@ -179,6 +195,17 @@ impl Collection {
         debug!("Collection metadata saved for {}", self.name());
         Ok(())
     }
+
+    /// Flushes any pending metadata changes to disk immediately.
+    ///
+    /// This method forces a synchronous save of the collection metadata to disk,
+    /// bypassing the normal debounced save mechanism. This is useful for tests
+    /// and for ensuring data durability when needed.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `SentinelError` if the metadata cannot be saved.
+    pub async fn flush_metadata(&self) -> Result<()> { self.save_metadata().await }
 
     /// Validates a document ID according to filesystem-safe naming rules.
     ///
@@ -278,8 +305,8 @@ impl Collection {
     /// and handles events sent via the event channel.
     ///
     /// The event processor is responsible for:
-    /// - Processing metadata update events
-    /// - Handling WAL checkpoint operations
+    /// - Processing document events (insert, update, delete)
+    /// - Debounced metadata persistence (every 500ms)
     /// - Coordinating with the store's event system
     ///
     /// # Note
@@ -287,41 +314,127 @@ impl Collection {
     /// This method should only be called once during collection initialization.
     /// Multiple calls will replace the previous event task.
     pub fn start_event_processor(&mut self) {
-        let event_receiver = {
+        let mut event_receiver = {
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
             self.event_sender = Some(tx);
             rx
         };
 
+        // Clone necessary fields for the background task
+        let path = self.path.clone();
+        let total_documents = self.total_documents.clone();
+        let total_size_bytes = self.total_size_bytes.clone();
+        let updated_at = std::sync::Arc::new(std::sync::RwLock::new(*self.updated_at.read().unwrap()));
+
         let task = tokio::spawn(async move {
-            let mut receiver = event_receiver;
-            while let Some(event) = receiver.recv().await {
-                match event {
-                    StoreEvent::CollectionCreated {
-                        ..
-                    } => {
-                        // Collection creation is handled by the store
-                    },
-                    StoreEvent::CollectionDeleted {
-                        ..
-                    } => {
-                        // Collection dropping is handled by the store
-                    },
-                    StoreEvent::DocumentInserted {
-                        ..
-                    } => {
-                        // Document insertion metadata is handled inline
-                    },
-                    StoreEvent::DocumentUpdated {
-                        ..
-                    } => {
-                        // Document update metadata is handled inline
-                    },
-                    StoreEvent::DocumentDeleted {
-                        ..
-                    } => {
-                        // Document deletion metadata is handled inline
-                    },
+            // Debouncing: save metadata every 500 milliseconds instead of after every event
+            let mut save_interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
+            save_interval.tick().await; // First tick completes immediately
+
+            let mut changed = false;
+
+            loop {
+                tokio::select! {
+                    // Process events
+                    event = event_receiver.recv() => {
+                        match event {
+                            Some(crate::events::StoreEvent::CollectionCreated {
+                                ..
+                            }) => {
+                                // Collection creation is handled by the store
+                            },
+                            Some(crate::events::StoreEvent::CollectionDeleted {
+                                ..
+                            }) => {
+                                // Collection dropping is handled by the store
+                            },
+                            Some(crate::events::StoreEvent::DocumentInserted {
+                                collection,
+                                size_bytes,
+                            }) => {
+                                tracing::debug!("Processing document inserted event: {} (size: {})", collection, size_bytes);
+                                // In-memory counters are updated inline in insert(), but we track for metadata save
+                                changed = true;
+                            },
+                            Some(crate::events::StoreEvent::DocumentUpdated {
+                                collection,
+                                old_size_bytes,
+                                new_size_bytes,
+                            }) => {
+                                tracing::debug!("Processing document updated event: {} (old: {}, new: {})",
+                                    collection, old_size_bytes, new_size_bytes);
+                                changed = true;
+                            },
+                            Some(crate::events::StoreEvent::DocumentDeleted {
+                                collection,
+                                size_bytes,
+                            }) => {
+                                tracing::debug!("Processing document deleted event: {} (size: {})", collection, size_bytes);
+                                changed = true;
+                            },
+                            None => {
+                                // Channel closed, exit
+                                break;
+                            },
+                        }
+                    }
+
+                    // Periodic metadata save
+                    _ = save_interval.tick() => {
+                        if changed {
+                            // Update the updated_at timestamp (read lock and update)
+                            let now = chrono::Utc::now();
+                            *updated_at.write().unwrap() = now;
+
+                            // Load current values from atomic counters
+                            let document_count = total_documents.load(std::sync::atomic::Ordering::Relaxed);
+                            let size_bytes = total_size_bytes.load(std::sync::atomic::Ordering::Relaxed);
+
+                            // Load existing metadata to preserve other fields
+                            let metadata_path = path.join(crate::constants::COLLECTION_METADATA_FILE);
+                            let mut metadata = if tokio::fs::try_exists(&metadata_path).await.unwrap_or(false) {
+                                match tokio::fs::read_to_string(&metadata_path).await {
+                                    Ok(content) => match serde_json::from_str(&content) {
+                                        Ok(m) => m,
+                                        Err(e) => {
+                                            tracing::error!("Failed to parse collection metadata: {}", e);
+                                            continue;
+                                        }
+                                    },
+                                    Err(e) => {
+                                        tracing::error!("Failed to read collection metadata: {}", e);
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                tracing::warn!("Collection metadata file not found, creating new");
+                                crate::CollectionMetadata::new(path.file_name().unwrap().to_str().unwrap().to_string())
+                            };
+
+                            // Update the runtime statistics
+                            metadata.document_count = document_count;
+                            metadata.total_size_bytes = size_bytes;
+                            metadata.updated_at = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs();
+
+                            // Save back to disk
+                            match serde_json::to_string_pretty(&metadata) {
+                                Ok(content) => {
+                                    if let Err(e) = tokio::fs::write(&metadata_path, content).await {
+                                        tracing::error!("Failed to save collection metadata in background task: {}", e);
+                                    } else {
+                                        tracing::trace!("Collection metadata saved successfully for {:?}", path);
+                                        changed = false;
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!("Failed to serialize collection metadata: {}", e);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         });
