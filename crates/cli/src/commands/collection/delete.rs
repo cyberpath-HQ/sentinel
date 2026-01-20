@@ -33,10 +33,16 @@ pub struct DeleteArgs {
 /// use sentinel_cli::commands::collection::delete::{run, DeleteArgs};
 ///
 /// let args = DeleteArgs {
-///     id:  "user1".to_string(),
+///     id:  String::from("user1"),
 ///     wal: WalArgs::default(),
 /// };
-/// run("/tmp/my_store".to_string(), "users".to_string(), None, args).await?;
+/// run(
+///     String::from("/tmp/my_store"),
+///     String::from("users"),
+///     None,
+///     args,
+/// )
+/// .await?;
 /// ```
 
 pub async fn run(
