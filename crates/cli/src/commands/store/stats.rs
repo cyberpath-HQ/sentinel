@@ -20,13 +20,13 @@ pub async fn run(args: StatsArgs) -> sentinel_dbms::Result<()> {
     )
     .await?;
 
-    println!("Store Statistics:");
-    println!("  Root Path: {}", store.root_path().display());
-    println!("  Created At: {}", store.created_at());
-    println!("  Last Accessed At: {}", store.last_accessed_at());
-    println!("  Total Documents: {}", store.total_documents());
-    println!("  Total Size (bytes): {}", store.total_size_bytes());
-    println!("  Collection Count: {}", store.collection_count());
+    tracing::info!("Store Statistics:");
+    tracing::info!("  Root Path: {}", store.root_path().display());
+    tracing::info!("  Created At: {}", store.created_at());
+    tracing::info!("  Last Accessed At: {}", store.last_accessed_at());
+    tracing::info!("  Total Documents: {}", store.total_documents());
+    tracing::info!("  Total Size (bytes): {}", store.total_size_bytes());
+    tracing::info!("  Collection Count: {}", store.collection_count());
 
     Ok(())
 }
