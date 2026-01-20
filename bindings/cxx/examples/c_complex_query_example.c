@@ -88,6 +88,7 @@ int main() {
     // Test 2: Query with sorting
     printf("\n=== Test 2: Query with Sorting ===\n");
     sentinel_query_t* sorted_query = sentinel_query_builder_new();
+    CHECK_NULL(sorted_query, "Failed to create sorted query");
     CHECK_ERROR(sentinel_query_builder_filter_equals(sorted_query, "active", "true"));
     CHECK_ERROR(sentinel_query_builder_sort(sorted_query, "score", 1)); // Descending order
 
@@ -99,6 +100,7 @@ int main() {
     // Test 3: Query with limit and offset (pagination)
     printf("\n=== Test 3: Query with Pagination ===\n");
     sentinel_query_t* paginated_query = sentinel_query_builder_new();
+    CHECK_NULL(paginated_query, "Failed to create paginated query");
     CHECK_ERROR(sentinel_query_builder_filter_equals(paginated_query, "city", "\"New York\""));
     CHECK_ERROR(sentinel_query_builder_sort(paginated_query, "age", 0)); // Ascending
     CHECK_ERROR(sentinel_query_builder_limit(paginated_query, 2)); // First 2 results
@@ -112,6 +114,7 @@ int main() {
     // Test 4: Simple equality query for comparison
     printf("\n=== Test 4: Simple Equality Query ===\n");
     sentinel_query_t* simple_query = sentinel_query_builder_new();
+    CHECK_NULL(simple_query, "Failed to create simple query");
     CHECK_ERROR(sentinel_query_builder_filter_equals(simple_query, "city", "\"New York\""));
 
     char* simple_result = sentinel_collection_query(users, simple_query);
@@ -124,6 +127,7 @@ int main() {
 
     // Age between 25-35
     sentinel_query_t* range_query1 = sentinel_query_builder_new();
+    CHECK_NULL(range_query1, "Failed to create range query 1");
     CHECK_ERROR(sentinel_query_builder_filter_greater_than(range_query1, "age", "24"));
     CHECK_ERROR(sentinel_query_builder_filter_less_than(range_query1, "age", "36"));
 
@@ -134,6 +138,7 @@ int main() {
 
     // High scores
     sentinel_query_t* range_query2 = sentinel_query_builder_new();
+    CHECK_NULL(range_query2, "Failed to create range query 2");
     CHECK_ERROR(sentinel_query_builder_filter_greater_than(range_query2, "score", "90"));
 
     char* range_result2 = sentinel_collection_query(users, range_query2);
@@ -150,6 +155,7 @@ int main() {
     // Test 7: Empty query (should return all)
     printf("\n=== Test 7: Empty Query (All Documents) ===\n");
     sentinel_query_t* empty_query = sentinel_query_builder_new();
+    CHECK_NULL(empty_query, "Failed to create empty query");
     // No filters added
 
     char* empty_result = sentinel_collection_query(users, empty_query);
@@ -160,6 +166,7 @@ int main() {
     // Test 8: Non-matching query
     printf("\n=== Test 8: Non-Matching Query ===\n");
     sentinel_query_t* no_match_query = sentinel_query_builder_new();
+    CHECK_NULL(no_match_query, "Failed to create no-match query");
     CHECK_ERROR(sentinel_query_builder_filter_equals(no_match_query, "city", "\"NonExistentCity\""));
 
     char* no_match_result = sentinel_collection_query(users, no_match_query);
