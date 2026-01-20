@@ -6,7 +6,7 @@ use crate::{EntryType, Result};
 
 /// Operations required for WAL recovery and verification
 #[async_trait::async_trait]
-pub trait WalDocumentOps {
+pub trait WalDocumentOps: Send + Sync {
     /// Get a document by ID
     async fn get_document(&self, id: &str) -> Result<Option<Value>>;
 
