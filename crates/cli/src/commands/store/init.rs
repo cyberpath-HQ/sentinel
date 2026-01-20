@@ -50,7 +50,7 @@ pub struct InitArgs {
 /// use sentinel_cli::commands::init::{run, InitArgs};
 ///
 /// let args = InitArgs {
-///     path: "/tmp/my_store".to_string(),
+///     path: String::from("/tmp/my_store"),
 /// };
 /// run(args).await?;
 /// ```
@@ -258,7 +258,7 @@ mod tests {
 
         let args = InitArgs {
             path:                    store_path.to_string_lossy().to_string(),
-            passphrase:              Some("test_passphrase".to_string()),
+            passphrase:              Some(String::from("test_passphrase")),
             signing_key:             Some(key_hex),
             wal:                     WalArgs::default(),
             wal_store_failure_mode:  None,
