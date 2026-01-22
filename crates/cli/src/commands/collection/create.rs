@@ -133,3 +133,88 @@ pub async fn run(
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_create_collection_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        // Initialize store first
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let args = CreateArgs::default();
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Verify collection exists
+        let collection = store.collection_with_config(collection_name, None).await;
+        assert!(collection.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_collection_duplicate() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        // Initialize store and create collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let args = CreateArgs::default();
+
+        // Try to create again - this should succeed (idempotent)
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_collection_nonexistent_store() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("nonexistent_store");
+        let collection_name = "test_collection";
+
+        let args = CreateArgs::default();
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        // Should succeed because Store::new_with_config creates the directory
+        assert!(result.is_ok());
+    }
+}
