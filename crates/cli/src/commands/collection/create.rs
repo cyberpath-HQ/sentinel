@@ -217,4 +217,45 @@ mod tests {
         // Should succeed because Store::new_with_config creates the directory
         assert!(result.is_ok());
     }
+
+    #[tokio::test]
+    async fn test_create_collection_with_wal_overrides() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        let mut args = CreateArgs::default();
+        args.wal.wal_max_file_size = Some(1024);
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_collection_invalid_store_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("invalid_store");
+        // Create a file instead of directory
+        std::fs::write(&store_path, "not a directory").unwrap();
+        let collection_name = "test_collection";
+
+        let args = CreateArgs::default();
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
 }
