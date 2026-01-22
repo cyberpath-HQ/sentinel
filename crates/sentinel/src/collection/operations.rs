@@ -1119,6 +1119,9 @@ mod tests {
             .await
             .unwrap();
 
+        // Allow event processor to update counters
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
         // Flush metadata updates
         collection.flush_metadata().await.unwrap();
 
@@ -1126,6 +1129,9 @@ mod tests {
 
         // Delete one
         collection.delete("count-doc-2").await.unwrap();
+
+        // Allow event processor to update counters
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Flush metadata updates
         collection.flush_metadata().await.unwrap();
