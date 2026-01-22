@@ -4,7 +4,8 @@
 
 namespace SimpleFS {
     static bool exists(const std::string& path) {
-        return std::filesystem::exists(path);
+        std::error_code ec;
+        return std::filesystem::exists(path, ec);
     }
 
     static bool remove_all(const std::string& path) {
