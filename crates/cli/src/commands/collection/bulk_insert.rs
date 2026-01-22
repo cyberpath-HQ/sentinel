@@ -322,4 +322,156 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_bulk_insert_malformed_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        // Initialize store
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Create collection
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Create malformed JSON file
+        let json_content = r#"{"invalid": json"#;
+        let json_file = temp_dir.path().join("malformed.json");
+        fs::write(&json_file, json_content).unwrap();
+
+        let args = BulkInsertArgs {
+            file: json_file.to_string_lossy().to_string(),
+            wal:  crate::commands::WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_missing_data_field() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        // Initialize store
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Create collection
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Create JSON file with document missing data
+        let json_content = r#"[{"id": "doc1"}]"#;
+        let json_file = temp_dir.path().join("missing_data.json");
+        fs::write(&json_file, json_content).unwrap();
+
+        let args = BulkInsertArgs {
+            file: json_file.to_string_lossy().to_string(),
+            wal:  crate::commands::WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_non_object_document() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        // Initialize store
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Create collection
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Create JSON file with non-object document
+        let json_content = r#"[{"id": "doc1", "data": {}}, "not an object"]"#;
+        let json_file = temp_dir.path().join("non_object.json");
+        fs::write(&json_file, json_content).unwrap();
+
+        let args = BulkInsertArgs {
+            file: json_file.to_string_lossy().to_string(),
+            wal:  crate::commands::WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_id_not_string() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        // Initialize store
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Create collection
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Create JSON file with id not string
+        let json_content = r#"[{"id": 123, "data": {}}]"#;
+        let json_file = temp_dir.path().join("id_not_string.json");
+        fs::write(&json_file, json_content).unwrap();
+
+        let args = BulkInsertArgs {
+            file: json_file.to_string_lossy().to_string(),
+            wal:  crate::commands::WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
 }
