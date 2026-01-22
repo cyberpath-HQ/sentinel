@@ -210,3 +210,264 @@ async fn insert_bulk_documents(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use tokio::fs;
+
+    #[tokio::test]
+    async fn test_single_insert_success() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Run insert command
+        let args = InsertArgs {
+            id: Some("doc1".to_string()),
+            data: Some(r#"{"name": "Alice", "age": 30}"#.to_string()),
+            bulk: None,
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_single_insert_missing_id() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Run insert command without ID
+        let args = InsertArgs {
+            id: None,
+            data: Some(r#"{"name": "Alice"}"#.to_string()),
+            bulk: None,
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_single_insert_missing_data() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Run insert command without data
+        let args = InsertArgs {
+            id: Some("doc1".to_string()),
+            data: None,
+            bulk: None,
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_single_insert_invalid_json() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Run insert command with invalid JSON
+        let args = InsertArgs {
+            id: Some("doc1".to_string()),
+            data: Some(r#"{"name": "Alice", "age": }"#.to_string()), // Invalid JSON
+            bulk: None,
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_success() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Create bulk file
+        let bulk_file = temp_dir.path().join("bulk.json");
+        let bulk_data = r#"{
+            "doc1": {"name": "Alice", "age": 30},
+            "doc2": {"name": "Bob", "age": 25}
+        }"#;
+        fs::write(&bulk_file, bulk_data).await.unwrap();
+
+        // Run bulk insert command
+        let args = InsertArgs {
+            id: None,
+            data: None,
+            bulk: Some(bulk_file.to_string_lossy().to_string()),
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_missing_file() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Run bulk insert command with non-existent file
+        let args = InsertArgs {
+            id: None,
+            data: None,
+            bulk: Some("/non/existent/file.json".to_string()),
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_bulk_insert_invalid_json() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Create bulk file with invalid JSON
+        let bulk_file = temp_dir.path().join("bulk_invalid.json");
+        let bulk_data = r#"{
+            "doc1": {"name": "Alice", "age": 30},
+            "doc2": {"name": "Bob", "age": }
+        }"#; // Invalid JSON
+        fs::write(&bulk_file, bulk_data).await.unwrap();
+
+        // Run bulk insert command
+        let args = InsertArgs {
+            id: None,
+            data: None,
+            bulk: Some(bulk_file.to_string_lossy().to_string()),
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+}
