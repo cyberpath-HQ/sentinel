@@ -77,6 +77,7 @@ use crate::{
 /// });
 /// let adult_docs: Vec<_> = adults.try_collect().await?;
 /// assert_eq!(adult_docs.len(), 1);
+/// # Ok(())
 /// # }
 /// ```
 #[derive(Debug)]
