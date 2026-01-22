@@ -213,8 +213,321 @@ fn parse_bool(s: &str) -> sentinel_dbms::Result<bool> {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use tempfile::TempDir;
 
     use super::*;
+
+    #[tokio::test]
+    async fn test_aggregate_count_empty_collection() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection".to_string();
+
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store
+            .collection_with_config(&collection_name, None)
+            .await
+            .unwrap();
+
+        // Give time for event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let args = AggregateArgs {
+            aggregation: "count".to_string(),
+            filter: vec![],
+            wal: crate::commands::WalArgs::default(),
+        };
+
+        let result = run(store_path, collection_name, None, args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_count_with_documents() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection".to_string();
+
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(&collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "age": 30}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "age": 25}))
+            .await
+            .unwrap();
+
+        // Give time for event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let args = AggregateArgs {
+            aggregation: "count".to_string(),
+            filter: vec![],
+            wal: crate::commands::WalArgs::default(),
+        };
+
+        let result = run(store_path, collection_name, None, args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_sum_with_numeric_field() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection".to_string();
+
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(&collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "score": 85}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "score": 92}))
+            .await
+            .unwrap();
+
+        // Give time for event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let args = AggregateArgs {
+            aggregation: "sum:score".to_string(),
+            filter: vec![],
+            wal: crate::commands::WalArgs::default(),
+        };
+
+        let result = run(store_path, collection_name, None, args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_avg_with_numeric_field() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection".to_string();
+
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(&collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "score": 80}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "score": 90}))
+            .await
+            .unwrap();
+
+        // Give time for event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let args = AggregateArgs {
+            aggregation: "avg:score".to_string(),
+            filter: vec![],
+            wal: crate::commands::WalArgs::default(),
+        };
+
+        let result = run(store_path, collection_name, None, args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_min_with_numeric_field() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection".to_string();
+
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(&collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "score": 85}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "score": 92}))
+            .await
+            .unwrap();
+
+        // Give time for event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let args = AggregateArgs {
+            aggregation: "min:score".to_string(),
+            filter: vec![],
+            wal: crate::commands::WalArgs::default(),
+        };
+
+        let result = run(store_path, collection_name, None, args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_max_with_numeric_field() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection".to_string();
+
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(&collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "score": 85}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "score": 92}))
+            .await
+            .unwrap();
+
+        // Give time for event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let args = AggregateArgs {
+            aggregation: "max:score".to_string(),
+            filter: vec![],
+            wal: crate::commands::WalArgs::default(),
+        };
+
+        let result = run(store_path, collection_name, None, args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_with_filters() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection".to_string();
+
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(&collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert test documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "score": 85, "active": true}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "score": 92, "active": false}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc3", json!({"name": "Charlie", "score": 78, "active": true}))
+            .await
+            .unwrap();
+
+        // Give time for event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let args = AggregateArgs {
+            aggregation: "count".to_string(),
+            filter: vec!["active=true".to_string()],
+            wal: crate::commands::WalArgs::default(),
+        };
+
+        let result = run(store_path, collection_name, None, args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_aggregate_invalid_aggregation() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection".to_string();
+
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store
+            .collection_with_config(&collection_name, None)
+            .await
+            .unwrap();
+
+        // Give time for event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let args = AggregateArgs {
+            aggregation: "invalid:operation".to_string(),
+            filter: vec![],
+            wal: crate::commands::WalArgs::default(),
+        };
+
+        let result = run(store_path, collection_name, None, args).await;
+        assert!(result.is_err());
+    }
 
     #[test]
     fn test_parse_aggregation_count() {
