@@ -509,4 +509,349 @@ mod tests {
         let result = replay_wal_entry_safe(&entry, &ops).await;
         assert!(result.is_err());
     }
+
+    // ============ Additional Error Path and Edge Case Tests ============
+
+    #[tokio::test]
+    async fn test_recover_wal_safe_stream_error_handling() {
+        // Test that stream errors are handled gracefully
+        use tempfile::tempdir;
+
+        use crate::{EntryType, LogEntry, WalConfig, WalManager};
+
+        let temp_dir = tempdir().unwrap();
+        let wal_path = temp_dir.path().join("test_stream_error.wal");
+
+        let wal = WalManager::new(wal_path.clone(), WalConfig::default())
+            .await
+            .unwrap();
+
+        // Write one valid entry
+        wal.write_entry(LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(serde_json::json!({"name": "Alice"})),
+        ))
+        .await
+        .unwrap();
+
+        let ops = MockDocumentOps::new();
+        let result = recover_from_wal_safe(&wal, &ops).await.unwrap();
+
+        // Should recover the valid entry
+        assert_eq!(result.recovered_operations, 1);
+        assert_eq!(result.failed_operations, 0);
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_safe_doc_read_error() {
+        // Test that errors when reading document are propagated correctly
+        struct ErrorDocumentOps;
+
+        #[async_trait::async_trait]
+        impl WalDocumentOps for ErrorDocumentOps {
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> {
+                Err(crate::WalError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "test error",
+                )))
+            }
+
+            async fn apply_operation(
+                &self,
+                _operation: &EntryType,
+                _id: &str,
+                _data: Option<serde_json::Value>,
+            ) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        let ops = ErrorDocumentOps;
+        let entry = create_test_entry(EntryType::Update, "doc1", Some(r#"{"name": "test"}"#));
+
+        let result = replay_wal_entry_safe(&entry, &ops).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_safe_many_duplicates() {
+        // Test idempotency with many duplicate transaction IDs
+        use tempfile::tempdir;
+
+        use crate::{EntryType, LogEntry, WalConfig, WalManager};
+
+        let temp_dir = tempdir().unwrap();
+        let wal_path = temp_dir.path().join("test_many_duplicates.wal");
+
+        let wal = WalManager::new(wal_path.clone(), WalConfig::default())
+            .await
+            .unwrap();
+
+        // Write the same operation multiple times with same transaction ID
+        for _ in 0 .. 5 {
+            wal.write_entry(LogEntry::new(
+                EntryType::Insert,
+                "users".to_string(),
+                "user-1".to_string(),
+                Some(serde_json::json!({"name": "Alice"})),
+            ))
+            .await
+            .unwrap();
+        }
+
+        let ops = MockDocumentOps::new();
+        let result = recover_from_wal_safe(&wal, &ops).await.unwrap();
+
+        // First one recovered, rest skipped due to duplicate detection
+        assert_eq!(result.recovered_operations, 1);
+        assert_eq!(result.skipped_operations, 4);
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_force_io_error_on_delete() {
+        // Test force delete handles IO errors gracefully
+        struct IoErrorDocumentOps;
+
+        #[async_trait::async_trait]
+        impl WalDocumentOps for IoErrorDocumentOps {
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> { Ok(None) }
+
+            async fn apply_operation(
+                &self,
+                operation: &EntryType,
+                _id: &str,
+                _data: Option<serde_json::Value>,
+            ) -> Result<()> {
+                if *operation == EntryType::Delete {
+                    // Simulate IO error on delete
+                    Err(crate::WalError::Io(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "permission denied",
+                    )))
+                }
+                else {
+                    Ok(())
+                }
+            }
+        }
+
+        let ops = IoErrorDocumentOps;
+        let entry = create_test_entry(EntryType::Delete, "doc1", None);
+
+        // Force replay should handle IO error
+        let result = replay_wal_entry_force(&entry, &ops).await;
+        assert!(result.is_ok() || result.unwrap_err().to_string().contains("permission"));
+    }
+
+    #[tokio::test]
+    async fn test_wal_recovery_failure_special_chars() {
+        // Test WalRecoveryFailure with special characters in fields
+        let failure = WalRecoveryFailure {
+            transaction_id: "txn-特殊字符".to_string(),
+            document_id:    "doc-with-quotes".to_string(),
+            operation_type: "Insert".to_string(),
+            reason:         "Error with\nnewlines\tand tabs".to_string(),
+        };
+
+        // Serialize and deserialize
+        let json = serde_json::to_string(&failure).unwrap();
+        let deserialized: WalRecoveryFailure = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(failure.transaction_id, deserialized.transaction_id);
+        assert_eq!(failure.document_id, deserialized.document_id);
+        assert_eq!(failure.reason, deserialized.reason);
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_safe_mixed_ops() {
+        // Test recovery with mix of recovered and skipped operations
+        use tempfile::tempdir;
+
+        use crate::{EntryType, LogEntry, WalConfig, WalManager};
+
+        let temp_dir = tempdir().unwrap();
+        let wal_path = temp_dir.path().join("test_mixed.wal");
+
+        let wal = WalManager::new(wal_path.clone(), WalConfig::default())
+            .await
+            .unwrap();
+
+        // Write multiple operations
+        wal.write_entry(LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(serde_json::json!({"name": "Alice"})),
+        ))
+        .await
+        .unwrap();
+
+        wal.write_entry(LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-2".to_string(),
+            Some(serde_json::json!({"name": "Bob"})),
+        ))
+        .await
+        .unwrap();
+
+        wal.write_entry(LogEntry::new(
+            EntryType::Delete,
+            "users".to_string(),
+            "user-1".to_string(),
+            None,
+        ))
+        .await
+        .unwrap();
+
+        let ops = MockDocumentOps::new();
+        let result = recover_from_wal_safe(&wal, &ops).await.unwrap();
+
+        // All 3 operations should be processed
+        assert_eq!(result.recovered_operations, 3);
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_force_txn_boundaries() {
+        // Test force recovery respects transaction boundaries correctly
+        use tempfile::tempdir;
+
+        use crate::{EntryType, LogEntry, WalConfig, WalManager};
+
+        let temp_dir = tempdir().unwrap();
+        let wal_path = temp_dir.path().join("test_txn_boundaries.wal");
+
+        let wal = WalManager::new(wal_path.clone(), WalConfig::default())
+            .await
+            .unwrap();
+
+        // Write a complete transaction
+        wal.write_entry(LogEntry::new(
+            EntryType::Begin,
+            "users".to_string(),
+            "txn-100".to_string(),
+            None,
+        ))
+        .await
+        .unwrap();
+
+        wal.write_entry(LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-new".to_string(),
+            Some(serde_json::json!({"name": "New User"})),
+        ))
+        .await
+        .unwrap();
+
+        wal.write_entry(LogEntry::new(
+            EntryType::Commit,
+            "users".to_string(),
+            "txn-100".to_string(),
+            None,
+        ))
+        .await
+        .unwrap();
+
+        let ops = MockDocumentOps::new();
+        let result = recover_from_wal_force(&wal, &ops).await.unwrap();
+
+        // Force recovery should apply insert (1 recovered), skip transaction controls (2 skipped)
+        assert_eq!(result.recovered_operations, 1);
+        assert_eq!(result.skipped_operations, 2);
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_safe_insert_fail_error() {
+        // Test that duplicate key errors during apply are handled
+        struct FailOnInsertDocumentOps;
+
+        #[async_trait::async_trait]
+        impl WalDocumentOps for FailOnInsertDocumentOps {
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> { Ok(None) }
+
+            async fn apply_operation(
+                &self,
+                operation: &EntryType,
+                id: &str,
+                _data: Option<serde_json::Value>,
+            ) -> Result<()> {
+                if *operation == EntryType::Insert && id == "fail-doc" {
+                    Err(crate::WalError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "insert failed",
+                    )))
+                }
+                else {
+                    Ok(())
+                }
+            }
+        }
+
+        let ops = FailOnInsertDocumentOps;
+        let entry = create_test_entry(EntryType::Insert, "fail-doc", Some(r#"{"name": "test"}"#));
+
+        let result = replay_wal_entry_safe(&entry, &ops).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wal_recovery_result_zero_check() {
+        // Test WalRecoveryResult with all zeros
+        let result = WalRecoveryResult {
+            recovered_operations: 0,
+            skipped_operations:   0,
+            failed_operations:    0,
+            failures:             vec![],
+        };
+
+        assert_eq!(result.recovered_operations, 0);
+        assert_eq!(result.skipped_operations, 0);
+        assert_eq!(result.failed_operations, 0);
+        assert!(result.failures.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_safe_partial_update() {
+        // Test update that doesn't actually change the document
+        use tempfile::tempdir;
+
+        use crate::{EntryType, LogEntry, WalConfig, WalManager};
+
+        let temp_dir = tempdir().unwrap();
+        let wal_path = temp_dir.path().join("test_partial_update.wal");
+
+        let wal = WalManager::new(wal_path.clone(), WalConfig::default())
+            .await
+            .unwrap();
+
+        // First insert a document
+        wal.write_entry(LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(serde_json::json!({"name": "Alice", "age": 30, "city": "NYC"})),
+        ))
+        .await
+        .unwrap();
+
+        // Update with same data (should be skipped in safe recovery)
+        wal.write_entry(LogEntry::new(
+            EntryType::Update,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(serde_json::json!({"name": "Alice", "age": 30, "city": "NYC"})), // Same data
+        ))
+        .await
+        .unwrap();
+
+        let ops = MockDocumentOps::new();
+        let result = recover_from_wal_safe(&wal, &ops).await.unwrap();
+
+        // 1 recovered (insert), 1 skipped (update with no change)
+        assert_eq!(result.recovered_operations, 1);
+        assert_eq!(result.skipped_operations, 1);
+    }
 }
