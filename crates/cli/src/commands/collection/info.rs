@@ -188,4 +188,26 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Invalid format"));
     }
+
+    #[tokio::test]
+    async fn test_info_command_invalid_store_path() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("invalid_store");
+        std::fs::write(&store_path, "not a directory").unwrap();
+        let collection_name = "test_collection";
+
+        let args = InfoArgs {
+            format: "table".to_string(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
 }
