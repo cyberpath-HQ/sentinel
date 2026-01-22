@@ -256,4 +256,94 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_get_many_non_existing_documents_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        // Initialize store and create collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let args = GetManyArgs {
+            ids:    vec!["nonexistent1".to_string(), "nonexistent2".to_string()],
+            format: "json".to_string(),
+            wal:    crate::commands::WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_many_non_existing_documents_table() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        // Initialize store and create collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let args = GetManyArgs {
+            ids:    vec!["nonexistent1".to_string(), "nonexistent2".to_string()],
+            format: "table".to_string(),
+            wal:    crate::commands::WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_many_invalid_store_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("invalid_store");
+        std::fs::write(&store_path, "not a directory").unwrap();
+        let collection_name = "test_collection";
+
+        let args = GetManyArgs {
+            ids:    vec!["doc1".to_string()],
+            format: "json".to_string(),
+            wal:    crate::commands::WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
 }
