@@ -175,3 +175,192 @@ pub async fn run(
     info!("Found {} documents in collection '{}'", count, collection);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_query_empty_collection() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Run query command
+        let args = QueryArgs {
+            verify_signature: true,
+            verify_hash: true,
+            signature_mode: "strict".to_string(),
+            empty_sig_mode: "warn".to_string(),
+            hash_mode: "strict".to_string(),
+            filter: vec![],
+            sort: None,
+            limit: None,
+            offset: None,
+            project: None,
+            format: "json".to_string(),
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_query_populated_collection() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Insert some documents
+        collection.insert("doc1", serde_json::json!({"name": "Alice", "age": 30})).await.unwrap();
+        collection.insert("doc2", serde_json::json!({"name": "Bob", "age": 25})).await.unwrap();
+
+        // Allow event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Run query command
+        let args = QueryArgs {
+            verify_signature: true,
+            verify_hash: true,
+            signature_mode: "strict".to_string(),
+            empty_sig_mode: "warn".to_string(),
+            hash_mode: "strict".to_string(),
+            filter: vec![],
+            sort: None,
+            limit: None,
+            offset: None,
+            project: None,
+            format: "json".to_string(),
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_query_with_limit() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Insert some documents
+        collection.insert("doc1", serde_json::json!({"name": "Alice"})).await.unwrap();
+        collection.insert("doc2", serde_json::json!({"name": "Bob"})).await.unwrap();
+        collection.insert("doc3", serde_json::json!({"name": "Charlie"})).await.unwrap();
+
+        // Allow event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Run query command with limit
+        let args = QueryArgs {
+            verify_signature: true,
+            verify_hash: true,
+            signature_mode: "strict".to_string(),
+            empty_sig_mode: "warn".to_string(),
+            hash_mode: "strict".to_string(),
+            filter: vec![],
+            sort: None,
+            limit: Some(2),
+            offset: None,
+            project: None,
+            format: "json".to_string(),
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_query_invalid_verification_mode() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Run query command with invalid verification mode
+        let args = QueryArgs {
+            verify_signature: true,
+            verify_hash: true,
+            signature_mode: "invalid".to_string(),
+            empty_sig_mode: "warn".to_string(),
+            hash_mode: "strict".to_string(),
+            filter: vec![],
+            sort: None,
+            limit: None,
+            offset: None,
+            project: None,
+            format: "json".to_string(),
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+}
