@@ -1,0 +1,217 @@
+---
+title: Language Bindings Overview
+description:
+  Overview of Cyberpath Sentinel's language bindings for Python, Node.js, and C/C++. Use Sentinel from your favorite
+  programming language.
+section: Language Bindings
+order: 1
+keywords: ["language bindings", "python", "nodejs", "javascript", "c", "c++", "bindings", "sdk"]
+related: ["python-bindings", "nodejs-bindings", "cpp-bindings", "installation", "releases"]
+---
+
+Cyberpath Sentinel provides official language bindings for multiple programming languages, allowing you to integrate
+Sentinel into your applications regardless of your technology stack. Each binding provides native idiomatic access to
+Sentinel's filesystem-backed document database capabilities.
+
+## Available Bindings
+
+| Language    | Crate                 | Status    | Documentation                             |
+| ----------- | --------------------- | --------- | ----------------------------------------- |
+| **Python**  | `sentinel-python`     | ✅ Stable | [Python Bindings](/docs/python-bindings)  |
+| **Node.js** | `@cyberpath/sentinel` | ✅ Stable | [Node.js Bindings](/docs/nodejs-bindings) |
+| **C/C++**   | `sentinel-cxx`        | ✅ Stable | [C/C++ Bindings](/docs/cpp-bindings)      |
+| **Rust**    | `sentinel-dbms`       | ✅ Core   | [Rust API](/docs/api-reference)           |
+
+## Why Use Language Bindings?
+
+Sentinel was designed with a Rust core but recognizes that most developers work in other languages. Our official
+bindings provide:
+
+- **Native Idioms**: Each binding follows the conventions and best practices of its language ecosystem
+- **Full Feature Access**: Complete access to all Sentinel features including collections, documents, queries, and
+  cryptography
+- **Async Support**: Built-in asynchronous operations compatible with each language's event model
+- **Type Safety**: Type annotations where supported for better developer experience
+- **Active Development**: Regular updates with new features and bug fixes
+
+## Quick Start by Language
+
+### Python
+
+```bash
+# Install the package
+pip install sentinel-dbms
+
+# Use it in your code
+import sentinel
+
+async def main():
+    store = await sentinel.Store.create("./my-data")
+    users = await store.collection("users")
+    await users.insert("alice", {"name": "Alice", "role": "admin"})
+```
+
+### Node.js
+
+```bash
+# Install the package
+npm install @cyberpath/sentinel
+
+# Use it in your code
+import { Store } from '@cyberpath/sentinel';
+
+const store = await Store.create('./my-data');
+const users = await store.collection('users');
+await users.insert('alice', { name: 'Alice', role: 'admin' });
+```
+
+### C/C++
+
+```cpp
+#include <sentinel/sentinel.hpp>
+
+int main() {
+    sentinel::Store store("./my-data");
+    auto users = store.collection("users");
+    users.insert("alice", {{"name", "Alice"}, {"role", "admin"}});
+}
+```
+
+## Feature Comparison
+
+| Feature                | Python | Node.js | C/C++            | Rust |
+| ---------------------- | ------ | ------- | ---------------- | ---- |
+| Store Operations       | ✅     | ✅      | ✅               | ✅   |
+| Collection Management  | ✅     | ✅      | ✅               | ✅   |
+| Document CRUD          | ✅     | ✅      | ✅               | ✅   |
+| Query Builder          | ✅     | ✅      | ✅               | ✅   |
+| Bulk Operations        | ✅     | ✅      | ✅               | ✅   |
+| Streaming              | ✅     | ✅      | ✅               | ✅   |
+| Signing & Verification | ✅     | ✅      | ✅               | ✅   |
+| Encryption             | ✅     | ✅      | ✅               | ✅   |
+| Async/Await            | ✅     | ✅      | ⚠️ <sup>\*</sup> | ✅   |
+| TypeScript Types       | N/A    | ✅      | ❌               | N/A  |
+
+<sup>\*</sup> C/C++ binding uses *callback* style approach for async operations.
+
+## Installation Methods
+
+Each binding can be installed through its respective package manager:
+
+### Python
+
+```bash
+# From PyPI
+pip install sentinel-dbms
+
+# From source
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel/bindings/python
+pip install .
+```
+
+### Node.js
+
+```bash
+# From npm registry
+npm install @cyberpath/sentinel
+
+# From source
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel/bindings/js
+npm install
+npm run build
+```
+
+### C/C++
+
+```bash
+# Download pre-built package
+wget https://github.com/cyberpath-HQ/sentinel/releases/download/v2.0.1/sentinel-cxx-dev-2.0.1.zip
+unzip sentinel-cxx-dev-2.0.1.zip
+
+# Or build from source
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel/bindings/cxx
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target sentinel-cxx
+```
+
+See [Installation](/docs/installation) for detailed setup instructions for each language.
+
+## Common Operations
+
+All bindings support these core operations with minor syntactic differences for each language:
+
+### Creating a Store
+
+The store is your entry point to Sentinel. It manages collections and provides the filesystem connection:
+
+| Language | Example                                                  |
+| -------- | -------------------------------------------------------- |
+| Python   | `store = await Store.create("./data", passphrase=None)`  |
+| Node.js  | `const store = await Store.create('./data', undefined);` |
+| C/C++    | `sentinel::Store store("./data", nullptr);`              |
+| Rust     | `let store = Store::new("./data", None).await?;`         |
+
+### Working with Collections
+
+Collections organize related documents. Create, retrieve, and manage collections:
+
+| Language | Example                                          |
+| -------- | ------------------------------------------------ |
+| Python   | `users = await store.collection("users")`        |
+| Node.js  | `const users = await store.collection('users');` |
+| C/C++    | `auto users = store.collection("users");`        |
+| Rust     | `let users = store.collection("users").await?;`  |
+
+### Document Operations
+
+Insert, retrieve, update, and delete documents:
+
+| Language | Insert                           | Get                     | Update                           | Delete                     |
+| -------- | -------------------------------- | ----------------------- | -------------------------------- | -------------------------- |
+| Python   | `await coll.insert("id", data)`  | `await coll.get("id")`  | `await coll.update("id", data)`  | `await coll.delete("id")`  |
+| Node.js  | `await coll.insert('id', data)`  | `await coll.get('id')`  | `await coll.update('id', data)`  | `await coll.delete('id')`  |
+| C/C++    | `coll.insert("id", data)`        | `coll.get("id")`        | `coll.update("id", data)`        | `coll.delete("id")`        |
+| Rust     | `coll.insert("id", data).await?` | `coll.get("id").await?` | `coll.update("id", data).await?` | `coll.delete("id").await?` |
+
+### Querying Documents
+
+Build complex queries to find documents matching specific criteria:
+
+| Language | Example                                     |
+| -------- | ------------------------------------------- |
+| Python   | `results = await users.query(query)`        |
+| Node.js  | `const results = await users.query(query);` |
+| C/C++    | `auto results = users.query(query);`        |
+| Rust     | `let results = users.query(query).await?;`  |
+
+## Cryptographic Features
+
+All bindings provide access to Sentinel's cryptographic capabilities:
+
+- **Hashing**: BLAKE3 for document integrity verification
+- **Signing**: Ed25519 for tamper-evident storage
+- **Encryption**: XChaCha20-Poly1305, AES-256-GCM-SIV, or Ascon-128 for data protection
+- **Key Derivation**: Argon2id or PBKDF2 for passphrase-based keys
+
+Each binding exposes these features through its native crypto APIs, making it easy to add cryptographic security to your
+applications.
+
+## Version Compatibility
+
+| Binding             | Minimum Rust | Minimum Python | Minimum Node.js | C++ Standard |
+| ------------------- | ------------ | -------------- | --------------- | ------------ |
+| sentinel-dbms       | 1.92         | 3.8            | N/A             | N/A          |
+| @cyberpath/sentinel | 1.92         | N/A            | 16              | N/A          |
+| sentinel-cxx        | 1.92         | N/A            | N/A             | C++11        |
+
+## Next Steps
+
+Choose your binding and get started:
+
+- **[Python Bindings](/docs/python-bindings)**: Complete Python SDK documentation
+- **[Node.js Bindings](/docs/nodejs-bindings)**: Complete Node.js SDK documentation
+- **[C/C++ Bindings](/docs/cpp-bindings)**: Complete C/C++ SDK documentation
+- **[Releases & Packages](/docs/releases)**: Download pre-built binaries and packages

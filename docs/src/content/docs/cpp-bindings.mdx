@@ -1,0 +1,751 @@
+---
+title: C/C++ Bindings
+description: Complete guide to using Cyberpath Sentinel with C and C++. Installation, usage examples, and API reference.
+section: Language Bindings
+order: 4
+keywords: ["cpp", "c", "bindings", "cmake", "installation", "api", "examples", "native"]
+related: ["language-bindings", "python-bindings", "nodejs-bindings", "releases"]
+---
+
+The C/C++ bindings provide a native interface to Cyberpath Sentinel, enabling you to use Sentinel's filesystem-backed
+document database in your C or C++ applications. Built using CXX, these bindings offer a safe FFI layer with full
+support for the Sentinel API.
+
+## Installation
+
+### Pre-built Packages (Recommended)
+
+Download pre-built packages from the [releases page](/docs/releases):
+
+**Linux (glibc):**
+```bash
+# Download
+wget https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-cxx-linux-x86_64.tar.gz
+tar -xzf sentinel-cxx-linux-x86_64.tar.gz
+
+# Install headers and library
+sudo cp -r include/sentinel-cxx /usr/local/include/
+sudo cp lib/lib sentinel-cxx.so /usr/local/lib/
+sudo ldconfig
+```
+
+**macOS:**
+```bash
+# Download
+curl -L https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-cxx-macos-universal.tar.gz
+tar -xzf sentinel-cxx-macos-universal.tar.gz
+
+# Install headers and library
+sudo cp -r include/sentinel-cxx /usr/local/include/
+sudo cp lib/libsentinel-cxx.dylib /usr/local/lib/
+```
+
+**Windows:**
+```powershell
+# Download and extract
+Invoke-WebRequest -Uri "https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-cxx-windows-x64.zip" -OutFile "sentinel-cxx.zip"
+Expand-Archive -Path "sentinel-cxx.zip" -DestinationPath "C:\Program Files\sentinel-cxx"
+```
+
+### Building from Source
+
+To build the C/C++ bindings from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel/bindings/cxx
+
+# Build with CMake
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target sentinel-cxx
+
+# Install
+cmake --install build --prefix /usr/local
+```
+
+### CMake Integration
+
+Add to your `CMakeLists.txt`:
+
+```cmake
+find_package(sentinel-cxx REQUIRED)
+
+add_executable(my_app main.cpp)
+target_link_libraries(my_app sentinel-cxx::sentinel-cxx)
+```
+
+## Quick Start
+
+### Creating a Store
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+
+int main() {
+    // Create a new store
+    // If passphrase is nullptr, documents won't be signed
+    auto store = sentinel_cxx::Store::create("./my-database", nullptr);
+
+    if (store) {
+        std::cout << "Store created at " << store->path() << std::endl;
+    } else {
+        std::cerr << "Failed to create store" << std::endl;
+        return 1;
+    }
+
+    return 0;
+}
+```
+
+### Working with Collections
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+#include <vector>
+
+int main() {
+    auto store = sentinel_cxx::Store::create("./my-database", nullptr);
+
+    if (!store) {
+        std::cerr << "Failed to create store" << std::endl;
+        return 1;
+    }
+
+    // Get or create a collection
+    auto users = store->collection("users");
+
+    // List all collections
+    auto collections = store->list_collections();
+    std::cout << "Collections: ";
+    for (const auto& coll : collections) {
+        std::cout << coll << " ";
+    }
+    std::cout << std::endl;
+
+    return 0;
+}
+```
+
+### Document Operations
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+#include <map>
+
+int main() {
+    auto store = sentinel_cxx::Store::create("./my-database", nullptr);
+    auto users = store->collection("users");
+
+    // Insert a document
+    std::map<std::string, sentinel_cxx::Value> user_data;
+    user_data["name"] = "Alice Johnson";
+    user_data["email"] = "alice@example.com";
+    user_data["role"] = "admin";
+    user_data["department"] = "Engineering";
+    user_data["active"] = true;
+    user_data["age"] = 30;
+
+    users->insert("alice", user_data);
+
+    // Get a document
+    auto doc = users->get("alice");
+    if (doc) {
+        std::cout << "Found: " << doc->data().at("name") << std::endl;
+        std::cout << "Email: " << doc->data().at("email") << std::endl;
+        std::cout << "Version: " << doc->version() << std::endl;
+    }
+
+    // Update a document
+    user_data["email"] = "alice.johnson@example.com";
+    user_data["role"] = "senior_admin";
+    user_data["age"] = 31;
+    users->update("alice", user_data);
+
+    // Delete a document
+    users->delete("alice");
+    std::cout << "Document deleted" << std::endl;
+
+    return 0;
+}
+```
+
+### Bulk Operations
+
+Insert multiple documents efficiently:
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+#include <vector>
+#include <map>
+
+int main() {
+    auto store = sentinel_cxx::Store::create("./my-database", nullptr);
+    auto users = store->collection("users");
+
+    // Bulk insert multiple documents
+    std::vector<std::pair<std::string, std::map<std::string, sentinel_cxx::Value>>> documents = {
+        {"bob", {{"name", "Bob Smith"}, {"role", "user"}}},
+        {"charlie", {{"name", "Charlie Brown"}, {"role", "user"}}},
+        {"diana", {{"name", "Diana Prince"}, {"role", "admin"}}},
+        {"eve", {{"name", "Eve Wilson"}, {"role", "user"}}}
+    };
+
+    users->bulk_insert(documents);
+    std::cout << "Inserted " << documents.size() << " documents" << std::endl;
+
+    // Get multiple documents by ID
+    std::vector<std::string> ids = {"bob", "charlie", "eve"};
+    auto results = users->get_many(ids);
+
+    for (size_t i = 0; i < ids.size(); i++) {
+        if (results[i]) {
+            std::cout << "Found: " << results[i]->data().at("name") << std::endl;
+        } else {
+            std::cout << "Not found: " << ids[i] << std::endl;
+        }
+    }
+
+    return 0;
+}
+```
+
+## Querying Documents
+
+### Basic Queries
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+
+int main() {
+    auto store = sentinel_cxx::Store::create("./my-database", nullptr);
+    auto users = store->collection("users");
+
+    // Insert test data
+    users->bulk_insert({
+        {"user1", {{"name", "Alice"}, {"age", 30}, {"role", "admin"}, {"active", true}}},
+        {"user2", {{"name", "Bob"}, {"age", 25}, {"role", "user"}, {"active", true}}},
+        {"user3", {{"name", "Charlie"}, {"age", 35}, {"role", "user"}, {"active", false}}},
+        {"user4", {{"name", "Diana"}, {"age", 28}, {"role", "admin"}, {"active", true}}}
+    });
+
+    // Build a query
+    auto query = sentinel_cxx::QueryBuilder()
+        .filter("age", sentinel_cxx::QueryOperator::GREATER_THAN, 26)
+        .filter("active", sentinel_cxx::QueryOperator::EQUALS, true)
+        .sort("age", sentinel_cxx::SortOrder::ASCENDING)
+        .limit(10)
+        .build();
+
+    auto result = users->query(query);
+
+    std::cout << "Found " << result.documents.size() << " active users over 26:" << std::endl;
+    for (const auto& doc : result.documents) {
+        std::cout << "  - " << doc->data().at("name")
+                  << ", age " << doc->data().at("age") << std::endl;
+    }
+
+    return 0;
+}
+```
+
+### Query Operators
+
+The C/C++ bindings support these operators:
+
+| Operator | Description | C++ Enum |
+|----------|-------------|----------|
+| `EQUALS` | Exact match | `QueryOperator::EQUALS` |
+| `NOT_EQUALS` | Inequality | `QueryOperator::NOT_EQUALS` |
+| `GREATER_THAN` | > comparison | `QueryOperator::GREATER_THAN` |
+| `LESS_THAN` | < comparison | `QueryOperator::LESS_THAN` |
+| `GREATER_THAN_OR_EQUALS` | >= comparison | `QueryOperator::GREATER_THAN_OR_EQUALS` |
+| `LESS_THAN_OR_EQUALS` | &lt;= comparison | `QueryOperator::LESS_THAN_OR_EQUALS` |
+| `CONTAINS` | String contains | `QueryOperator::CONTAINS` |
+| `STARTS_WITH` | String prefix | `QueryOperator::STARTS_WITH` |
+| `ENDS_WITH` | String suffix | `QueryOperator::ENDS_WITH` |
+| `IN_LIST` | Value in array | `QueryOperator::IN_LIST` |
+| `EXISTS` | Field exists | `QueryOperator::EXISTS` |
+
+### Complex Queries
+
+Combine filters with AND logic:
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+
+int main() {
+    auto store = sentinel_cxx::Store::create("./my-database", nullptr);
+    auto users = store->collection("users");
+
+    // Complex query: admins who are active and over 30
+    auto query = sentinel_cxx::QueryBuilder()
+        .filter("role", sentinel_cxx::QueryOperator::EQUALS, "admin")
+        .filter("active", sentinel_cxx::QueryOperator::EQUALS, true)
+        .filter("age", sentinel_cxx::QueryOperator::GREATER_THAN, 30)
+        .sort("age", sentinel_cxx::SortOrder::DESCENDING)
+        .build();
+
+    auto result = users->query(query);
+
+    for (const auto& doc : result.documents) {
+        std::cout << doc->data().at("name")
+                  << " (age " << doc->data().at("age") << ")" << std::endl;
+    }
+
+    return 0;
+}
+```
+
+## Streaming Operations
+
+Process large datasets efficiently:
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+
+int main() {
+    auto store = sentinel_cxx::Store::create("./my-database", nullptr);
+    auto users = store->collection("users");
+
+    // Insert many test documents
+    for (int i = 0; i < 100; i++) {
+        std::string id = "user-" + std::to_string(i);
+        users->insert(id, {{"name", "User " + std::to_string(i)}, {"index", i}});
+    }
+
+    // Stream all documents
+    std::cout << "Processing all users:" << std::endl;
+    for (const auto& doc : users->all()) {
+        std::cout << "  - " << doc->id() << ": " << doc->data().at("name") << std::endl;
+    }
+
+    // Count documents
+    auto count = users->count();
+    std::cout << "\nTotal users: " << count << std::endl;
+
+    return 0;
+}
+```
+
+## Cryptographic Operations
+
+### Hashing
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+
+int main() {
+    auto store = sentinel_cxx::Store::create("./my-database", nullptr);
+
+    // Hash data
+    std::string data = "Hello, Sentinel!";
+    auto hash_result = store->hash_data(data);
+    std::cout << "Hash: " << hash_result << std::endl;
+
+    // Verify hash
+    bool is_valid = store->verify_hash(data, hash_result);
+    std::cout << "Verification: " << (is_valid ? "valid" : "invalid") << std::endl;
+
+    return 0;
+}
+```
+
+### Signing
+
+Create a store with a passphrase to enable signing:
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+
+int main() {
+    // Create store with signing enabled
+    auto store = sentinel_cxx::Store::create("./secure-database", "my-secret-passphrase");
+    auto users = store->collection("users");
+
+    // Documents will be automatically signed
+    users->insert("signed-doc", {{"important", "data"}});
+
+    // Verify signature
+    auto doc = users->get("signed-doc");
+    if (doc) {
+        auto signature = doc->signature();
+        std::cout << "Signature: " << signature.substr(0, 50) << "..." << std::endl;
+
+        // Verify the document
+        bool is_valid = store->verify_signature(doc);
+        std::cout << "Signature valid: " << (is_valid ? "yes" : "no") << std::endl;
+    }
+
+    return 0;
+}
+```
+
+### Encryption
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+#include <fstream>
+
+int main() {
+    // Create store with encryption
+    auto store = sentinel_cxx::Store::create("./encrypted-database", "secure-passphrase");
+    auto users = store->collection("users");
+
+    // Documents are automatically encrypted
+    users->insert("secret", {{"ssn", "123-45-6789"}, {"credit_card", "4111111111111111"}});
+
+    // Verify the file is encrypted
+    std::ifstream file("./encrypted-database/data/users/secret.json");
+    std::string content((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+    std::cout << "File content (should be encrypted):" << std::endl;
+    std::cout << content.substr(0, 100) << "..." << std::endl;
+
+    return 0;
+}
+```
+
+## Error Handling
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+
+int main() {
+    auto store = sentinel_cxx::Store::create("./my-database", nullptr);
+
+    if (!store) {
+        std::cerr << "Failed to create store" << std::endl;
+        return 1;
+    }
+
+    auto users = store->collection("users");
+
+    // Try to get a non-existent document
+    auto doc = users->get("nonexistent");
+    if (!doc) {
+        std::cout << "Document not found (expected)" << std::endl;
+    }
+
+    return 0;
+}
+```
+
+### Using Result Types
+
+For operations that can fail, use the result types:
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+#include <memory>
+
+void handle_store_creation(sentinel_cxx::Result<sentinel_cxx::Store> result) {
+    if (result) {
+        std::cout << "Store created successfully" << std::endl;
+    } else {
+        std::cerr << "Error: " << result.error().message() << std::endl;
+    }
+}
+```
+
+## Integration Examples
+
+### With a C++ Web Server
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <iostream>
+#include <memory>
+
+class UserAPI {
+private:
+    std::unique_ptr<sentinel_cxx::Store> store;
+    std::unique_ptr<sentinel_cxx::Collection> users;
+
+public:
+    bool initialize(const std::string& path) {
+        store = sentinel_cxx::Store::create(path, nullptr);
+        if (!store) return false;
+        users = store->collection("users");
+        return true;
+    }
+
+    std::optional<std::map<std::string, sentinel_cxx::Value>> get_user(const std::string& id) {
+        auto doc = users->get(id);
+        if (doc) {
+            return doc->data();
+        }
+        return std::nullopt;
+    }
+
+    bool create_user(const std::string& id, const std::map<std::string, sentinel_cxx::Value>& data) {
+        return users->insert(id, data).has_value();
+    }
+};
+
+int main() {
+    UserAPI api;
+    if (!api.initialize("./data")) {
+        std::cerr << "Failed to initialize API" << std::endl;
+        return 1;
+    }
+
+    api.create_user("alice", {{"name", "Alice"}, {"email", "alice@example.com"}});
+
+    auto user = api.get_user("alice");
+    if (user) {
+        std::cout << "Found user: " << user->at("name") << std::endl;
+    }
+
+    return 0;
+}
+```
+
+### Using C API
+
+The bindings also include a C-compatible API for use with pure C code or other languages:
+
+```c
+#include <sentinel-cxx/c_api.h>
+#include <stdio.h>
+
+int main() {
+    sentinel_store_t* store = sentinel_store_create("./my-database", NULL);
+    if (!store) {
+        fprintf(stderr, "Failed to create store\n");
+        return 1;
+    }
+
+    sentinel_collection_t* users = sentinel_store_collection(store, "users");
+
+    // Insert document
+    sentinel_error_t err = sentinel_collection_insert(users, "alice",
+        "{\"name\": \"Alice Johnson\", \"email\": \"alice@example.com\"}");
+    if (err != SENTINEL_OK) {
+        fprintf(stderr, "Failed to insert document\n");
+        sentinel_collection_destroy(users);
+        sentinel_store_destroy(store);
+        return 1;
+    }
+
+    // Get document
+    char* doc_data = sentinel_collection_get(users, "alice");
+    if (doc_data) {
+        printf("Found: %s\n", doc_data);
+        sentinel_string_free(doc_data);
+    }
+
+    sentinel_collection_destroy(users);
+    sentinel_store_destroy(store);
+
+    return 0;
+}
+```
+
+## Memory Management
+
+The C++ bindings use smart pointers for automatic memory management:
+
+```cpp
+#include <sentinel-cxx/sentinel-cxx.h>
+#include <memory>
+
+void example() {
+    // Store and Collection are managed by std::unique_ptr
+    auto store = sentinel_cxx::Store::create("./data", nullptr);
+    auto users = store->collection("users");
+
+    // Documents are also managed by std::unique_ptr
+    auto doc = users->get("user1");
+    if (doc) {
+        // Use doc...
+        // Automatically freed when out of scope
+    }
+}
+
+// For shared ownership, use std::shared_ptr manually:
+// auto doc = std::shared_ptr<sentinel_cxx::Document>(users->get("user1").release());
+```
+
+## Performance Tips
+
+1. **Use bulk_insert**: For multiple documents, `bulk_insert` is significantly faster than individual inserts
+2. **Filter Early**: Apply filters in the query rather than loading all documents
+3. **Use Projections**: Specify only the fields you need in results
+4. **Stream Large Results**: Use range-based for loops with `all()` for large datasets
+5. **Connection Pooling**: Reuse store instances rather than creating new ones
+
+## Troubleshooting
+
+### Linker Errors
+
+If you get linker errors about undefined references:
+
+```cmake
+# Make sure you're linking against the sentinel-cxx library
+target_link_libraries(my_app sentinel-cxx::sentinel-cxx)
+```
+
+### Header Not Found
+
+Ensure include directories are set correctly:
+
+```cmake
+target_include_directories(my_app PRIVATE ${SENTINEL_CXX_INCLUDE_DIRS})
+```
+
+### Runtime Errors
+
+If you get runtime errors about missing the shared library:
+
+```bash
+# Linux
+export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+
+# macOS
+export DYLD_LIBRARY_PATH=/usr/local/lib:$DYLD_LIBRARY_PATH
+```
+
+## API Reference
+
+### Store Class
+
+```cpp
+namespace sentinel_cxx {
+
+class Store {
+public:
+    static Result<Store> create(const std::string& path, const std::string* passphrase);
+
+    Result<Collection> collection(const std::string& name);
+
+    std::vector<std::string> list_collections();
+    void delete_collection(const std::string& name);
+
+    std::string hash_data(const std::string& data);
+    bool verify_hash(const std::string& data, const std::string& hash);
+    std::string sign(const std::string& data, const std::string& passphrase);
+    bool verify_signature(const Document& doc);
+
+    std::string path() const;
+};
+
+} // namespace sentinel_cxx
+```
+
+### Collection Class
+
+```cpp
+namespace sentinel_cxx {
+
+class Collection {
+public:
+    Result<Document> insert(const std::string& id, const std::map<std::string, Value>& data);
+    std::optional<Document> get(const std::string& id);
+    Result<Document> update(const std::string& id, const std::map<std::string, Value>& data);
+    void delete(const std::string& id);
+
+    void bulk_insert(const std::vector<std::pair<std::string, std::map<std::string, Value>>>& documents);
+    std::vector<std::optional<Document>> get_many(const std::vector<std::string>& ids);
+
+    int64_t count();
+    std::vector<std::string> list();
+
+    QueryResult query(const Query& query);
+
+    std::vector<Document> all() const;
+    std::vector<Document> filter(std::function<bool(const Document&)> predicate) const;
+};
+
+} // namespace sentinel_cxx
+```
+
+### QueryBuilder Class
+
+```cpp
+namespace sentinel_cxx {
+
+enum class QueryOperator {
+    EQUALS,
+    NOT_EQUALS,
+    GREATER_THAN,
+    LESS_THAN,
+    GREATER_THAN_OR_EQUALS,
+    LESS_THAN_OR_EQUALS,
+    CONTAINS,
+    STARTS_WITH,
+    ENDS_WITH,
+    IN_LIST,
+    EXISTS
+};
+
+enum class SortOrder {
+    ASCENDING,
+    DESCENDING
+};
+
+class QueryBuilder {
+public:
+    QueryBuilder& filter(const std::string& field, QueryOperator op, const Value& value);
+    QueryBuilder& sort(const std::string& field, SortOrder order);
+    QueryBuilder& limit(size_t count);
+    QueryBuilder& offset(size_t count);
+
+    Query build();
+};
+
+} // namespace sentinel_cxx
+```
+
+### Document Class
+
+```cpp
+namespace sentinel_cxx {
+
+class Document {
+public:
+    std::string id() const;
+    int64_t version() const;
+    std::string created_at() const;
+    std::string updated_at() const;
+    std::string hash() const;
+    std::string signature() const;
+
+    std::map<std::string, Value> data() const;
+};
+
+} // namespace sentinel_cxx
+```
+
+### QueryResult Struct
+
+```cpp
+namespace sentinel_cxx {
+
+struct QueryResult {
+    std::vector<Document> documents;
+    int64_t total_count;
+    bool has_more;
+};
+
+} // namespace sentinel_cxx
+```
+
+## Next Steps
+
+- **[Language Bindings Overview](/docs/language-bindings)**: Compare all bindings
+- **[Python Bindings](/docs/python-bindings)**: Python SDK documentation
+- **[Node.js Bindings](/docs/nodejs-bindings)**: JavaScript/TypeScript bindings
+- **[API Reference](/docs/api-reference)**: Complete Rust API documentation

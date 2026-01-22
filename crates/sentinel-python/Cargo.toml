@@ -1,0 +1,28 @@
+[package]
+name = "sentinel-python"
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+readme = "../../README.md"
+description = "Python bindings for Cyberpath Sentinel DBMS"
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+name = "sentinel"
+crate-type = ["cdylib"]
+
+[dependencies]
+sentinel-dbms = { path = "../sentinel" }
+sentinel-crypto = { path = "../sentinel-crypto" }
+pyo3 = { version = "0.20.0", features = ["extension-module", "abi3-py38"] }
+pyo3-asyncio = { version = "0.20.0", features = ["tokio-runtime"] }
+tokio = { version = "1.49.0", features = ["full"] }
+serde_json = "1.0.149"
+futures = "0.3.31"
+
+[lints]
+workspace = true

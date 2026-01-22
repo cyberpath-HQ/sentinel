@@ -1,0 +1,52 @@
+{
+  "name": "@cyberpath/sentinel",
+  "version": "2.0.1",
+  "description": "JavaScript/TypeScript bindings for Cyberpath Sentinel DBMS - Native N-API bindings for Node.js",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "cargo build --release -p sentinel-js && cp crates/sentinel-js/target/release/*.node native/ 2>/dev/null || true",
+    "build:debug": "cargo build -p sentinel-js && cp crates/sentinel-js/target/debug/*.node native/ 2>/dev/null || true",
+    "bundle": "rollup -c rollup.config.js",
+    "test": "mocha tests/",
+    "lint": "eslint . --ext .js,.ts",
+    "fmt": "prettier --write ."
+  },
+  "keywords": [
+    "database",
+    "dbms",
+    "document",
+    "json",
+    "filesystem",
+    "rust",
+    "napi",
+    "native",
+    "node"
+  ],
+  "author": "Emanuele (Ebalo) Balsamo <emanuele.balsamo@cyberpath-hq.com>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyberpath-HQ/sentinel"
+  },
+  "engines": {
+    "node": ">= 16"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@types/node": "^20.0.0",
+    "mocha": "^11.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

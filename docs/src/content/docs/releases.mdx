@@ -1,0 +1,254 @@
+---
+title: Downloads & Releases
+description: Download Cyberpath Sentinel for your platform. CLI tools, language bindings, and distribution packages.
+section: Getting Started
+order: 1
+keywords: ["download", "install", "releases", "packages", "cli", "binary"]
+related: ["installation", "python-bindings", "nodejs-bindings", "cpp-bindings"]
+---
+
+We provide multiple distribution channels to suit different use cases.
+
+## Latest Release
+
+The latest release includes the CLI tool, language bindings for Python, Node.js, and C/C++, and distribution packages.
+
+## CLI Binaries
+
+Download the CLI binary for your platform:
+
+### Linux (glibc)
+
+| Architecture | Download                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| x86_64       | [sentinel-linux-x86_64](https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-linux-x86_64)   |
+| aarch64      | [sentinel-linux-aarch64](https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-linux-aarch64) |
+
+### Linux (musl / Alpine)
+
+| Architecture | Download                                                                                                             |
+| ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| x86_64       | [sentinel-alpine-x86_64](https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-alpine-x86_64)   |
+| aarch64      | [sentinel-alpine-aarch64](https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-alpine-aarch64) |
+
+### macOS
+
+| Architecture            | Download                                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| x86_64 (Intel)          | [sentinel-macos-x86_64](https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-macos-x86_64)       |
+| aarch64 (Apple Silicon) | [sentinel-macos-aarch64](https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-macos-aarch64)     |
+
+### Windows
+
+| Architecture | Download                                                                                                                   |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| x86_64       | [sentinel-windows-x64.exe](https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-windows-x64.exe)     |
+| arm64        | [sentinel-windows-arm64.exe](https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-windows-arm64.exe) |
+
+## CLI Installation
+
+### Linux (glibc)
+
+**Debian/Ubuntu:**
+
+```bash
+# Download
+wget https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel_1.0.0-beta.1_amd64.deb
+
+# Install
+sudo dpkg -i sentinel_1.0.0-beta.1_amd64.deb
+```
+
+**RHEL/CentOS/Fedora:**
+
+```bash
+# Download
+curl -L https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-1.0.0-beta.1.x86_64.rpm -o sentinel.rpm
+
+# Install
+sudo rpm -i sentinel.rpm
+```
+
+**Arch Linux:**
+
+```bash
+# Install from AUR
+yay -S sentinel-bin
+# Or manually
+git clone https://aur.archlinux.org/sentinel-bin.git
+cd sentinel-bin
+makepkg -si
+```
+
+### Linux (musl / Alpine)
+
+**Alpine:**
+
+```bash
+# Download the Alpine package
+wget https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-alpine-x86_64.apk
+
+# Install the package
+sudo apk add --no-cache ./sentinel-alpine-x86_64.apk
+```
+
+### macOS
+
+**Manual:**
+
+```bash
+# Download
+curl -L https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-macos-universal -o sentinel
+
+# Make executable and install
+chmod +x sentinel
+sudo mv sentinel /usr/local/bin/sentinel
+```
+
+### Windows
+
+1. Download the appropriate .exe file
+2. Rename to `sentinel.exe`
+3. Add to your PATH or move to a directory in PATH
+
+## Language Bindings
+
+### Python Bindings
+
+**From PyPI:**
+
+```bash
+pip install sentinel-dbms
+```
+
+**Source:**
+
+```bash
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel/bindings/python
+pip install maturin
+maturin develop
+```
+
+### Node.js Bindings
+
+**From npm:**
+
+```bash
+npm install @cyberpath/sentinel
+```
+
+**Source:**
+
+```bash
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel/bindings/nodejs
+npm install
+npm run build
+```
+
+### C/C++ Bindings
+
+**Pre-built packages:**
+
+Linux (glibc):
+
+```bash
+wget https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-cxx-linux-x86_64.tar.gz
+tar -xzf sentinel-cxx-linux-x86_64.tar.gz
+sudo cp -r include/sentinel-cxx /usr/local/include/
+sudo cp lib/libsentinel-cxx.so /usr/local/lib/
+sudo ldconfig
+```
+
+macOS:
+
+```bash
+curl -L https://github.com/cyberpath-HQ/sentinel/releases/latest/download/sentinel-cxx-macos-universal.tar.gz | tar -xzf -
+sudo cp -r include/sentinel-cxx /usr/local/include/
+sudo cp lib/libsentinel-cxx.dylib /usr/local/lib/
+```
+
+Windows: Download from releases page and extract to `C:\Program Files\sentinel-cxx`
+
+**Source:**
+
+```bash
+git clone https://github.com/cyberpath-HQ/sentinel.git
+cd sentinel/bindings/cxx
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target sentinel-cxx
+cmake --install build --prefix /usr/local
+```
+
+## Docker Images
+
+Official Docker images are available:
+
+| Tag             | Description                |
+| --------------- | -------------------------- |
+| `latest`        | Latest stable release      |
+| `x.y.z`  | Specific version           |
+
+```bash
+# Pull the image
+docker pull cyberpath/sentinel:latest
+
+# Run the CLI
+docker run --rm -v $(pwd):/data cyberpath/sentinel:latest --help
+
+# Use as a base image
+FROM cyberpath/sentinel:latest
+```
+
+## Requirements
+
+### CLI
+
+| Platform     | Minimum Version                        |
+| ------------ | -------------------------------------- |
+| Linux        | glibc 2.17+ (CentOS 7+, Ubuntu 14.04+) |
+| Linux (musl) | Alpine 3.8+                            |
+| macOS        | 10.14+ (Mojave)                        |
+| Windows      | 10+                                    |
+
+### Python Bindings
+
+- Python 3.8 or higher
+
+### Node.js Bindings
+
+- Node.js 18.0.0 or higher
+
+### C/C++ Bindings
+
+- C++11 compiler (suggested GCC 8+, Clang 7+ or MSVC 2019+)
+- CMake 3.16+
+
+## Previous Releases
+
+Access previous versions at our [GitHub releases page](https://github.com/cyberpath-HQ/sentinel/releases).
+
+## Nightly Builds
+
+For the latest development version, download nightly builds:
+
+| Platform        | Download                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Linux x86_64    | [sentinel-nightly-linux-x86_64](https://nightly.link/cyberpath-HQ/sentinel/workflows/release/main/sentinel-linux-x86_64)       |
+| macOS Universal | [sentinel-nightly-macos-universal](https://nightly.link/cyberpath-HQ/sentinel/workflows/release/main/sentinel-macos-universal) |
+| Windows x64     | [sentinel-nightly-windows-x64.exe](https://nightly.link/cyberpath-HQ/sentinel/workflows/release/main/sentinel-windows-x64.exe) |
+
+Nightly builds may be unstable. Use for testing only.
+
+## Support
+
+Having trouble? Check our [troubleshooting guide](/docs/troubleshooting) or
+[report an issue](https://github.com/cyberpath-HQ/sentinel/issues).
+
+## Next Steps
+
+- **[Installation Guide](/docs/installation)**: Step-by-step installation instructions
+- **[Quick Start](/docs/quick-start)**: Get started with your first Sentinel database
+- **[Language Bindings](/docs/language-bindings)**: Use Sentinel from Python, Node.js, or C/C++
+- **[CLI Reference](/docs/cli-reference)**: Complete CLI command documentation
