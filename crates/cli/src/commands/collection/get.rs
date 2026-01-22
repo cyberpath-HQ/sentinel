@@ -157,6 +157,7 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use sentinel_dbms::VerificationMode;
+    use tempfile::TempDir;
 
     use super::*;
     use crate::commands::WalArgs;
@@ -389,5 +390,84 @@ mod tests {
         assert_eq!(opts.signature_verification_mode, VerificationMode::Strict);
         assert_eq!(opts.empty_signature_mode, VerificationMode::Warn);
         assert_eq!(opts.hash_verification_mode, VerificationMode::Silent);
+    }
+
+    #[tokio::test]
+    async fn test_get_existing_document() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+        let doc_id = "doc1";
+
+        // Initialize store and create collection with document
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let docs = vec![(doc_id, serde_json::json!({"name": "Alice", "age": 30}))];
+        collection.bulk_insert(docs).await.unwrap();
+
+        let args = GetArgs {
+            id:               doc_id.to_string(),
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "silent".to_string(),
+            empty_sig_mode:   "silent".to_string(),
+            hash_mode:        "silent".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_document() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+        let doc_id = "nonexistent";
+
+        // Initialize store and create collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let args = GetArgs {
+            id:               doc_id.to_string(),
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "silent".to_string(),
+            empty_sig_mode:   "silent".to_string(),
+            hash_mode:        "silent".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
     }
 }
