@@ -79,3 +79,84 @@ pub async fn run(
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_delete_existing_document() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+        let doc_id = "doc1";
+
+        // Initialize store and create collection with document
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let docs = vec![(doc_id, serde_json::json!({"name": "Alice"}))];
+        collection.bulk_insert(docs).await.unwrap();
+
+        let args = DeleteArgs {
+            id:  doc_id.to_string(),
+            wal: WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        // Verify document is deleted
+        let doc = collection.get(doc_id).await.unwrap();
+        assert!(doc.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent_document() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+        let doc_id = "nonexistent";
+
+        // Initialize store and create collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let args = DeleteArgs {
+            id:  doc_id.to_string(),
+            wal: WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        // Should succeed even if document doesn't exist (idempotent)
+        assert!(result.is_ok());
+    }
+}
