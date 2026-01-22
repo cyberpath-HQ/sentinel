@@ -1537,10 +1537,12 @@ pub unsafe extern "C" fn sentinel_query_or(
     }
     else if left_query.filters.is_empty() {
         // Left has no filters, return right as-is
+        // Empty filter list matches all documents, so empty OR filters = all documents
         combined_filters.extend(right_query.filters.clone());
     }
     else if right_query.filters.is_empty() {
         // Right has no filters, return left as-is
+        // Empty filter list matches all documents, so filters OR empty = all documents
         combined_filters.extend(left_query.filters.clone());
     }
     else if left_query.filters.len() == 1 && right_query.filters.len() == 1 {
