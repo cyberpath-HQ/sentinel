@@ -1297,6 +1297,9 @@ mod tests {
             .await
             .unwrap();
 
+        // Allow event processor to update counters
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
         // Flush to ensure event processor has processed the events
         collection.flush_metadata().await.unwrap();
 
@@ -1724,6 +1727,9 @@ mod persistence_tests {
             // Delete one document
             collection.delete("doc3").await.unwrap();
 
+            // Allow event processor to update counters
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
             // Flush pending metadata changes (async event processor uses debouncing)
             collection.flush_metadata().await.unwrap();
 
@@ -1773,6 +1779,9 @@ mod persistence_tests {
                 .insert("doc4", serde_json::json!({"name": "Diana", "age": 28}))
                 .await
                 .unwrap();
+
+            // Allow event processor to update counters
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
             // Flush pending metadata changes
             collection.flush_metadata().await.unwrap();
