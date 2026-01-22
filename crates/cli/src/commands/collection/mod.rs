@@ -137,3 +137,123 @@ pub async fn run(args: CollectionArgs) -> sentinel_dbms::Result<()> {
         CollectionCommands::Info(sub_args) => info::run(args.store, args.name, args.passphrase, sub_args).await,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_run_insert() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Insert(insert::InsertArgs {
+                id:   Some("doc1".to_string()),
+                data: Some(r#"{"name": "Alice"}"#.to_string()),
+                bulk: None,
+                wal:  crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_get_many() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::GetMany(get_many::GetManyArgs {
+                ids:    vec!["doc1".to_string()],
+                format: "json".to_string(),
+                wal:    crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_info() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Info(info::InfoArgs {
+                format: "table".to_string(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_query() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Query(query::QueryArgs {
+                verify_signature: true,
+                verify_hash:      true,
+                signature_mode:   "strict".to_string(),
+                empty_sig_mode:   "warn".to_string(),
+                hash_mode:        "strict".to_string(),
+                filter:           vec![],
+                sort:             None,
+                limit:            None,
+                offset:           None,
+                project:          None,
+                format:           "json".to_string(),
+                wal:              crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_upsert() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Upsert(upsert::UpsertArgs {
+                id:   "doc1".to_string(),
+                data: r#"{"name": "Alice"}"#.to_string(),
+                wal:  crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+}
