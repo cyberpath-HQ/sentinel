@@ -153,3 +153,241 @@ pub async fn run(
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use sentinel_dbms::VerificationMode;
+
+    use super::*;
+    use crate::commands::WalArgs;
+
+    #[test]
+    fn test_valid_signature_modes() {
+        let args = GetArgs {
+            id:               "test".to_string(),
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+        assert_eq!(opts.signature_verification_mode, VerificationMode::Strict);
+
+        let args = GetArgs {
+            signature_mode: "warn".to_string(),
+            ..args
+        };
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+        assert_eq!(opts.signature_verification_mode, VerificationMode::Warn);
+
+        let args = GetArgs {
+            signature_mode: "silent".to_string(),
+            ..args
+        };
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+        assert_eq!(opts.signature_verification_mode, VerificationMode::Silent);
+    }
+
+    #[test]
+    fn test_valid_hash_modes() {
+        let args = GetArgs {
+            id:               "test".to_string(),
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+        assert_eq!(opts.hash_verification_mode, VerificationMode::Strict);
+
+        let args = GetArgs {
+            hash_mode: "warn".to_string(),
+            ..args
+        };
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+        assert_eq!(opts.hash_verification_mode, VerificationMode::Warn);
+
+        let args = GetArgs {
+            hash_mode: "silent".to_string(),
+            ..args
+        };
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+        assert_eq!(opts.hash_verification_mode, VerificationMode::Silent);
+    }
+
+    #[test]
+    fn test_valid_empty_signature_modes() {
+        let args = GetArgs {
+            id:               "test".to_string(),
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Strict);
+
+        let args = GetArgs {
+            empty_sig_mode: "warn".to_string(),
+            ..args
+        };
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Warn);
+
+        let args = GetArgs {
+            empty_sig_mode: "silent".to_string(),
+            ..args
+        };
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Silent);
+    }
+
+    #[test]
+    fn test_invalid_signature_mode_returns_error() {
+        let args = GetArgs {
+            id:               "test".to_string(),
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "invalid_mode".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = args.to_verification_options();
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Invalid signature verification mode: invalid_mode"));
+    }
+
+    #[test]
+    fn test_invalid_hash_mode_returns_error() {
+        let args = GetArgs {
+            id:               "test".to_string(),
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "invalid_hash".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = args.to_verification_options();
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Invalid hash verification mode: invalid_hash"));
+    }
+
+    #[test]
+    fn test_invalid_empty_signature_mode_returns_error() {
+        let args = GetArgs {
+            id:               "test".to_string(),
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "invalid_empty".to_string(),
+            hash_mode:        "strict".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = args.to_verification_options();
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err();
+        assert!(error_msg.contains("Invalid empty signature mode: invalid_empty"));
+    }
+
+    #[test]
+    fn test_combinations_of_valid_options_produce_correct_verification_options() {
+        // Test combination of different modes
+        let args = GetArgs {
+            id:               "test".to_string(),
+            verify_signature: false,
+            verify_hash:      true,
+            signature_mode:   "warn".to_string(),
+            empty_sig_mode:   "silent".to_string(),
+            hash_mode:        "warn".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+
+        assert_eq!(opts.verify_signature, false);
+        assert_eq!(opts.verify_hash, true);
+        assert_eq!(opts.signature_verification_mode, VerificationMode::Warn);
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Silent);
+        assert_eq!(opts.hash_verification_mode, VerificationMode::Warn);
+    }
+
+    #[test]
+    fn test_default_values_are_applied_correctly() {
+        let args = GetArgs {
+            id:               "test".to_string(),
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+
+        assert_eq!(opts.verify_signature, true);
+        assert_eq!(opts.verify_hash, true);
+        assert_eq!(opts.signature_verification_mode, VerificationMode::Strict);
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Warn);
+        assert_eq!(opts.hash_verification_mode, VerificationMode::Strict);
+    }
+
+    #[test]
+    fn test_case_insensitive_mode_parsing() {
+        let args = GetArgs {
+            id:               "test".to_string(),
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "STRICT".to_string(),
+            empty_sig_mode:   "WARN".to_string(),
+            hash_mode:        "SILENT".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = args.to_verification_options();
+        assert!(result.is_ok());
+        let opts = result.unwrap();
+
+        assert_eq!(opts.signature_verification_mode, VerificationMode::Strict);
+        assert_eq!(opts.empty_signature_mode, VerificationMode::Warn);
+        assert_eq!(opts.hash_verification_mode, VerificationMode::Silent);
+    }
+}
