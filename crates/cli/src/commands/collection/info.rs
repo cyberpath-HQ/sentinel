@@ -74,3 +74,118 @@ pub async fn run(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_info_command_with_empty_collection() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Run info command
+        let args = InfoArgs {
+            format: "table".to_string(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_info_command_with_populated_collection() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection with some data
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Insert some documents
+        collection
+            .insert("doc1", json!({"name": "Alice", "age": 30}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"name": "Bob", "age": 25}))
+            .await
+            .unwrap();
+
+        // Allow event processor to update counters
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Run info command
+        let args = InfoArgs {
+            format: "table".to_string(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_info_command_invalid_format() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Run info command with invalid format
+        let args = InfoArgs {
+            format: "invalid".to_string(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Invalid format"));
+    }
+}
