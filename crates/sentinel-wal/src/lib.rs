@@ -388,6 +388,46 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_compression_algorithm_from_str() {
+        use crate::CompressionAlgorithm;
+
+        // Test valid algorithms
+        assert_eq!(
+            "zstd".parse::<CompressionAlgorithm>().unwrap(),
+            CompressionAlgorithm::Zstd
+        );
+        assert_eq!(
+            "lz4".parse::<CompressionAlgorithm>().unwrap(),
+            CompressionAlgorithm::Lz4
+        );
+        assert_eq!(
+            "brotli".parse::<CompressionAlgorithm>().unwrap(),
+            CompressionAlgorithm::Brotli
+        );
+        assert_eq!(
+            "deflate".parse::<CompressionAlgorithm>().unwrap(),
+            CompressionAlgorithm::Deflate
+        );
+        assert_eq!(
+            "gzip".parse::<CompressionAlgorithm>().unwrap(),
+            CompressionAlgorithm::Gzip
+        );
+
+        // Test case insensitive
+        assert_eq!(
+            "ZSTD".parse::<CompressionAlgorithm>().unwrap(),
+            CompressionAlgorithm::Zstd
+        );
+        assert_eq!(
+            "Lz4".parse::<CompressionAlgorithm>().unwrap(),
+            CompressionAlgorithm::Lz4
+        );
+
+        // Test invalid algorithm
+        assert!("invalid".parse::<CompressionAlgorithm>().is_err());
+    }
+
     /// Test compression with corrupted data.
     #[tokio::test]
     async fn test_compression_corrupted_data() {
@@ -413,6 +453,47 @@ mod tests {
         let invalid_data = b"This is not compressed data at all";
         let result = compressor.decompress(invalid_data).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wal_failure_mode_from_str() {
+        use crate::WalFailureMode;
+
+        // Test valid modes
+        assert_eq!(
+            "disabled".parse::<WalFailureMode>().unwrap(),
+            WalFailureMode::Disabled
+        );
+        assert_eq!(
+            "warn".parse::<WalFailureMode>().unwrap(),
+            WalFailureMode::Warn
+        );
+        assert_eq!(
+            "strict".parse::<WalFailureMode>().unwrap(),
+            WalFailureMode::Strict
+        );
+
+        // Test case insensitive
+        assert_eq!(
+            "DISABLED".parse::<WalFailureMode>().unwrap(),
+            WalFailureMode::Disabled
+        );
+        assert_eq!(
+            "Warn".parse::<WalFailureMode>().unwrap(),
+            WalFailureMode::Warn
+        );
+
+        // Test invalid mode
+        assert!("invalid".parse::<WalFailureMode>().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wal_failure_mode_display() {
+        use crate::WalFailureMode;
+
+        assert_eq!(format!("{}", WalFailureMode::Disabled), "disabled");
+        assert_eq!(format!("{}", WalFailureMode::Warn), "warn");
+        assert_eq!(format!("{}", WalFailureMode::Strict), "strict");
     }
 
     /// Test WAL recovery functionality.
