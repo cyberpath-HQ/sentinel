@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use serde_json;
-    use serde_json::json;
+    use serde_json::{self, json};
     use tempfile;
     use tokio::fs;
     use futures::TryStreamExt;
@@ -10,16 +9,26 @@ mod tests {
 
     async fn setup_collection() -> (Collection, tempfile::TempDir) {
         let temp_dir = tempfile::tempdir().unwrap();
-        let store = Store::new_with_config(temp_dir.path(), None, sentinel_wal::StoreWalConfig::default()).await.unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
         let collection = store.collection_with_config("test", None).await.unwrap();
         (collection, temp_dir)
     }
 
     async fn setup_collection_with_signing_key() -> (Collection, tempfile::TempDir) {
         let temp_dir = tempfile::tempdir().unwrap();
-        let store = Store::new_with_config(temp_dir.path(), Some("test_passphrase"), sentinel_wal::StoreWalConfig::default())
-            .await
-            .unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
         let collection = store.collection_with_config("test", None).await.unwrap();
         (collection, temp_dir)
     }
@@ -1218,7 +1227,13 @@ mod tests {
     async fn test_insert_unsigned_document() {
         // Test inserting document without signing key to cover line 147-148
         let temp_dir = tempfile::tempdir().unwrap();
-        let store = Store::new_with_config(temp_dir.path(), None, sentinel_wal::StoreWalConfig::default()).await.unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
         let collection = store.collection_with_config("test", None).await.unwrap();
 
         let data = json!({ "name": "test" });
@@ -1611,8 +1626,17 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
 
         // Create store and collection without signing key
-        let store = Store::new_with_config(temp_dir.path(), None, sentinel_wal::StoreWalConfig::default()).await.unwrap();
-        let collection = store.collection_with_config("test_collection", None).await.unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test_collection", None)
+            .await
+            .unwrap();
 
         // Insert a document without signature (using the insert API directly)
         collection
@@ -1635,8 +1659,17 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
 
         // Create store and collection without signing key
-        let store = Store::new_with_config(temp_dir.path(), None, sentinel_wal::StoreWalConfig::default()).await.unwrap();
-        let collection = store.collection_with_config("test_collection", None).await.unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test_collection", None)
+            .await
+            .unwrap();
 
         // Insert a document without signature
         collection
@@ -1664,10 +1697,17 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
 
         // Create store and collection WITH signing key
-        let store = Store::new_with_config(temp_dir.path(), Some("test_passphrase"), sentinel_wal::StoreWalConfig::default())
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test_collection", None)
             .await
             .unwrap();
-        let collection = store.collection_with_config("test_collection", None).await.unwrap();
 
         // Insert a document with signature
         collection
@@ -1693,6 +1733,19 @@ mod persistence_tests {
 
     use super::*;
     use crate::{Collection, CollectionMetadata, Store};
+
+    async fn setup_collection() -> (Collection, tempfile::TempDir) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("test", None).await.unwrap();
+        (collection, temp_dir)
+    }
 
     #[tokio::test]
     async fn test_metadata_persistence_across_restarts() {
@@ -1818,7 +1871,7 @@ mod persistence_tests {
 
     #[tokio::test]
     async fn test_collection_wal_config_methods() {
-        let (collection, _temp_dir) = setup_collection().await;
+        let (collection, _temp_dir): (Collection, tempfile::TempDir) = setup_collection().await;
 
         // Test stored_wal_config
         let stored = collection.stored_wal_config();
