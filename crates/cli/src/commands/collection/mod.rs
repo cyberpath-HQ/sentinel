@@ -295,13 +295,9 @@ mod tests {
         let collection_name = "test_collection";
 
         // First create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(collection_name, None)
             .await
@@ -335,13 +331,9 @@ mod tests {
         let collection_name = "test_collection";
 
         // First create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(collection_name, None)
             .await
@@ -374,13 +366,9 @@ mod tests {
         let collection_name = "test_collection";
 
         // First create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(collection_name, None)
             .await
@@ -412,13 +400,9 @@ mod tests {
         let collection_name = "test_collection";
 
         // First create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let _collection = store
             .collection_with_config(collection_name, None)
             .await
@@ -453,13 +437,9 @@ mod tests {
         let collection_name = "test_collection";
 
         // First create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(collection_name, None)
             .await
