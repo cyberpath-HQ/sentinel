@@ -145,6 +145,28 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn test_run_create_collection() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        // First create the store
+        sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Create(create::CreateArgs::default()),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
     async fn test_run_insert() {
         let temp_dir = tempdir().unwrap();
         let store_path = temp_dir.path().to_string_lossy().to_string();
@@ -167,6 +189,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_run_get() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        // First create store and collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert a document
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice"}))
+            .await
+            .unwrap();
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Get(get::GetArgs {
+                id:               "doc1".to_string(),
+                verify_signature: true,
+                verify_hash:      true,
+                signature_mode:   "strict".to_string(),
+                empty_sig_mode:   "warn".to_string(),
+                hash_mode:        "strict".to_string(),
+                wal:              crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
     async fn test_run_get_many() {
         let temp_dir = tempdir().unwrap();
         let store_path = temp_dir.path().to_string_lossy().to_string();
@@ -180,6 +242,45 @@ mod tests {
                 ids:    vec!["doc1".to_string()],
                 format: "json".to_string(),
                 wal:    crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_list() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        // First create store and collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert a document
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice"}))
+            .await
+            .unwrap();
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::List(list::ListArgs {
+                verify_signature: true,
+                verify_hash:      true,
+                signature_mode:   "strict".to_string(),
+                empty_sig_mode:   "warn".to_string(),
+                hash_mode:        "strict".to_string(),
+                wal:              crate::commands::WalArgs::default(),
             }),
         };
 
