@@ -289,6 +289,208 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_run_update() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        // First create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert a document
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice"}))
+            .await
+            .unwrap();
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Update(update::UpdateArgs {
+                id:   "doc1".to_string(),
+                data: r#"{"name": "Alice Updated"}"#.to_string(),
+                wal:  crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_delete() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        // First create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert a document
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice"}))
+            .await
+            .unwrap();
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Delete(delete::DeleteArgs {
+                id:  "doc1".to_string(),
+                wal: crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_count() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        // First create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert a document
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice"}))
+            .await
+            .unwrap();
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Count(count::CountArgs {
+                wal: crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_bulk_insert() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        // First create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Create a temporary JSON file with documents
+        let json_file_path = temp_dir.path().join("docs.json");
+        let json_content = r#"[
+            {"id": "doc1", "data": {"name": "Alice"}},
+            {"id": "doc2", "data": {"name": "Bob"}}
+        ]"#;
+        std::fs::write(&json_file_path, json_content).unwrap();
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::BulkInsert(bulk_insert::BulkInsertArgs {
+                file: json_file_path.to_string_lossy().to_string(),
+                wal:  crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_aggregate() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+        let collection_name = "test_collection";
+
+        // First create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert some documents
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice", "age": 30}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", serde_json::json!({"name": "Bob", "age": 25}))
+            .await
+            .unwrap();
+
+        let args = CollectionArgs {
+            store:      store_path,
+            name:       collection_name.to_string(),
+            passphrase: None,
+            command:    CollectionCommands::Aggregate(aggregate::AggregateArgs {
+                aggregation: "count".to_string(),
+                filter:      vec![],
+                wal:         crate::commands::WalArgs::default(),
+            }),
+        };
+
+        let result = run(args).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
     async fn test_run_info() {
         let temp_dir = tempdir().unwrap();
         let store_path = temp_dir.path().to_string_lossy().to_string();
