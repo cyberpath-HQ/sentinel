@@ -394,4 +394,95 @@ mod tests {
         assert!(result.is_none());
         assert!(!wal_states.contains_key("doc1"));
     }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_begin_with_data() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        let mut begin_entry = create_test_entry(EntryType::Begin, "doc1", "txn1");
+        begin_entry.data = Some(r#"{"unexpected": "data"}"#.to_string());
+
+        let result = verify_wal_entry_consistency(&begin_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_some());
+        let issue = result.unwrap();
+        assert_eq!(issue.transaction_id, "txn1");
+        assert_eq!(issue.document_id, "doc1");
+        assert!(issue.description.contains("should not contain data"));
+        assert!(!issue.is_critical);
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_insert_invalid_json() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        let mut insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        insert_entry.data = Some(r#"{"invalid": json}"#.to_string());
+
+        let result = verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_some());
+        let issue = result.unwrap();
+        assert_eq!(issue.transaction_id, "txn1");
+        assert_eq!(issue.document_id, "doc1");
+        assert!(issue.description.contains("Invalid JSON data"));
+        assert!(issue.is_critical);
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_insert_no_data() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        let mut insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        insert_entry.data = None;
+
+        let result = verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_some());
+        let issue = result.unwrap();
+        assert_eq!(issue.transaction_id, "txn1");
+        assert_eq!(issue.document_id, "doc1");
+        assert!(issue.description.contains("missing data"));
+        assert!(issue.is_critical);
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_update_invalid_json() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        let mut update_entry = create_test_entry(EntryType::Update, "doc1", "txn1");
+        update_entry.data = Some(r#"{"invalid": json}"#.to_string());
+
+        let result = verify_wal_entry_consistency(&update_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_some());
+        let issue = result.unwrap();
+        assert_eq!(issue.transaction_id, "txn1");
+        assert_eq!(issue.document_id, "doc1");
+        assert!(issue.description.contains("Invalid JSON data"));
+        assert!(issue.is_critical);
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_insert_duplicate() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        // First insert
+        let mut insert_entry1 = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        insert_entry1.data = Some(r#"{"name": "test"}"#.to_string());
+        verify_wal_entry_consistency(&insert_entry1, &mut wal_states, &mut active_transactions).await.unwrap();
+
+        // Second insert of same document
+        let mut insert_entry2 = create_test_entry(EntryType::Insert, "doc1", "txn2");
+        insert_entry2.data = Some(r#"{"name": "test2"}"#.to_string());
+
+        let result = verify_wal_entry_consistency(&insert_entry2, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_some());
+        let issue = result.unwrap();
+        assert_eq!(issue.transaction_id, "txn2");
+        assert_eq!(issue.document_id, "doc1");
+        assert!(issue.description.contains("already exists"));
+        assert!(issue.is_critical);
+    }
 }
