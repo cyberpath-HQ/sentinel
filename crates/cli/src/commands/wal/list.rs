@@ -21,6 +21,16 @@ pub struct ListArgs {
 pub async fn run(store_path: String, collection: Option<String>, args: ListArgs) -> sentinel_dbms::Result<()> {
     use sentinel_dbms::wal::ops::{CollectionWalOps as _, StoreWalOps};
 
+    // Validate format before starting
+    match args.format.as_str() {
+        "json" | "table" => {},
+        _ => {
+            return Err(sentinel_dbms::SentinelError::ConfigError {
+                message: format!("Unsupported format: {}", args.format),
+            });
+        },
+    }
+
     let store =
         sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default()).await?;
 
@@ -68,11 +78,7 @@ pub async fn run(store_path: String, collection: Option<String>, args: ListArgs)
                             .unwrap_or_else(|| "invalid timestamp".to_string())
                     );
                 },
-                _ => {
-                    return Err(sentinel_dbms::SentinelError::ConfigError {
-                        message: format!("Unsupported format: {}", args.format),
-                    });
-                },
+                _ => unreachable!("Format should have been validated at function start"),
             }
         }
 
@@ -122,11 +128,7 @@ pub async fn run(store_path: String, collection: Option<String>, args: ListArgs)
                             .unwrap_or_else(|| String::from("invalid timestamp"))
                     );
                 },
-                _ => {
-                    return Err(sentinel_dbms::SentinelError::ConfigError {
-                        message: format!("Unsupported format: {}", args.format),
-                    });
-                },
+                _ => unreachable!("Format should have been validated at function start"),
             }
         }
 
@@ -138,10 +140,11 @@ pub async fn run(store_path: String, collection: Option<String>, args: ListArgs)
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use sentinel_dbms::StoreWalConfig;
     use tempfile::TempDir;
     use tokio::time::{sleep, Duration};
+
+    use super::*;
 
     #[tokio::test]
     async fn test_list_wal_entries_specific_collection_table_format() {
@@ -149,13 +152,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         let collection = store
             .collection_with_config("test_collection", None)
@@ -177,10 +176,15 @@ mod tests {
 
         // Run list command
         let args = ListArgs {
-            limit: 10,
+            limit:  10,
             format: "table".to_string(),
         };
-        let result = run(store_path.clone(), Some("test_collection".to_string()), args).await;
+        let result = run(
+            store_path.clone(),
+            Some("test_collection".to_string()),
+            args,
+        )
+        .await;
 
         assert!(result.is_ok());
     }
@@ -191,13 +195,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
 
         // Create store and collections
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         let collection1 = store
             .collection_with_config("collection1", None)
@@ -223,7 +223,7 @@ mod tests {
 
         // Run list command for all collections
         let args = ListArgs {
-            limit: 5,
+            limit:  5,
             format: "json".to_string(),
         };
         let result = run(store_path.clone(), None, args).await;
@@ -237,13 +237,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         let _collection = store
             .collection_with_config("empty_collection", None)
@@ -252,11 +248,84 @@ mod tests {
 
         // Run list command on empty collection
         let args = ListArgs {
-            limit: 10,
+            limit:  10,
             format: "table".to_string(),
         };
-        let result = run(store_path.clone(), Some("empty_collection".to_string()), args).await;
+        let result = run(
+            store_path.clone(),
+            Some("empty_collection".to_string()),
+            args,
+        )
+        .await;
 
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_list_wal_entries_unsupported_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let _collection = store
+            .collection_with_config("test_collection", None)
+            .await
+            .unwrap();
+
+        // Run list command with unsupported format
+        let args = ListArgs {
+            limit:  10,
+            format: "xml".to_string(),
+        };
+        let result = run(
+            store_path.clone(),
+            Some("test_collection".to_string()),
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        match error {
+            sentinel_dbms::SentinelError::ConfigError {
+                message,
+            } => {
+                assert!(message.contains("Unsupported format"));
+            },
+            _ => panic!("Expected ConfigError"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_wal_entries_all_collections_unsupported_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().to_string_lossy().to_string();
+
+        // Create store
+        sentinel_dbms::Store::new_with_config(&store_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Run list command with unsupported format for all collections
+        let args = ListArgs {
+            limit:  10,
+            format: "xml".to_string(),
+        };
+        let result = run(store_path.clone(), None, args).await;
+
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        match error {
+            sentinel_dbms::SentinelError::ConfigError {
+                message,
+            } => {
+                assert!(message.contains("Unsupported format"));
+            },
+            _ => panic!("Expected ConfigError"),
+        }
     }
 }
