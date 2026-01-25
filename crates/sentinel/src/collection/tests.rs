@@ -5,7 +5,7 @@ mod tests {
     use tokio::fs;
     use futures::TryStreamExt;
 
-    use crate::{Collection, SentinelError, Store};
+    use crate::{Collection, Document, SentinelError, Store};
 
     async fn setup_collection() -> (Collection, tempfile::TempDir) {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -1730,9 +1730,23 @@ mod persistence_tests {
     use tempfile::tempdir;
     use tokio::fs;
     use futures::TryStreamExt;
+    use serde_json::json;
 
     use super::*;
-    use crate::{Collection, CollectionMetadata, Store};
+    use crate::{Collection, CollectionMetadata, Document, Store};
+
+    async fn setup_collection_with_signing_key() -> (Collection, tempfile::TempDir) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("test", None).await.unwrap();
+        (collection, temp_dir)
+    }
 
     async fn setup_collection() -> (Collection, tempfile::TempDir) {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -1754,8 +1768,17 @@ mod persistence_tests {
 
         // First "application session" - create store and collection, add documents
         {
-            let store = Store::new(store_path.clone(), None).await.unwrap();
-            let collection = store.collection("test_collection").await.unwrap();
+            let store = Store::new_with_config(
+                store_path.clone(),
+                None,
+                sentinel_wal::StoreWalConfig::default(),
+            )
+            .await
+            .unwrap();
+            let collection = store
+                .collection_with_config("test_collection", None)
+                .await
+                .unwrap();
 
             // Insert some documents
             collection
@@ -1804,8 +1827,17 @@ mod persistence_tests {
 
         // Second "application session" - reload store and verify metadata persisted
         {
-            let store = Store::new(store_path.clone(), None).await.unwrap();
-            let collection = store.collection("test_collection").await.unwrap();
+            let store = Store::new_with_config(
+                store_path.clone(),
+                None,
+                sentinel_wal::StoreWalConfig::default(),
+            )
+            .await
+            .unwrap();
+            let collection = store
+                .collection_with_config("test_collection", None)
+                .await
+                .unwrap();
 
             // Check that metadata was loaded correctly from disk
             let metadata_path = store_path
@@ -1842,8 +1874,13 @@ mod persistence_tests {
 
         // Third "application session" - final verification
         {
-            let store = Store::new(store_path, None).await.unwrap();
-            let collection = store.collection("test_collection").await.unwrap();
+            let store = Store::new_with_config(store_path, None, sentinel_wal::StoreWalConfig::default())
+                .await
+                .unwrap();
+            let collection = store
+                .collection_with_config("test_collection", None)
+                .await
+                .unwrap();
 
             // Check final metadata
             let metadata_path = store
@@ -1880,5 +1917,176 @@ mod persistence_tests {
         // Test wal_config
         let wal = collection.wal_config();
         assert_eq!(wal, &sentinel_wal::CollectionWalConfig::default());
+    }
+
+    // ============ Streaming Verification Error Tests ============
+
+    #[tokio::test]
+    async fn test_all_with_verification_hash_failure_strict() {
+        let (collection, _temp_dir): (Collection, tempfile::TempDir) = setup_collection_with_signing_key().await;
+
+        // Insert a valid document
+        let doc = json!({"name": "Valid"});
+        collection.insert("valid-doc", doc).await.unwrap();
+
+        // Tamper with the file to break hash
+        let file_path = collection.path.join("valid-doc.json");
+        let mut content: String = fs::read_to_string(&file_path).await.unwrap();
+        content = content.replace("Valid", "Tampered");
+        fs::write(&file_path, &content).await.unwrap();
+
+        // Streaming all with strict verification should fail
+        let options = crate::VerificationOptions::strict();
+        let result: Result<Vec<Document>, _> = collection
+            .all_with_verification(&options)
+            .try_collect()
+            .await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::SentinelError::HashVerificationFailed {
+                ..
+            } => {},
+            e => panic!("Expected HashVerificationFailed, got {:?}", e),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_all_with_verification_hash_failure_warn() {
+        let (collection, _temp_dir): (Collection, tempfile::TempDir) = setup_collection_with_signing_key().await;
+
+        // Insert a valid document
+        let doc = json!({"name": "Valid"});
+        collection.insert("valid-doc", doc).await.unwrap();
+
+        // Tamper with the file to break hash
+        let file_path = collection.path.join("valid-doc.json");
+        let mut content: String = fs::read_to_string(&file_path).await.unwrap();
+        content = content.replace("Valid", "Tampered");
+        fs::write(&file_path, &content).await.unwrap();
+
+        // Streaming all with warn verification should succeed and return invalid docs with warnings
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Warn,
+            empty_signature_mode:        crate::VerificationMode::Warn,
+            hash_verification_mode:      crate::VerificationMode::Warn,
+        };
+        let docs: Vec<Document> = collection
+            .all_with_verification(&options)
+            .try_collect()
+            .await
+            .unwrap();
+
+        // Should have 1 document since warn mode includes invalid documents with warnings
+        assert_eq!(docs.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_filter_with_verification_signature_failure_strict() {
+        let (collection, _temp_dir): (Collection, tempfile::TempDir) = setup_collection_with_signing_key().await;
+
+        // Insert a valid document
+        let doc = json!({"name": "Valid", "status": "active"});
+        collection.insert("valid-doc", doc).await.unwrap();
+
+        // Tamper with the file to break signature
+        let file_path = collection.path.join("valid-doc.json");
+        let mut content: String = fs::read_to_string(&file_path).await.unwrap();
+        content = content.replace("Valid", "Tampered");
+        fs::write(&file_path, &content).await.unwrap();
+
+        // Streaming filter with strict verification should fail
+        let options = crate::VerificationOptions::strict();
+        let result: Result<Vec<Document>, _> = collection
+            .filter_with_verification(|_| true, &options)
+            .try_collect()
+            .await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            crate::SentinelError::HashVerificationFailed {
+                ..
+            } => {},
+            crate::SentinelError::SignatureVerificationFailed {
+                ..
+            } => {},
+            e => panic!("Expected verification failure, got {:?}", e),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_filter_with_verification_signature_failure_warn() {
+        let (collection, _temp_dir): (Collection, tempfile::TempDir) = setup_collection_with_signing_key().await;
+
+        // Insert a valid document
+        let doc = json!({"name": "Valid", "status": "active"});
+        collection.insert("valid-doc", doc).await.unwrap();
+
+        // Tamper with the file to break signature
+        let file_path = collection.path.join("valid-doc.json");
+        let mut content: String = fs::read_to_string(&file_path).await.unwrap();
+        content = content.replace("Valid", "Tampered");
+        fs::write(&file_path, &content).await.unwrap();
+
+        // Streaming filter with warn verification should succeed and return invalid docs with warnings
+        let options = crate::VerificationOptions {
+            verify_signature:            true,
+            verify_hash:                 true,
+            signature_verification_mode: crate::VerificationMode::Warn,
+            empty_signature_mode:        crate::VerificationMode::Warn,
+            hash_verification_mode:      crate::VerificationMode::Warn,
+        };
+        let docs: Vec<Document> = collection
+            .filter_with_verification(|_| true, &options)
+            .try_collect()
+            .await
+            .unwrap();
+
+        // Should have 1 document since warn mode includes invalid documents with warnings
+        assert_eq!(docs.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_all_with_verification_corrupted_json() {
+        let (collection, _temp_dir): (Collection, tempfile::TempDir) = setup_collection_with_signing_key().await;
+
+        // Create a corrupted JSON file manually
+        let file_path = collection.path.join("corrupted.json");
+        fs::write(&file_path, "{ invalid json content")
+            .await
+            .unwrap();
+
+        // Streaming all with verification should handle JSON parsing errors
+        let options = crate::VerificationOptions::strict();
+        let result: Result<Vec<Document>, _> = collection
+            .all_with_verification(&options)
+            .try_collect()
+            .await;
+
+        // Should fail due to JSON parsing error
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_filter_with_verification_corrupted_json() {
+        let (collection, _temp_dir): (Collection, tempfile::TempDir) = setup_collection_with_signing_key().await;
+
+        // Create a corrupted JSON file manually
+        let file_path = collection.path.join("corrupted.json");
+        fs::write(&file_path, "{ invalid json content")
+            .await
+            .unwrap();
+
+        // Streaming filter with verification should handle JSON parsing errors
+        let options = crate::VerificationOptions::strict();
+        let result: Result<Vec<Document>, _> = collection
+            .filter_with_verification(|_| true, &options)
+            .try_collect()
+            .await;
+
+        // Should fail due to JSON parsing error
+        assert!(result.is_err());
     }
 }
