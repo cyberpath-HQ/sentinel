@@ -112,10 +112,6 @@ pub struct Collection {
     pub(crate) event_task:         Option<tokio::task::JoinHandle<()>>,
 }
 
-#[allow(
-    unexpected_cfgs,
-    reason = "tarpaulin_include is set by code coverage tool"
-)]
 impl Collection {
     /// Returns the name of the collection.
     pub fn name(&self) -> &str { self.path.file_name().unwrap().to_str().unwrap() }

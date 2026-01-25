@@ -86,7 +86,6 @@ impl Collection {
         // serialization failures that cannot realistically occur with valid Document structs.
         // Testing would require corrupting serde_json itself. Tarpaulin doesn't track map_err closures
         // properly.
-        #[cfg(not(tarpaulin_include))]
         let json = serde_json::to_string_pretty(&doc).map_err(|e| {
             error!("Failed to serialize document {} to JSON: {}", id, e);
             e
