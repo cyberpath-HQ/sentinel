@@ -854,4 +854,361 @@ mod tests {
         assert_eq!(result.recovered_operations, 1);
         assert_eq!(result.skipped_operations, 1);
     }
-}
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_insert_no_data() {
+        // Test insert entry with missing data
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Insert, "doc1", None);
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(!result); // Should be skipped
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_update_no_data() {
+        // Test update entry with missing data
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Update, "doc1", None);
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(!result); // Should be skipped
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_commit() {
+        // Test commit entry skips correctly
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Commit, "doc1", None);
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_rollback() {
+        // Test rollback entry skips correctly
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Rollback, "doc1", None);
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_force_insert_no_data() {
+        // Test force insert with missing data
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Insert, "doc1", None);
+
+        let result = replay_wal_entry_force(&entry, &ops).await.unwrap();
+        assert!(!result); // Should return false for missing data
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_force_begin() {
+        // Test force replay of begin entry
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Begin, "doc1", None);
+
+        let result = replay_wal_entry_force(&entry, &ops).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_force_commit() {
+        // Test force replay of commit entry
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Commit, "doc1", None);
+
+        let result = replay_wal_entry_force(&entry, &ops).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_force_rollback() {
+        // Test force replay of rollback entry
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Rollback, "doc1", None);
+
+        let result = replay_wal_entry_force(&entry, &ops).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_force_update() {
+        // Test force update
+        let ops = MockDocumentOps::new();
+        ops.apply_operation(
+            &EntryType::Insert,
+            "doc1",
+            Some(serde_json::json!({"version": 1})),
+        )
+        .await
+        .unwrap();
+
+        let entry = create_test_entry(EntryType::Update, "doc1", Some(r#"{"version": 2}"#));
+
+        let result = replay_wal_entry_force(&entry, &ops).await.unwrap();
+        assert!(result);
+
+        let doc = ops.get_document("doc1").await.unwrap();
+        assert_eq!(doc.unwrap()["version"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_force_no_errors() {
+        // Test force recovery without errors
+        use tempfile::tempdir;
+
+        use crate::{EntryType, LogEntry, WalConfig, WalManager};
+
+        let temp_dir = tempdir().unwrap();
+        let wal_path = temp_dir.path().join("test_force_no_errors.wal");
+
+        let wal = WalManager::new(wal_path.clone(), WalConfig::default())
+            .await
+            .unwrap();
+
+        // Write various operations
+        wal.write_entry(LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(serde_json::json!({"name": "Alice"})),
+        ))
+        .await
+        .unwrap();
+
+        wal.write_entry(LogEntry::new(
+            EntryType::Update,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(serde_json::json!({"name": "Alice Updated"})),
+        ))
+        .await
+        .unwrap();
+
+        wal.write_entry(LogEntry::new(
+            EntryType::Delete,
+            "users".to_string(),
+            "user-1".to_string(),
+            None,
+        ))
+        .await
+        .unwrap();
+
+        let ops = MockDocumentOps::new();
+        let result = recover_from_wal_force(&wal, &ops).await.unwrap();
+
+        assert_eq!(result.recovered_operations, 3);
+        assert_eq!(result.failed_operations, 0);
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_safe_error_in_apply() {
+        // Test safe recovery when apply_operation fails
+        struct FailingDocumentOps {
+            fail_on_insert: bool,
+        }
+
+        #[async_trait::async_trait]
+        impl WalDocumentOps for FailingDocumentOps {
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> {
+                Ok(None)
+            }
+
+            async fn apply_operation(
+                &self,
+                operation: &EntryType,
+                _id: &str,
+                _data: Option<serde_json::Value>,
+            ) -> Result<()> {
+                if self.fail_on_insert && *operation == EntryType::Insert {
+                    Err(crate::WalError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "apply failed",
+                    )))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+
+        let ops = FailingDocumentOps { fail_on_insert: true };
+        let entry = create_test_entry(EntryType::Insert, "doc1", Some(r#"{"name": "test"}"#));
+
+        let result = replay_wal_entry_safe(&entry, &ops).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_safe_all_failures() {
+        // Test recovery result with all failures
+        use tempfile::tempdir;
+
+        use crate::{EntryType, LogEntry, WalConfig, WalManager};
+
+        let temp_dir = tempdir().unwrap();
+        let wal_path = temp_dir.path().join("test_all_failures.wal");
+
+        let wal = WalManager::new(wal_path.clone(), WalConfig::default())
+            .await
+            .unwrap();
+
+        wal.write_entry(LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(serde_json::json!({"name": "Alice"})),
+        ))
+        .await
+        .unwrap();
+
+        struct FailAllDocumentOps;
+
+        #[async_trait::async_trait]
+        impl WalDocumentOps for FailAllDocumentOps {
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> {
+                Err(crate::WalError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "always fail",
+                )))
+            }
+
+            async fn apply_operation(
+                &self,
+                _operation: &EntryType,
+                _id: &str,
+                _data: Option<serde_json::Value>,
+            ) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        let ops = FailAllDocumentOps;
+        let result = recover_from_wal_safe(&wal, &ops).await.unwrap();
+
+        assert_eq!(result.failed_operations, 1);
+        assert!(!result.failures.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_safe_update_same_data() {
+        // Test update with same data returns false
+        let ops = MockDocumentOps::new();
+        let data = serde_json::json!({"name": "test", "age": 25});
+
+        ops.apply_operation(&EntryType::Insert, "doc1", Some(data.clone()))
+            .await
+            .unwrap();
+
+        let entry = create_test_entry(
+            EntryType::Update,
+            "doc1",
+            Some(r#"{"name": "test", "age": 25}"#),
+        );
+
+        let result = replay_wal_entry_safe(&entry, &ops).await.unwrap();
+        assert!(!result); // Should be skipped because data is the same
+    }
+
+    #[tokio::test]
+    async fn test_replay_wal_entry_force_delete_nonexistent() {
+        // Test force delete of nonexistent document returns false for IO error
+        struct DeleteFailsDocumentOps;
+
+        #[async_trait::async_trait]
+        impl WalDocumentOps for DeleteFailsDocumentOps {
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> {
+                Ok(None)
+            }
+
+            async fn apply_operation(
+                &self,
+                _operation: &EntryType,
+                _id: &str,
+                _data: Option<serde_json::Value>,
+            ) -> Result<()> {
+                Err(crate::WalError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "not found",
+                )))
+            }
+        }
+
+        let ops = DeleteFailsDocumentOps;
+        let entry = create_test_entry(EntryType::Delete, "doc1", None);
+
+        let result = replay_wal_entry_force(&entry, &ops).await.unwrap();
+        assert!(!result); // IO error treated as false
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_safe_update_invalid_json() {
+        // Test update with invalid JSON
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Update, "doc1", Some("not valid json"));
+
+        let result = replay_wal_entry_safe(&entry, &ops).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_force_update_no_data() {
+        // Test force update with no data
+        let ops = MockDocumentOps::new();
+        let entry = create_test_entry(EntryType::Update, "doc1", None);
+
+        let result = replay_wal_entry_force(&entry, &ops).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_force_delete_success() {
+        // Test force delete with success
+        let ops = MockDocumentOps::new();
+        ops.apply_operation(
+            &EntryType::Insert,
+            "doc1",
+            Some(serde_json::json!({"name": "test"})),
+        )
+        .await
+        .unwrap();
+
+        let entry = create_test_entry(EntryType::Delete, "doc1", None);
+
+        let result = replay_wal_entry_force(&entry, &ops).await.unwrap();
+        assert!(result);
+
+        let doc = ops.get_document("doc1").await.unwrap();
+        assert!(doc.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_recover_wal_force_with_apply_error() {
+        // Test force recovery when apply_operation returns non-IO error
+        struct CustomErrorOps;
+
+        #[async_trait::async_trait]
+        impl WalDocumentOps for CustomErrorOps {
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> {
+                Ok(None)
+            }
+
+            async fn apply_operation(
+                &self,
+                _operation: &EntryType,
+                _id: &str,
+                _data: Option<serde_json::Value>,
+            ) -> Result<()> {
+                Err(crate::WalError::Serialization("custom error".to_string()))
+            }
+        }
+
+        let ops = CustomErrorOps;
+        let entry = create_test_entry(EntryType::Insert, "doc1", Some(r#"{"name": "test"}"#));
+
+        let result = replay_wal_entry_force(&entry, &ops).await;
+        assert!(result.is_err());
+    }}
