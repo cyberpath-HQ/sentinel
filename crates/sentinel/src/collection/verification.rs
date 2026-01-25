@@ -161,9 +161,10 @@ impl Collection {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{VerificationMode, VerificationOptions, Document, Store};
     use serde_json::json;
+
+    use super::*;
+    use crate::{Document, Store, VerificationMode, VerificationOptions};
 
     async fn setup_collection_with_signing_key() -> (crate::Collection, tempfile::TempDir) {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -194,7 +195,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_hash_silent_mode() {
         let (collection, _temp_dir) = setup_collection_with_signing_key().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -209,7 +213,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_hash_warn_mode() {
         let (collection, _temp_dir) = setup_collection_with_signing_key().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -224,7 +231,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_hash_strict_mode_valid() {
         let (collection, _temp_dir) = setup_collection_with_signing_key().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -239,18 +249,21 @@ mod tests {
     #[tokio::test]
     async fn test_verify_hash_strict_mode_corrupted() {
         let (collection, _temp_dir) = setup_collection_with_signing_key().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let mut doc = collection.get("doc1").await.unwrap().unwrap();
 
         // Corrupt the hash field
         doc = Document {
-            id: doc.id().to_string(),
-            version: doc.version(),
+            id:         doc.id().to_string(),
+            version:    doc.version(),
             created_at: doc.created_at(),
             updated_at: doc.updated_at(),
-            hash: "corrupted_hash".to_string(),
-            signature: doc.signature().to_string(),
-            data: doc.data().clone(),
+            hash:       "corrupted_hash".to_string(),
+            signature:  doc.signature().to_string(),
+            data:       doc.data().clone(),
         };
 
         let options = VerificationOptions {
@@ -265,7 +278,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_signature_silent_mode() {
         let (collection, _temp_dir) = setup_collection_with_signing_key().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -282,7 +298,10 @@ mod tests {
     async fn test_verify_signature_empty_signature_strict() {
         let (collection, _temp_dir) = setup_collection().await;
         // Insert without signature
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -292,7 +311,11 @@ mod tests {
 
         let result = collection.verify_signature(&doc, options).await;
         assert!(result.is_err());
-        if let Err(SentinelError::SignatureVerificationFailed { reason, .. }) = result {
+        if let Err(SentinelError::SignatureVerificationFailed {
+            reason,
+            ..
+        }) = result
+        {
             assert!(reason.contains("no signature"));
         }
     }
@@ -300,7 +323,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_signature_empty_signature_warn() {
         let (collection, _temp_dir) = setup_collection().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -315,7 +341,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_signature_disabled() {
         let (collection, _temp_dir) = setup_collection_with_signing_key().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -330,7 +359,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_signature_no_signing_key() {
         let (collection, _temp_dir) = setup_collection().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -348,7 +380,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_document_both_enabled() {
         let (collection, _temp_dir) = setup_collection_with_signing_key().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -366,7 +401,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_document_neither_enabled() {
         let (collection, _temp_dir) = setup_collection_with_signing_key().await;
-        collection.insert("doc1", json!({"name": "test"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -382,7 +420,10 @@ mod tests {
     #[tokio::test]
     async fn test_verify_document_hash_only() {
         let (collection, _temp_dir) = setup_collection_with_signing_key().await;
-        collection.insert("doc1", json!({"test": "data"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"test": "data"}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap().unwrap();
 
         let options = VerificationOptions {
@@ -394,5 +435,218 @@ mod tests {
 
         let result = collection.verify_document(&doc, &options).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_verify_signature_strict_mode_corrupted() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
+        let mut doc = collection.get("doc1").await.unwrap().unwrap();
+
+        // Corrupt the signature field
+        doc = Document {
+            id:         doc.id().to_string(),
+            version:    doc.version(),
+            created_at: doc.created_at(),
+            updated_at: doc.updated_at(),
+            hash:       doc.hash().to_string(),
+            signature:  "corrupted_signature".to_string(),
+            data:       doc.data().clone(),
+        };
+
+        let options = VerificationOptions {
+            signature_verification_mode: VerificationMode::Strict,
+            empty_signature_mode: VerificationMode::Silent,
+            ..Default::default()
+        };
+
+        let result = collection.verify_signature(&doc, options).await;
+        assert!(result.is_err());
+        if let Err(SentinelError::SignatureVerificationFailed {
+            reason,
+            ..
+        }) = result
+        {
+            assert!(reason.contains("Signature verification using public key failed"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_verify_signature_warn_mode_corrupted() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
+        let mut doc = collection.get("doc1").await.unwrap().unwrap();
+
+        // Corrupt the hash field so signature doesn't match
+        doc = Document {
+            id:         doc.id().to_string(),
+            version:    doc.version(),
+            created_at: doc.created_at(),
+            updated_at: doc.updated_at(),
+            hash:       "corrupted_hash".to_string(),
+            signature:  doc.signature().to_string(),
+            data:       doc.data().clone(),
+        };
+
+        let options = VerificationOptions {
+            signature_verification_mode: VerificationMode::Warn,
+            empty_signature_mode: VerificationMode::Silent,
+            ..Default::default()
+        };
+
+        let result = collection.verify_signature(&doc, options).await;
+        assert!(result.is_ok()); // Warn mode should not fail
+    }
+
+    #[tokio::test]
+    async fn test_verify_signature_silent_mode_corrupted() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
+        let mut doc = collection.get("doc1").await.unwrap().unwrap();
+
+        // Corrupt the hash field so signature doesn't match
+        doc = Document {
+            id:         doc.id().to_string(),
+            version:    doc.version(),
+            created_at: doc.created_at(),
+            updated_at: doc.updated_at(),
+            hash:       "corrupted_hash".to_string(),
+            signature:  doc.signature().to_string(),
+            data:       doc.data().clone(),
+        };
+
+        let options = VerificationOptions {
+            signature_verification_mode: VerificationMode::Silent,
+            empty_signature_mode: VerificationMode::Silent,
+            ..Default::default()
+        };
+
+        let result = collection.verify_signature(&doc, options).await;
+        assert!(result.is_ok()); // Silent mode should not fail
+    }
+
+    #[tokio::test]
+    async fn test_verify_document_signature_strict_mode_corrupted() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
+        let mut doc = collection.get("doc1").await.unwrap().unwrap();
+
+        // Corrupt the signature field
+        doc = Document {
+            id:         doc.id().to_string(),
+            version:    doc.version(),
+            created_at: doc.created_at(),
+            updated_at: doc.updated_at(),
+            hash:       doc.hash().to_string(),
+            signature:  "corrupted_signature".to_string(),
+            data:       doc.data().clone(),
+        };
+
+        let options = VerificationOptions {
+            verify_hash: false,
+            verify_signature: true,
+            signature_verification_mode: VerificationMode::Strict,
+            empty_signature_mode: VerificationMode::Silent,
+            ..Default::default()
+        };
+
+        let result = collection.verify_document(&doc, &options).await;
+        assert!(result.is_err());
+        if let Err(SentinelError::SignatureVerificationFailed {
+            reason,
+            ..
+        }) = result
+        {
+            assert!(reason.contains("Signature verification using public key failed"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_verify_document_signature_warn_mode_corrupted() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
+        let mut doc = collection.get("doc1").await.unwrap().unwrap();
+
+        // Corrupt the hash field so signature doesn't match
+        doc = Document {
+            id:         doc.id().to_string(),
+            version:    doc.version(),
+            created_at: doc.created_at(),
+            updated_at: doc.updated_at(),
+            hash:       "corrupted_hash".to_string(),
+            signature:  doc.signature().to_string(),
+            data:       doc.data().clone(),
+        };
+
+        let options = VerificationOptions {
+            verify_hash: false,
+            verify_signature: true,
+            signature_verification_mode: VerificationMode::Warn,
+            empty_signature_mode: VerificationMode::Silent,
+            ..Default::default()
+        };
+
+        let result = collection.verify_document(&doc, &options).await;
+        assert!(result.is_ok()); // Warn mode should not fail
+    }
+
+    #[tokio::test]
+    async fn test_verify_signature_with_signing_key_success() {
+        let (collection, _temp_dir) = setup_collection_with_signing_key().await;
+        collection
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
+        let doc = collection.get("doc1").await.unwrap().unwrap();
+
+        let options = VerificationOptions {
+            signature_verification_mode: VerificationMode::Strict,
+            empty_signature_mode: VerificationMode::Silent,
+            verify_signature: true,
+            ..Default::default()
+        };
+
+        let result = collection.verify_signature(&doc, options).await;
+        assert!(result.is_ok()); // Should succeed with valid signature
+    }
+
+    #[tokio::test]
+    async fn test_verify_signature_no_signing_key_with_signature() {
+        let (collection_with_key, _temp_dir1) = setup_collection_with_signing_key().await;
+        collection_with_key
+            .insert("doc1", json!({"name": "test"}))
+            .await
+            .unwrap();
+        let doc_with_sig = collection_with_key.get("doc1").await.unwrap().unwrap();
+
+        // Now verify against a collection without signing key
+        let (collection_no_key, _temp_dir2) = setup_collection().await;
+
+        let options = VerificationOptions {
+            signature_verification_mode: VerificationMode::Strict,
+            empty_signature_mode: VerificationMode::Silent,
+            verify_signature: true,
+            ..Default::default()
+        };
+
+        let result = collection_no_key
+            .verify_signature(&doc_with_sig, options)
+            .await;
+        assert!(result.is_ok()); // Should skip verification when no signing key available
     }
 }
