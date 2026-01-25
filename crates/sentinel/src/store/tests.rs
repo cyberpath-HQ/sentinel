@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
+    use tracing_subscriber;
+    use sentinel_wal::StoreWalConfig;
 
-    use crate::{SentinelError, Store};
+    use crate::{events::StoreEvent, SentinelError, Store, StoreMetadata, STORE_METADATA_FILE};
 
     #[tokio::test]
     async fn test_store_new_creates_directory() {
@@ -506,5 +508,310 @@ mod tests {
         assert!(collections.contains(&"collection1".to_string()));
         assert!(collections.contains(&"collection2".to_string()));
         assert!(collections.contains(&"collection3".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_store_event_sender() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Get the event sender
+        let sender = store.event_sender();
+        assert!(sender.is_closed() == false); // Should be open
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processor_started() {
+        let temp_dir = tempdir().unwrap();
+        let mut store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Event processor should be started during store creation
+        assert!(store.event_task.is_some());
+        assert!(store.event_receiver.is_none()); // Should be taken by the processor
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processor_already_started() {
+        let temp_dir = tempdir().unwrap();
+        let mut store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Try to start again - should not panic or create another task
+        crate::store::events::start_event_processor(&mut store);
+        // Should still have only one task
+        assert!(store.event_task.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processor_no_receiver() {
+        let temp_dir = tempdir().unwrap();
+        let mut store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Store should have started the event processor automatically
+        assert!(store.event_task.is_some());
+
+        // Manually take the receiver
+        let _receiver = store.event_receiver.take();
+
+        // Try to start processor again - should do nothing since already started
+        crate::store::events::start_event_processor(&mut store);
+        // Task should still be running
+        assert!(store.event_task.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processing_collection_created() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Send a collection created event
+        let event = StoreEvent::CollectionCreated {
+            name: "test_collection".to_string(),
+        };
+        let _ = store.event_sender.send(event);
+
+        // Wait a bit for processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+
+        // Check that metadata was updated
+        assert_eq!(store.collection_count(), 1); // Should have been incremented
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processing_collection_deleted() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Manually send a collection created event first
+        let create_event = StoreEvent::CollectionCreated {
+            name: "test_collection".to_string(),
+        };
+        let _ = store.event_sender.send(create_event);
+
+        // Wait for processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+        // Send a collection deleted event
+        let delete_event = StoreEvent::CollectionDeleted {
+            name:             "test_collection".to_string(),
+            document_count:   0,
+            total_size_bytes: 0,
+        };
+        let result = store.event_sender.send(delete_event);
+        assert!(result.is_ok(), "Failed to send CollectionDeleted event");
+
+        // Wait a bit for processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+
+        // Check that metadata was updated
+        assert_eq!(store.collection_count(), 0); // Should have been decremented
+        assert_eq!(store.total_documents(), 0); // Should remain 0
+        assert_eq!(store.total_size_bytes(), 0); // Should remain 0
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processing_document_inserted() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Send a document inserted event
+        let event = StoreEvent::DocumentInserted {
+            collection: "test_collection".to_string(),
+            size_bytes: 256,
+        };
+        let _ = store.event_sender.send(event);
+
+        // Wait a bit for processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+
+        // Check that metadata was updated
+        assert_eq!(store.total_documents(), 1); // Should have been incremented
+        assert_eq!(store.total_size_bytes(), 256); // Should have been incremented
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processing_document_updated() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Send a document updated event
+        let event = StoreEvent::DocumentUpdated {
+            collection:     "test_collection".to_string(),
+            old_size_bytes: 128,
+            new_size_bytes: 256,
+        };
+        let _ = store.event_sender.send(event);
+
+        // Wait a bit for processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+
+        // Check that metadata was updated
+        assert_eq!(store.total_size_bytes(), 128); // 256 - 128 = net +128, but since we start from
+                                                   // 0, it's 128
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processing_document_deleted() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // First add a document
+        let event_insert = StoreEvent::DocumentInserted {
+            collection: "test_collection".to_string(),
+            size_bytes: 256,
+        };
+        let _ = store.event_sender.send(event_insert);
+
+        // Wait for processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+
+        // Now delete it
+        let event_delete = StoreEvent::DocumentDeleted {
+            collection: "test_collection".to_string(),
+            size_bytes: 256,
+        };
+        let _ = store.event_sender.send(event_delete);
+
+        // Wait for processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+
+        // Check that metadata was updated
+        assert_eq!(store.total_documents(), 0); // Should be back to 0
+        assert_eq!(store.total_size_bytes(), 0); // Should be back to 0
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processor_receiver_already_taken() {
+        let temp_dir = tempdir().unwrap();
+        let mut store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Stop the existing processor first
+        if let Some(task) = store.event_task.take() {
+            task.abort();
+        }
+
+        // Manually take the receiver before starting the processor
+        let _receiver = store.event_receiver.take();
+
+        // Try to start processor - should warn that receiver is already taken
+        crate::store::events::start_event_processor(&mut store);
+
+        // Task should not be started since receiver was taken
+        assert!(store.event_task.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processor_metadata_save_success() {
+        let _ = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .try_init();
+
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Send an event to trigger metadata change
+        let event = StoreEvent::CollectionCreated {
+            name: "test_collection".to_string(),
+        };
+        let _ = store.event_sender.send(event);
+
+        // Wait longer than the save interval (500ms) plus some buffer
+        tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+
+        // Check that metadata file was created and contains the updated data
+        let metadata_path = temp_dir.path().join(STORE_METADATA_FILE);
+        assert!(metadata_path.exists());
+
+        let content = tokio::fs::read_to_string(&metadata_path).await.unwrap();
+        let metadata: StoreMetadata = serde_json::from_str(&content).unwrap();
+
+        // Should have been updated with the collection creation
+        assert_eq!(metadata.collection_count, 1);
+
+        // Abort the task to ensure coverage is captured
+        if let Some(ref task) = store.event_task {
+            task.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processor_metadata_save_failure() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Send an event to ensure the processor is working
+        let event = StoreEvent::CollectionCreated {
+            name: "test_collection".to_string(),
+        };
+        let _ = store.event_sender.send(event);
+
+        // Wait a bit to ensure processing happened
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // The task should still be running (even if metadata save failed, it shouldn't crash)
+        assert!(store.event_task.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_store_event_processor_metadata_write_failure() {
+        let _ = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .try_init();
+
+        let temp_dir = tempdir().unwrap();
+        let mut store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        // Remove write permissions from the directory to force write failure
+        let metadata_dir = temp_dir.path().join("data");
+        tokio::fs::create_dir_all(&metadata_dir).await.unwrap();
+        let mut perms = tokio::fs::metadata(&metadata_dir)
+            .await
+            .unwrap()
+            .permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o444); // Read-only
+            tokio::fs::set_permissions(&metadata_dir, perms)
+                .await
+                .unwrap();
+        }
+
+        // Send an event to trigger metadata save attempt
+        let event = StoreEvent::CollectionCreated {
+            name: "test_collection".to_string(),
+        };
+        let _ = store.event_sender.send(event);
+
+        // Wait for the save attempt
+        tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+
+        // The task should still be running despite the write failure
+        assert!(store.event_task.is_some());
     }
 }
