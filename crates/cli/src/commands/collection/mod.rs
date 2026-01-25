@@ -22,6 +22,7 @@ pub struct CollectionArgs {
     #[arg(long)]
     pub passphrase: Option<String>,
 
+    /// Collection subcommand
     #[command(subcommand)]
     pub command: CollectionCommands,
 }
@@ -99,18 +100,31 @@ pub enum CollectionCommands {
     Info(info::InfoArgs),
 }
 
+/// Aggregate command
 mod aggregate;
+/// Bulk insert command
 mod bulk_insert;
+/// Count command
 mod count;
+/// Create command
 pub mod create;
+/// Delete command
 mod delete;
+/// Get command
 mod get;
+/// Get many command
 mod get_many;
+/// Info command
 mod info;
+/// Insert command
 mod insert;
+/// List command
 mod list;
+/// Query command
 mod query;
+/// Update command
 mod update;
+/// Upsert command
 mod upsert;
 
 /// Execute collection command.

@@ -60,7 +60,6 @@ pub struct InsertArgs {
 /// )
 /// .await?;
 /// ```
-
 /// Parse a JSON string into a serde_json::Value
 fn parse_json_string(json_str: &str) -> sentinel_dbms::Result<Value> {
     serde_json::from_str(json_str).map_err(|e| {
@@ -70,6 +69,7 @@ fn parse_json_string(json_str: &str) -> sentinel_dbms::Result<Value> {
     })
 }
 
+/// Execute the insert command
 pub async fn run(
     store_path: String,
     collection: String,

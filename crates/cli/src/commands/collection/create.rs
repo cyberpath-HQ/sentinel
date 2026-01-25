@@ -39,7 +39,6 @@ pub struct CreateArgs {
 /// )
 /// .await?;
 /// ```
-
 /// Build CollectionWalConfigOverrides from CLI arguments
 fn build_collection_wal_config_overrides(
     args: &CreateArgs,
@@ -90,6 +89,7 @@ fn build_collection_wal_config_overrides(
         })
 }
 
+/// Execute the create command
 pub async fn run(
     store_path: String,
     collection: String,

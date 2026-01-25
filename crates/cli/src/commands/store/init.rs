@@ -54,7 +54,6 @@ pub struct InitArgs {
 /// };
 /// run(args).await?;
 /// ```
-
 /// Build StoreWalConfig from CLI arguments
 fn build_store_wal_config(args: &InitArgs) -> StoreWalConfig {
     let default_collection_config = CollectionWalConfig {
@@ -92,6 +91,7 @@ fn parse_wal_failure_mode(s: &str) -> Option<WalFailureMode> {
     }
 }
 
+/// Execute the init command
 pub async fn run(args: InitArgs) -> sentinel_dbms::Result<()> {
     let wal_config = build_store_wal_config(&args);
     let path = args.path;

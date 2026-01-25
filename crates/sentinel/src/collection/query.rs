@@ -15,7 +15,7 @@ use crate::{
     Result,
     SentinelError,
 };
-use super::collection::Collection;
+use super::coll::Collection;
 
 impl Collection {
     /// Executes a structured query against the collection.

@@ -18,6 +18,7 @@ pub struct WalArgs {
     #[arg(short, long)]
     pub collection: Option<String>,
 
+    /// WAL subcommand
     #[command(subcommand)]
     pub command: WalCommands,
 }

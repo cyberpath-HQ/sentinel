@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use tracing::{debug, trace};
 
 use crate::{filtering::matches_filters, Document, Result};
-use super::collection::Collection;
+use super::coll::Collection;
 
 impl Collection {
     /// Performs aggregation operations on documents matching the given filters.

@@ -47,8 +47,13 @@ pub async fn run(args: StoreArgs) -> sentinel_dbms::Result<()> {
 }
 
 // Re-export submodules
+/// Delete command
 pub mod delete;
+/// Generate command
 pub mod generate;
+/// Init command
 pub mod init;
+/// List command
 pub mod list;
+/// Stats command
 pub mod stats;

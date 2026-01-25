@@ -108,7 +108,7 @@ impl QueryArgs {
 /// )
 /// .await?;
 /// ```
-
+#[allow(clippy::print_stdout, reason = "CLI command output")]
 pub async fn run(
     store_path: String,
     collection: String,

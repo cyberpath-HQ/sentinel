@@ -49,7 +49,6 @@ pub struct UpsertArgs {
 /// )
 /// .await?;
 /// ```
-
 pub async fn run(
     store_path: String,
     collection: String,

@@ -31,7 +31,7 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
         
         tracing::info!(
             "  Average entry size: {} bytes",
-            if count > 0 { size / count as u64 } else { 0 }
+            if count > 0 { size.checked_div(count as u64).unwrap_or(0) } else { 0 }
         );
     }
     else {

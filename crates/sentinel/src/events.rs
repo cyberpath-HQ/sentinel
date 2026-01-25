@@ -46,20 +46,6 @@ pub enum StoreEvent {
     },
 }
 
-/// Trait for types that can emit store events.
-pub trait EventEmitter {
-    /// Emit an event to the store.
-    fn emit_event(&self, event: StoreEvent);
-}
-
-impl EventEmitter for crate::Collection {
-    fn emit_event(&self, event: StoreEvent) {
-        if let Some(sender) = &self.event_sender {
-            let _ = sender.send(event);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,35 +93,5 @@ mod tests {
         assert!(debug_str.contains("DocumentInserted"));
         assert!(debug_str.contains("users"));
         assert!(debug_str.contains("512"));
-    }
-
-    #[tokio::test]
-    async fn test_event_emitter_without_sender() {
-        use std::sync::Arc;
-
-        // Create a minimal collection struct without a sender
-        struct TestCollection {
-            event_sender: Option<tokio::sync::mpsc::Sender<StoreEvent>>,
-        }
-
-        impl EventEmitter for TestCollection {
-            fn emit_event(&self, event: StoreEvent) {
-                if let Some(sender) = &self.event_sender {
-                    let _ = sender.send(event);
-                }
-                // If sender is None, this is a no-op (no panic)
-            }
-        }
-
-        let collection = TestCollection {
-            event_sender: None,
-        };
-
-        // Emit an event - should not panic
-        let event = StoreEvent::DocumentInserted {
-            collection: "test".to_string(),
-            size_bytes: 100,
-        };
-        collection.emit_event(event);
     }
 }

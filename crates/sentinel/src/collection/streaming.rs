@@ -1,12 +1,11 @@
 
 use async_stream::stream;
-use futures::{StreamExt as _, TryStreamExt as _};
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
 use tracing::{debug, trace};
 
 use crate::{streaming::stream_document_ids, Document, Result, SentinelError};
-use super::collection::Collection;
+use super::coll::Collection;
 
 impl Collection {
     /// Lists all document IDs in the collection.

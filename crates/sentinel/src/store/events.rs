@@ -2,7 +2,7 @@
 use tracing::{debug, error, trace, warn};
 
 use crate::{events::StoreEvent, StoreMetadata, META_SENTINEL_VERSION, STORE_METADATA_FILE};
-use super::store::Store;
+use super::stor::Store;
 
 /// Starts the background event processing task.
 pub fn start_event_processor(store: &mut Store) {

@@ -45,7 +45,7 @@ pub struct WalRecoveryFailure {
 /// This function replays WAL entries to restore the collection to its
 /// correct state. It only applies operations that haven't been applied yet
 /// and handles conflicts gracefully.
-    #[allow(clippy::arithmetic_side_effects, reason = "safe counter increments")]
+    #[allow(clippy::arithmetic_side_effects, reason = "safe counter increments in recovery")]
     pub async fn recover_from_wal_safe<D>(wal: &WalManager, document_ops: &D) -> Result<WalRecoveryResult>
     where
         D: WalDocumentOps,
@@ -242,7 +242,7 @@ where
 ///
 /// This is a more aggressive recovery that attempts to resolve conflicts
 /// by overwriting conflicting states.
-    #[allow(clippy::arithmetic_side_effects, reason = "safe counter increments")]
+    #[allow(clippy::arithmetic_side_effects, reason = "safe counter increments in recovery")]
     pub async fn recover_from_wal_force<D>(wal: &WalManager, document_ops: &D) -> Result<WalRecoveryResult>
 where
     D: WalDocumentOps,

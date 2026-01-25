@@ -21,16 +21,17 @@ impl Serialize for FixedBytes32 {
 }
 
 impl<'de> Deserialize<'de> for FixedBytes32 {
-    #[allow(clippy::indexing_slicing, reason = "safe slicing in deserialization")]
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let bytes: &[u8] = serde::Deserialize::deserialize(deserializer)?;
         let mut arr = [0u8; 32];
+        #[allow(clippy::indexing_slicing, reason = "safe slicing with min length")]
         arr.copy_from_slice(&bytes[.. 32.min(bytes.len())]);
         if bytes.len() < 32 {
             // Pad with zeros if shorter
+            #[allow(clippy::indexing_slicing, reason = "safe slicing for padding")]
             arr[bytes.len() ..].fill(0);
         }
         Ok(Self(arr))
@@ -48,18 +49,21 @@ impl std::ops::DerefMut for FixedBytes32 {
 }
 
 impl From<&[u8]> for FixedBytes32 {
-    #[allow(
-        clippy::arithmetic_side_effects,
-        clippy::indexing_slicing,
-        reason = "safe operations in From impl"
-    )]
     fn from(bytes: &[u8]) -> Self {
         let mut temp = bytes.to_vec();
         let len = temp.len();
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "safe arithmetic for padding calculation"
+        )]
         let padded_len = len.div_ceil(16) * 16;
         temp.resize(padded_len, 0);
         let mut arr = [0u8; 32];
         let copy_len = temp.len().min(32);
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "safe slicing with calculated lengths"
+        )]
         arr[.. copy_len].copy_from_slice(&temp[.. copy_len]);
         Self(arr)
     }
@@ -99,13 +103,13 @@ impl std::ops::DerefMut for FixedBytes256 {
 }
 
 impl From<&[u8]> for FixedBytes256 {
-    #[allow(
-        clippy::arithmetic_side_effects,
-        reason = "safe arithmetic in From impl"
-    )]
     fn from(bytes: &[u8]) -> Self {
         let mut temp = bytes.to_vec();
         let len = temp.len();
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "safe arithmetic for padding calculation"
+        )]
         let padded_len = len.div_ceil(16) * 16;
         if padded_len > 256 {
             temp.truncate(256);
@@ -297,19 +301,17 @@ impl LogEntry {
     /// assert_eq!(deserialized.collection_str(), "users");
     /// assert_eq!(deserialized.document_id_str(), "user-123");
     /// ```
-    #[allow(
-        clippy::arithmetic_side_effects,
-        clippy::indexing_slicing,
-        reason = "safe operations in from_bytes"
-    )]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 4 {
             return Err(WalError::InvalidEntry("Entry too short".to_owned()));
         }
 
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "safe subtraction since len >= 4"
+        )]
         let data_len = bytes.len() - 4;
-        let data = &bytes[.. data_len];
-        let checksum_bytes = &bytes[data_len ..];
+        let (data, checksum_bytes) = bytes.split_at(data_len);
         let expected_checksum = u32::from_le_bytes(checksum_bytes.try_into().unwrap());
 
         let mut hasher = Crc32Hasher::new();
@@ -504,12 +506,8 @@ impl LogEntry {
     /// assert_eq!(data["name"], "Alice");
     /// assert_eq!(data["age"], 30);
     /// ```
-    #[allow(
-        clippy::pattern_type_mismatch,
-        reason = "safe pattern matching for Option"
-    )]
     pub fn data_as_value(&self) -> Result<Option<serde_json::Value>> {
-        match &self.data {
+        match self.data.as_ref() {
             Some(s) => {
                 let value: serde_json::Value =
                     serde_json::from_str(s).map_err(|e| WalError::Serialization(format!("Invalid JSON: {}", e)))?;

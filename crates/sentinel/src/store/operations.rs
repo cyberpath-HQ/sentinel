@@ -14,7 +14,7 @@ use crate::{
     WAL_DIR,
     WAL_FILE,
 };
-use super::{store::Store, validation::validate_collection_name};
+use super::{stor::Store, validation::validate_collection_name};
 
 pub async fn collection_with_config(
     store: &Store,

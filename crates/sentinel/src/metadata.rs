@@ -169,7 +169,15 @@ impl StoreMetadata {
             wal_config:       StoreWalConfig::default(),
         }
     }
+}
 
+impl Default for StoreMetadata {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StoreMetadata {
     /// Upgrade metadata to the current version if needed
     ///
     /// This method handles forward migration of metadata from older versions

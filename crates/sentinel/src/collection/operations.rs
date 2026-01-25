@@ -5,7 +5,7 @@ use tracing::{debug, error, trace, warn};
 use sentinel_wal::{EntryType, LogEntry};
 
 use crate::{events::StoreEvent, Document, Result, SentinelError};
-use super::collection::Collection;
+use super::coll::Collection;
 
 impl Collection {
     /// Inserts a new document into the collection or overwrites an existing one.

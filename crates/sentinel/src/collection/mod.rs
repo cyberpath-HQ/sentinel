@@ -1,5 +1,5 @@
 pub mod aggregation;
-pub mod collection;
+pub mod coll;
 pub mod operations;
 pub mod query;
 pub mod streaming;
@@ -7,4 +7,4 @@ pub mod tests;
 pub mod verification;
 pub mod wal;
 
-pub use collection::*;
+pub use coll::*;

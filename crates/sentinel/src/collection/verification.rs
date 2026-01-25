@@ -1,7 +1,7 @@
 use tracing::{error, trace, warn};
 
 use crate::{Result, SentinelError};
-use super::collection::Collection;
+use super::coll::Collection;
 
 impl Collection {
     /// Verifies document hash according to the specified verification options.

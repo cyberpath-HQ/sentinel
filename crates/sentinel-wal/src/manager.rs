@@ -205,10 +205,6 @@ impl WalManager {
     /// # Ok(())
     /// # }
     /// ```
-    #[allow(
-        clippy::arithmetic_side_effects,
-        reason = "safe arithmetic in write_entry"
-    )]
     pub async fn write_entry(&self, entry: LogEntry) -> Result<()> {
         debug!(
             "Writing WAL entry: {:?} in format {:?}",
@@ -234,6 +230,10 @@ impl WalManager {
         // Check file size limit and rotate if needed
         if let Some(max_size) = self.config.max_file_size {
             let current_size = tokio::fs::metadata(&self.path).await?.len();
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "safe addition for size check"
+            )]
             if current_size + entry_size > max_size {
                 debug!(
                     "File size limit reached ({} + {} > {}), rotating",
@@ -260,7 +260,10 @@ impl WalManager {
         file.flush().await?;
         drop(file);
 
-        *self.entries_count.lock().await += 1;
+        #[allow(clippy::arithmetic_side_effects, reason = "safe counter increment")]
+        {
+            *self.entries_count.lock().await += 1;
+        }
 
         debug!("WAL entry written successfully");
         Ok(())
@@ -406,7 +409,7 @@ impl WalManager {
     #[allow(
         clippy::arithmetic_side_effects,
         clippy::indexing_slicing,
-        reason = "safe operations in parse_binary_entries"
+        reason = "safe operations in binary parsing with bounds checks"
     )]
     fn parse_binary_entries(&self, buffer: &[u8]) -> Result<Vec<LogEntry>> {
         let mut entries = Vec::new();
@@ -458,7 +461,7 @@ impl WalManager {
     /// Parse JSON Lines format entries
     #[allow(
         clippy::arithmetic_side_effects,
-        reason = "safe arithmetic in parse_json_lines_entries"
+        reason = "safe arithmetic in line numbering"
     )]
     fn parse_json_lines_entries(&self, buffer: &[u8]) -> Result<Vec<LogEntry>> {
         let content = std::str::from_utf8(buffer)
@@ -642,7 +645,7 @@ impl WalManager {
     #[allow(
         clippy::arithmetic_side_effects,
         clippy::indexing_slicing,
-        reason = "safe operations in stream_entries"
+        reason = "safe operations in streaming binary parsing"
     )]
     pub fn stream_entries(&self) -> impl futures::Stream<Item = Result<LogEntry>> + '_ {
         let path = self.path.clone();

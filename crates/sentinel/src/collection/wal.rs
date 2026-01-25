@@ -1,6 +1,6 @@
 use sentinel_wal::WalDocumentOps;
 
-use super::collection::Collection;
+use super::coll::Collection;
 
 #[async_trait::async_trait]
 impl WalDocumentOps for Collection {

@@ -44,7 +44,6 @@ pub struct DeleteArgs {
 /// )
 /// .await?;
 /// ```
-
 pub async fn run(
     store_path: String,
     collection: String,
