@@ -139,7 +139,9 @@ mod tests {
             .unwrap();
 
         // Create a checkpoint
-        collection.checkpoint_wal().await.unwrap();
+        sentinel_dbms::wal::ops::CollectionWalOps::checkpoint_wal(&collection)
+            .await
+            .unwrap();
 
         // Allow event processor to update counters
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;

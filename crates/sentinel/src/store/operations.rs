@@ -57,21 +57,22 @@ pub async fn collection_with_config(
         let content = tokio_fs::read_to_string(&metadata_path).await?;
         let mut metadata: CollectionMetadata = serde_json::from_str(&content)?;
         // For existing collections, conditionally update metadata if persist_overrides is true
-        if let Some(overrides) = &wal_overrides
-            && overrides.persist_overrides {
-                let base_config = metadata.wal_config.unwrap_or_else(|| {
-                    store
-                        .wal_config
-                        .collection_configs
-                        .get(name)
-                        .cloned()
-                        .unwrap_or_else(|| store.wal_config.default_collection_config.clone())
-                });
-                let merged_config = base_config.apply_overrides(overrides);
-                metadata.wal_config = Some(merged_config);
-                let content = serde_json::to_string_pretty(&metadata)?;
-                tokio_fs::write(&metadata_path, content).await?;
-            }
+        if let Some(overrides) = &wal_overrides &&
+            overrides.persist_overrides
+        {
+            let base_config = metadata.wal_config.unwrap_or_else(|| {
+                store
+                    .wal_config
+                    .collection_configs
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| store.wal_config.default_collection_config.clone())
+            });
+            let merged_config = base_config.apply_overrides(overrides);
+            metadata.wal_config = Some(merged_config);
+            let content = serde_json::to_string_pretty(&metadata)?;
+            tokio_fs::write(&metadata_path, content).await?;
+        }
         metadata
     };
 

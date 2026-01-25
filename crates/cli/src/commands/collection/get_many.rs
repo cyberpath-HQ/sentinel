@@ -63,15 +63,19 @@ pub async fn run(
                 .zip(ids.iter())
                 .map(|(doc, id)| {
                     doc.map_or_else(
-                        || serde_json::json!({
-                            "id": id,
-                            "found": false
-                        }),
-                        |doc| serde_json::json!({
-                            "id": id,
-                            "found": true,
-                            "data": doc.data()
-                        })
+                        || {
+                            serde_json::json!({
+                                "id": id,
+                                "found": false
+                            })
+                        },
+                        |doc| {
+                            serde_json::json!({
+                                "id": id,
+                                "found": true,
+                                "data": doc.data()
+                            })
+                        },
                     )
                 })
                 .collect();
@@ -84,15 +88,18 @@ pub async fn run(
 
             for (doc, id) in documents.into_iter().zip(ids.iter()) {
                 let found = if doc.is_some() { "Yes" } else { "No" };
-                let preview = doc.as_ref().map_or_else(|| String::from(""), |doc| {
-                    let data_str = serde_json::to_string(&doc.data()).unwrap();
-                    if data_str.len() > 40 {
-                        format!("{}...", &data_str[.. 37])
-                    }
-                    else {
-                        data_str
-                    }
-                });
+                let preview = doc.as_ref().map_or_else(
+                    || String::from(""),
+                    |doc| {
+                        let data_str = serde_json::to_string(&doc.data()).unwrap();
+                        if data_str.len() > 40 {
+                            format!("{}...", &data_str[.. 37])
+                        }
+                        else {
+                            data_str
+                        }
+                    },
+                );
                 println!("{:<30} {:<6} {}", id, found, preview);
             }
         },

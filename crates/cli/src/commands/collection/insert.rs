@@ -157,7 +157,10 @@ async fn insert_single_document(
 ///
 /// # Returns
 /// Returns `Ok(())` on success, or a `SentinelError` on failure.
-#[allow(clippy::arithmetic_side_effects, reason = "Safe arithmetic for counting inserted documents in CLI")]
+#[allow(
+    clippy::arithmetic_side_effects,
+    reason = "Safe arithmetic for counting inserted documents in CLI"
+)]
 async fn insert_bulk_documents(
     coll: sentinel_dbms::Collection,
     store_path: &str,

@@ -156,10 +156,11 @@ pub async fn run(
                 count = count.saturating_add(1);
 
                 // Apply limit if specified
-                if let Some(limit) = args.limit
-                    && count >= limit {
-                        break;
-                    }
+                if let Some(limit) = args.limit &&
+                    count >= limit
+                {
+                    break;
+                }
             },
             Err(e) => {
                 error!(

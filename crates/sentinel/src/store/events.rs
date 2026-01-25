@@ -1,4 +1,3 @@
-
 use tracing::{debug, error, trace, warn};
 
 use crate::{events::StoreEvent, StoreMetadata, META_SENTINEL_VERSION, STORE_METADATA_FILE};

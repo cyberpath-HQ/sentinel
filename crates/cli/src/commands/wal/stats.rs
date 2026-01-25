@@ -8,7 +8,10 @@ use tracing::info;
 pub struct StatsArgs;
 
 /// Execute the WAL stats operation.
-#[allow(clippy::arithmetic_side_effects, reason = "Safe arithmetic for calculating WAL statistics and averages")]
+#[allow(
+    clippy::arithmetic_side_effects,
+    reason = "Safe arithmetic for calculating WAL statistics and averages"
+)]
 pub async fn run(store_path: String, collection: Option<String>, _args: StatsArgs) -> sentinel_dbms::Result<()> {
     use sentinel_dbms::wal::ops::CollectionWalOps as _;
 
@@ -28,10 +31,15 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
             size as f64 / (1024.0 * 1024.0)
         );
         tracing::info!("  Entries: {}", count);
-        
+
         tracing::info!(
             "  Average entry size: {} bytes",
-            if count > 0 { size.checked_div(count as u64).unwrap_or(0) } else { 0 }
+            if count > 0 {
+                size.checked_div(count as u64).unwrap_or(0)
+            }
+            else {
+                0
+            }
         );
     }
     else {
@@ -42,16 +50,17 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
         let mut total_entries = 0usize;
 
         for collection_name in collections {
-            if let Ok(collection) = store.collection_with_config(&collection_name, None).await
-                && let (Ok(size), Ok(count)) = (
+            if let Ok(collection) = store.collection_with_config(&collection_name, None).await &&
+                let (Ok(size), Ok(count)) = (
                     collection.wal_size().await,
                     collection.wal_entries_count().await,
-                ) {
-                    total_size += size;
-                    total_entries += count;
+                )
+            {
+                total_size += size;
+                total_entries += count;
 
-                    tracing::info!("  {}: {} bytes,  {} entries", collection_name, size, count);
-                }
+                tracing::info!("  {}: {} bytes,  {} entries", collection_name, size, count);
+            }
         }
 
         tracing::info!(

@@ -172,9 +172,7 @@ impl StoreMetadata {
 }
 
 impl Default for StoreMetadata {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 impl StoreMetadata {

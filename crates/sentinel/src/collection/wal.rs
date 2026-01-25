@@ -8,11 +8,7 @@ impl WalDocumentOps for Collection {
         self.get(id)
             .await
             .map(|opt| opt.map(|d| d.data().clone()))
-            .map_err(|e| {
-                sentinel_wal::WalError::Io(std::io::Error::other(
-                    format!("{}", e),
-                ))
-            })
+            .map_err(|e| sentinel_wal::WalError::Io(std::io::Error::other(format!("{}", e))))
     }
 
     async fn apply_operation(
@@ -24,11 +20,9 @@ impl WalDocumentOps for Collection {
         match *entry_type {
             sentinel_wal::EntryType::Insert => {
                 if let Some(data) = data {
-                    self.insert(id, data).await.map_err(|e| {
-                        sentinel_wal::WalError::Io(std::io::Error::other(
-                            format!("{}", e),
-                        ))
-                    })
+                    self.insert(id, data)
+                        .await
+                        .map_err(|e| sentinel_wal::WalError::Io(std::io::Error::other(format!("{}", e))))
                 }
                 else {
                     Err(sentinel_wal::WalError::InvalidEntry(
@@ -38,11 +32,9 @@ impl WalDocumentOps for Collection {
             },
             sentinel_wal::EntryType::Update => {
                 if let Some(data) = data {
-                    self.update(id, data).await.map_err(|e| {
-                        sentinel_wal::WalError::Io(std::io::Error::other(
-                            format!("{}", e),
-                        ))
-                    })
+                    self.update(id, data)
+                        .await
+                        .map_err(|e| sentinel_wal::WalError::Io(std::io::Error::other(format!("{}", e))))
                 }
                 else {
                     Err(sentinel_wal::WalError::InvalidEntry(
@@ -51,11 +43,9 @@ impl WalDocumentOps for Collection {
                 }
             },
             sentinel_wal::EntryType::Delete => {
-                self.delete(id).await.map_err(|e| {
-                    sentinel_wal::WalError::Io(std::io::Error::other(
-                        format!("{}", e),
-                    ))
-                })
+                self.delete(id)
+                    .await
+                    .map_err(|e| sentinel_wal::WalError::Io(std::io::Error::other(format!("{}", e))))
             },
             _ => Ok(()), // Other operations not handled here
         }

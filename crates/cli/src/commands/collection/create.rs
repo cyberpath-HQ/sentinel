@@ -61,31 +61,35 @@ fn build_collection_wal_config_overrides(
         global_wal.wal_verify_mode.is_some() ||
         global_wal.wal_auto_verify.is_some() ||
         global_wal.wal_enable_recovery.is_some() ||
-        args.wal.wal_persist_overrides || global_wal.wal_persist_overrides).then(|| CollectionWalConfigOverrides {
-            write_mode:            args.wal.wal_write_mode.or(global_wal.wal_write_mode),
-            verification_mode:     args.wal.wal_verify_mode.or(global_wal.wal_verify_mode),
-            auto_verify:           args.wal.wal_auto_verify.or(global_wal.wal_auto_verify),
-            enable_recovery:       args
-                .wal
-                .wal_enable_recovery
-                .or(global_wal.wal_enable_recovery),
-            max_wal_size_bytes:    args
-                .wal
-                .wal_max_file_size
-                .or(global_wal.wal_max_file_size)
-                .map(Some),
-            compression_algorithm: args
-                .wal
-                .wal_compression
-                .or(global_wal.wal_compression)
-                .map(Some),
-            max_records_per_file:  args
-                .wal
-                .wal_max_records
-                .or(global_wal.wal_max_records)
-                .map(Some),
-            format:                args.wal.wal_format.or(global_wal.wal_format),
-            persist_overrides:     args.wal.wal_persist_overrides || global_wal.wal_persist_overrides,
+        args.wal.wal_persist_overrides ||
+        global_wal.wal_persist_overrides)
+        .then(|| {
+            CollectionWalConfigOverrides {
+                write_mode:            args.wal.wal_write_mode.or(global_wal.wal_write_mode),
+                verification_mode:     args.wal.wal_verify_mode.or(global_wal.wal_verify_mode),
+                auto_verify:           args.wal.wal_auto_verify.or(global_wal.wal_auto_verify),
+                enable_recovery:       args
+                    .wal
+                    .wal_enable_recovery
+                    .or(global_wal.wal_enable_recovery),
+                max_wal_size_bytes:    args
+                    .wal
+                    .wal_max_file_size
+                    .or(global_wal.wal_max_file_size)
+                    .map(Some),
+                compression_algorithm: args
+                    .wal
+                    .wal_compression
+                    .or(global_wal.wal_compression)
+                    .map(Some),
+                max_records_per_file:  args
+                    .wal
+                    .wal_max_records
+                    .or(global_wal.wal_max_records)
+                    .map(Some),
+                format:                args.wal.wal_format.or(global_wal.wal_format),
+                persist_overrides:     args.wal.wal_persist_overrides || global_wal.wal_persist_overrides,
+            }
         })
 }
 

@@ -447,9 +447,10 @@ impl Collection {
     ///
     /// * `event` - The event to emit to the store.
     pub fn emit_event(&self, event: crate::events::StoreEvent) {
-        if let Some(sender) = &self.event_sender
-            && let Err(e) = sender.send(event) {
-                warn!("Failed to emit collection event: {}", e);
-            }
+        if let Some(sender) = &self.event_sender &&
+            let Err(e) = sender.send(event)
+        {
+            warn!("Failed to emit collection event: {}", e);
+        }
     }
 }

@@ -7,14 +7,7 @@ use chrono::{DateTime, Utc};
 use tokio::{fs as tokio_fs, sync::mpsc};
 use tracing::{debug, error, trace};
 
-use crate::{
-    events::StoreEvent,
-    Result,
-    SentinelError,
-    StoreMetadata,
-    KEYS_COLLECTION,
-    STORE_METADATA_FILE,
-};
+use crate::{events::StoreEvent, Result, SentinelError, StoreMetadata, KEYS_COLLECTION, STORE_METADATA_FILE};
 use super::{events::start_event_processor, operations::collection_with_config};
 
 /// The top-level manager for document collections in Cyberpath Sentinel.

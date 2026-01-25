@@ -18,7 +18,12 @@ pub struct ListArgs {
 }
 
 /// Execute the WAL list operation.
-#[allow(clippy::unreachable, clippy::print_stdout, clippy::arithmetic_side_effects, reason = "CLI command output and safe counting")]
+#[allow(
+    clippy::unreachable,
+    clippy::print_stdout,
+    clippy::arithmetic_side_effects,
+    reason = "CLI command output and safe counting"
+)]
 pub async fn run(store_path: String, collection: Option<String>, args: ListArgs) -> sentinel_dbms::Result<()> {
     use sentinel_dbms::wal::ops::{CollectionWalOps as _, StoreWalOps as _};
 
