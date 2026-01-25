@@ -2096,6 +2096,7 @@ mod store_tests {
     use tempfile::tempdir;
     use futures::TryStreamExt;
     use serde_json::json;
+
     use crate::Store;
 
     #[tokio::test]
@@ -2163,7 +2164,10 @@ mod store_tests {
 
         // Create multiple collections
         let _ = store.collection_with_config("users", None).await.unwrap();
-        let _ = store.collection_with_config("products", None).await.unwrap();
+        let _ = store
+            .collection_with_config("products", None)
+            .await
+            .unwrap();
         let _ = store.collection_with_config("orders", None).await.unwrap();
 
         let collections = store.list_collections().await.unwrap();
@@ -2183,7 +2187,7 @@ mod store_tests {
         )
         .await
         .unwrap();
-        
+
         // Delete nonexistent collection (should be idempotent)
         let result = store.delete_collection("nonexistent").await;
         assert!(result.is_ok());
@@ -2201,8 +2205,14 @@ mod store_tests {
         .unwrap();
 
         // Create a collection
-        let collection = store.collection_with_config("temp_collection", None).await.unwrap();
-        collection.insert("doc1", json!({"data": "value"})).await.unwrap();
+        let collection = store
+            .collection_with_config("temp_collection", None)
+            .await
+            .unwrap();
+        collection
+            .insert("doc1", json!({"data": "value"}))
+            .await
+            .unwrap();
 
         // Verify it exists
         let collections = store.list_collections().await.unwrap();
@@ -2230,10 +2240,19 @@ mod store_tests {
 
         // Create multiple collections and add data to each
         let users = store.collection_with_config("users", None).await.unwrap();
-        let products = store.collection_with_config("products", None).await.unwrap();
+        let products = store
+            .collection_with_config("products", None)
+            .await
+            .unwrap();
 
-        users.insert("user1", json!({"name": "Alice"})).await.unwrap();
-        products.insert("prod1", json!({"name": "Widget"})).await.unwrap();
+        users
+            .insert("user1", json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        products
+            .insert("prod1", json!({"name": "Widget"}))
+            .await
+            .unwrap();
 
         // Verify data isolation
         assert!(users.get("user1").await.unwrap().is_some());
@@ -2254,7 +2273,10 @@ mod store_tests {
                 .await
                 .unwrap();
             let collection = store.collection_with_config("users", None).await.unwrap();
-            collection.insert("user1", json!({"name": "Alice"})).await.unwrap();
+            collection
+                .insert("user1", json!({"name": "Alice"}))
+                .await
+                .unwrap();
         }
 
         // Reopen store and verify data
@@ -2304,10 +2326,10 @@ mod store_tests {
         .await
         .unwrap();
         let before_access = chrono::Utc::now();
-        
+
         // Access a collection to update last_accessed_at
         let _ = store.collection_with_config("test", None).await.unwrap();
-        
+
         let last_accessed = store.last_accessed_at();
         assert!(last_accessed >= before_access);
     }
@@ -2345,7 +2367,10 @@ mod store_tests {
         .unwrap();
         let collection = store.collection_with_config("docs", None).await.unwrap();
 
-        collection.insert("doc1", json!({"data": "large content here"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"data": "large content here"}))
+            .await
+            .unwrap();
 
         // Counters are updated asynchronously by event processor
         // Just verify that the method works without panic
@@ -2386,7 +2411,7 @@ mod store_tests {
         .await
         .unwrap();
         let sender = store.event_sender();
-        
+
         // Sender should be cloneable and usable
         let _cloned = sender.clone();
         assert!(true); // If we got here, sender is valid
@@ -2408,7 +2433,10 @@ mod store_tests {
             .await
             .unwrap();
 
-        collection.insert("doc1", json!({"test": true})).await.unwrap();
+        collection
+            .insert("doc1", json!({"test": true}))
+            .await
+            .unwrap();
         let doc = collection.get("doc1").await.unwrap();
         assert!(doc.is_some());
     }
@@ -2424,12 +2452,15 @@ mod store_tests {
         .await
         .unwrap();
 
-        let collection = store.collection_with_config("to_delete", None).await.unwrap();
-        for i in 0..5 {
-            collection.insert(
-                &format!("doc{}", i),
-                json!({"index": i}),
-            ).await.unwrap();
+        let collection = store
+            .collection_with_config("to_delete", None)
+            .await
+            .unwrap();
+        for i in 0 .. 5 {
+            collection
+                .insert(&format!("doc{}", i), json!({"index": i}))
+                .await
+                .unwrap();
         }
 
         // Verify collection exists with documents
@@ -2494,6 +2525,7 @@ mod collection_streaming_tests {
     use tempfile::tempdir;
     use futures::TryStreamExt;
     use serde_json::json;
+
     use crate::Store;
 
     #[tokio::test]
@@ -2547,9 +2579,18 @@ mod collection_streaming_tests {
         .unwrap();
         let collection = store.collection_with_config("users", None).await.unwrap();
 
-        collection.insert("user1", json!({"name": "Alice", "age": 25})).await.unwrap();
-        collection.insert("user2", json!({"name": "Bob", "age": 35})).await.unwrap();
-        collection.insert("user3", json!({"name": "Charlie", "age": 28})).await.unwrap();
+        collection
+            .insert("user1", json!({"name": "Alice", "age": 25}))
+            .await
+            .unwrap();
+        collection
+            .insert("user2", json!({"name": "Bob", "age": 35}))
+            .await
+            .unwrap();
+        collection
+            .insert("user3", json!({"name": "Charlie", "age": 28}))
+            .await
+            .unwrap();
 
         let filtered: Vec<_> = collection
             .filter(|doc| {
@@ -2563,7 +2604,10 @@ mod collection_streaming_tests {
             .unwrap();
 
         assert_eq!(filtered.len(), 2);
-        let names: Vec<_> = filtered.iter().map(|d| d.data()["name"].as_str().unwrap()).collect();
+        let names: Vec<_> = filtered
+            .iter()
+            .map(|d| d.data()["name"].as_str().unwrap())
+            .collect();
         assert!(names.contains(&"Bob"));
         assert!(names.contains(&"Charlie"));
     }
@@ -2580,8 +2624,14 @@ mod collection_streaming_tests {
         .unwrap();
         let collection = store.collection_with_config("users", None).await.unwrap();
 
-        collection.insert("user1", json!({"name": "Alice", "age": 25})).await.unwrap();
-        collection.insert("user2", json!({"name": "Bob", "age": 20})).await.unwrap();
+        collection
+            .insert("user1", json!({"name": "Alice", "age": 25}))
+            .await
+            .unwrap();
+        collection
+            .insert("user2", json!({"name": "Bob", "age": 20}))
+            .await
+            .unwrap();
 
         let filtered: Vec<_> = collection
             .filter(|doc| {
@@ -2609,14 +2659,23 @@ mod collection_streaming_tests {
         .unwrap();
         let collection = store.collection_with_config("docs", None).await.unwrap();
 
-        collection.insert("doc1", json!({"value": 1})).await.unwrap();
-        collection.insert("doc2", json!({"value": 2})).await.unwrap();
+        collection
+            .insert("doc1", json!({"value": 1}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"value": 2}))
+            .await
+            .unwrap();
 
         let all: Vec<_> = collection.all().try_collect().await.unwrap();
         assert_eq!(all.len(), 2);
-        
+
         // Check values are present (order may vary)
-        let values: Vec<_> = all.iter().map(|d| d.data()["value"].as_u64().unwrap()).collect();
+        let values: Vec<_> = all
+            .iter()
+            .map(|d| d.data()["value"].as_u64().unwrap())
+            .collect();
         assert!(values.contains(&1));
         assert!(values.contains(&2));
     }
@@ -2631,7 +2690,10 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("empty_coll", None).await.unwrap();
+        let collection = store
+            .collection_with_config("empty_coll", None)
+            .await
+            .unwrap();
 
         let all: Vec<_> = collection.all().try_collect().await.unwrap();
         assert!(all.is_empty());
@@ -2650,8 +2712,14 @@ mod collection_streaming_tests {
         .unwrap();
         let collection = store.collection_with_config("docs", None).await.unwrap();
 
-        collection.insert("doc1", json!({"value": 10})).await.unwrap();
-        collection.insert("doc2", json!({"value": 20})).await.unwrap();
+        collection
+            .insert("doc1", json!({"value": 10}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", json!({"value": 20}))
+            .await
+            .unwrap();
 
         let mapped: Vec<_> = collection
             .all()
@@ -2676,6 +2744,7 @@ mod collection_streaming_tests {
 mod collection_error_tests {
     use tempfile::tempdir;
     use serde_json::json;
+
     use crate::Store;
 
     #[tokio::test]
@@ -2724,7 +2793,10 @@ mod collection_error_tests {
         .unwrap();
         let collection = store.collection_with_config("users", None).await.unwrap();
 
-        collection.insert("user1", json!({"name": "Alice", "age": 25})).await.unwrap();
+        collection
+            .insert("user1", json!({"name": "Alice", "age": 25}))
+            .await
+            .unwrap();
 
         let updated = json!({"name": "Alice", "age": 26});
         collection.update("user1", updated).await.unwrap();
@@ -2744,7 +2816,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("empty_count", None).await.unwrap();
+        let collection = store
+            .collection_with_config("empty_count", None)
+            .await
+            .unwrap();
 
         let count = collection.count().await.unwrap();
         assert_eq!(count, 0);
@@ -2762,7 +2837,10 @@ mod collection_error_tests {
         .unwrap();
         let collection = store.collection_with_config("users", None).await.unwrap();
 
-        collection.insert("user1", json!({"name": "Alice"})).await.unwrap();
+        collection
+            .insert("user1", json!({"name": "Alice"}))
+            .await
+            .unwrap();
 
         let doc_user1 = collection.get("user1").await.unwrap();
         assert!(doc_user1.is_some());
@@ -2783,7 +2861,10 @@ mod collection_error_tests {
         .unwrap();
         let collection = store.collection_with_config("docs", None).await.unwrap();
 
-        collection.insert("doc1", json!({"data": "value"})).await.unwrap();
+        collection
+            .insert("doc1", json!({"data": "value"}))
+            .await
+            .unwrap();
 
         let doc = collection.get("doc1").await.unwrap();
         assert!(doc.is_some());
@@ -2806,7 +2887,10 @@ mod collection_error_tests {
         .unwrap();
         let collection = store.collection_with_config("users", None).await.unwrap();
 
-        collection.insert("user1", json!({"name": "Alice"})).await.unwrap();
+        collection
+            .insert("user1", json!({"name": "Alice"}))
+            .await
+            .unwrap();
 
         // Attempting to insert with the same ID should fail
         let result = collection.insert("user1", json!({"name": "Bob"})).await;
@@ -2832,7 +2916,10 @@ mod collection_error_tests {
             }
         });
 
-        collection.insert("large_doc", large_data.clone()).await.unwrap();
+        collection
+            .insert("large_doc", large_data.clone())
+            .await
+            .unwrap();
 
         let doc = collection.get("large_doc").await.unwrap();
         assert!(doc.is_some());
@@ -2853,7 +2940,10 @@ mod collection_error_tests {
         let collection = store.collection_with_config("docs", None).await.unwrap();
 
         // IDs with dashes and underscores should work
-        collection.insert("doc-id_123", json!({"data": "test"})).await.unwrap();
+        collection
+            .insert("doc-id_123", json!({"data": "test"}))
+            .await
+            .unwrap();
 
         let doc = collection.get("doc-id_123").await.unwrap();
         assert!(doc.is_some());
