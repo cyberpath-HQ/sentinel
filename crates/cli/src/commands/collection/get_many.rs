@@ -86,7 +86,7 @@ pub async fn run(
             for (doc, id) in documents.into_iter().zip(ids.iter()) {
                 let found = if doc.is_some() { "Yes" } else { "No" };
                 let preview = if let Some(doc) = &doc {
-                    let data_str = serde_json::to_string(&doc.data())?;
+                    let data_str = serde_json::to_string(&doc.data()).unwrap();
                     if data_str.len() > 40 {
                         format!("{}...", &data_str[.. 37])
                     }
@@ -344,6 +344,41 @@ mod tests {
         )
         .await;
 
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_many_invalid_document_ids() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+
+        // Initialize store and create collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let args = GetManyArgs {
+            ids:    vec!["valid_id".to_string(), "invalid id with spaces".to_string()],
+            format: "json".to_string(),
+            wal:    crate::commands::WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        // Should handle invalid IDs gracefully (either error or skip them)
+        // For now, we'll assume it errors on invalid IDs like other commands
         assert!(result.is_err());
     }
 }
