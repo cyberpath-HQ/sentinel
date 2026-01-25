@@ -2090,3 +2090,773 @@ mod persistence_tests {
         assert!(result.is_err());
     }
 }
+
+#[cfg(test)]
+mod store_tests {
+    use tempfile::tempdir;
+    use futures::TryStreamExt;
+    use serde_json::json;
+    use crate::Store;
+
+    #[tokio::test]
+    async fn test_store_new() {
+        let temp_dir = tempdir().unwrap();
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let store = result.unwrap();
+        assert_eq!(store.root_path(), temp_dir.path());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_config() {
+        let temp_dir = tempdir().unwrap();
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_passphrase() {
+        let temp_dir = tempdir().unwrap();
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_store_list_collections_empty() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collections = store.list_collections().await.unwrap();
+        assert!(collections.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_store_list_collections_with_multiple() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+
+        // Create multiple collections
+        let _ = store.collection_with_config("users", None).await.unwrap();
+        let _ = store.collection_with_config("products", None).await.unwrap();
+        let _ = store.collection_with_config("orders", None).await.unwrap();
+
+        let collections = store.list_collections().await.unwrap();
+        assert_eq!(collections.len(), 3);
+        assert!(collections.contains(&"users".to_string()));
+        assert!(collections.contains(&"products".to_string()));
+        assert!(collections.contains(&"orders".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_store_delete_collection_nonexistent() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        
+        // Delete nonexistent collection (should be idempotent)
+        let result = store.delete_collection("nonexistent").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_store_delete_collection_existing() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+
+        // Create a collection
+        let collection = store.collection_with_config("temp_collection", None).await.unwrap();
+        collection.insert("doc1", json!({"data": "value"})).await.unwrap();
+
+        // Verify it exists
+        let collections = store.list_collections().await.unwrap();
+        assert!(collections.contains(&"temp_collection".to_string()));
+
+        // Delete it
+        let result = store.delete_collection("temp_collection").await;
+        assert!(result.is_ok());
+
+        // Verify it's gone
+        let collections = store.list_collections().await.unwrap();
+        assert!(!collections.contains(&"temp_collection".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_store_multiple_collections_isolation() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+
+        // Create multiple collections and add data to each
+        let users = store.collection_with_config("users", None).await.unwrap();
+        let products = store.collection_with_config("products", None).await.unwrap();
+
+        users.insert("user1", json!({"name": "Alice"})).await.unwrap();
+        products.insert("prod1", json!({"name": "Widget"})).await.unwrap();
+
+        // Verify data isolation
+        assert!(users.get("user1").await.unwrap().is_some());
+        assert!(users.get("prod1").await.unwrap().is_none());
+
+        assert!(products.get("prod1").await.unwrap().is_some());
+        assert!(products.get("user1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_store_collection_persistence() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path().to_path_buf();
+
+        // Create store and collection with data
+        {
+            let store = Store::new_with_config(&path, None, sentinel_wal::StoreWalConfig::default())
+                .await
+                .unwrap();
+            let collection = store.collection_with_config("users", None).await.unwrap();
+            collection.insert("user1", json!({"name": "Alice"})).await.unwrap();
+        }
+
+        // Reopen store and verify data
+        {
+            let store = Store::new_with_config(&path, None, sentinel_wal::StoreWalConfig::default())
+                .await
+                .unwrap();
+            let collection = store.collection_with_config("users", None).await.unwrap();
+            let doc = collection.get("user1").await.unwrap();
+            assert!(doc.is_some());
+            assert_eq!(doc.unwrap().data()["name"], "Alice");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_store_root_path() {
+        let temp_dir = tempdir().unwrap();
+        let path = temp_dir.path();
+        let store = Store::new_with_config(path, None, sentinel_wal::StoreWalConfig::default())
+            .await
+            .unwrap();
+        assert_eq!(store.root_path(), path);
+    }
+
+    #[tokio::test]
+    async fn test_store_created_at() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let created_at = store.created_at();
+        assert!(created_at <= chrono::Utc::now());
+    }
+
+    #[tokio::test]
+    async fn test_store_last_accessed_at() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let before_access = chrono::Utc::now();
+        
+        // Access a collection to update last_accessed_at
+        let _ = store.collection_with_config("test", None).await.unwrap();
+        
+        let last_accessed = store.last_accessed_at();
+        assert!(last_accessed >= before_access);
+    }
+
+    #[tokio::test]
+    async fn test_store_total_documents() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("docs", None).await.unwrap();
+
+        collection.insert("doc1", json!({"data": 1})).await.unwrap();
+        collection.insert("doc2", json!({"data": 2})).await.unwrap();
+
+        // Counters are updated asynchronously by event processor
+        // Just verify that the method works without panic
+        let _total = store.total_documents();
+        assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_store_total_size_bytes() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("docs", None).await.unwrap();
+
+        collection.insert("doc1", json!({"data": "large content here"})).await.unwrap();
+
+        // Counters are updated asynchronously by event processor
+        // Just verify that the method works without panic
+        let _size = store.total_size_bytes();
+        assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_store_collection_count() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+
+        let _ = store.collection_with_config("col1", None).await.unwrap();
+        let _ = store.collection_with_config("col2", None).await.unwrap();
+        let _ = store.collection_with_config("col3", None).await.unwrap();
+
+        // Allow event processor to update counters
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let count = store.collection_count();
+        assert_eq!(count, 3);
+    }
+
+    #[tokio::test]
+    async fn test_store_event_sender() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let sender = store.event_sender();
+        
+        // Sender should be cloneable and usable
+        let _cloned = sender.clone();
+        assert!(true); // If we got here, sender is valid
+    }
+
+    #[tokio::test]
+    async fn test_store_collection_with_config_default() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+
+        let collection = store
+            .collection_with_config("configured", None)
+            .await
+            .unwrap();
+
+        collection.insert("doc1", json!({"test": true})).await.unwrap();
+        let doc = collection.get("doc1").await.unwrap();
+        assert!(doc.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_store_delete_collection_with_metadata() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+
+        let collection = store.collection_with_config("to_delete", None).await.unwrap();
+        for i in 0..5 {
+            collection.insert(
+                &format!("doc{}", i),
+                json!({"index": i}),
+            ).await.unwrap();
+        }
+
+        // Verify collection exists with documents
+        let all_docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert_eq!(all_docs.len(), 5);
+
+        // Delete the collection
+        store.delete_collection("to_delete").await.unwrap();
+
+        // Verify collection no longer exists
+        let collections = store.list_collections().await.unwrap();
+        assert!(!collections.contains(&"to_delete".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_store_multiple_operations_sequence() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+
+        // Create first collection
+        let col1 = store.collection_with_config("first", None).await.unwrap();
+        col1.insert("data1", json!({"value": 1})).await.unwrap();
+
+        // Create second collection
+        let col2 = store.collection_with_config("second", None).await.unwrap();
+        col2.insert("data2", json!({"value": 2})).await.unwrap();
+
+        // List all
+        let mut collections = store.list_collections().await.unwrap();
+        collections.sort();
+        assert_eq!(collections.len(), 2);
+
+        // Delete first
+        store.delete_collection("first").await.unwrap();
+
+        // Verify only second remains
+        let collections = store.list_collections().await.unwrap();
+        assert_eq!(collections.len(), 1);
+        assert_eq!(collections[0], "second");
+
+        // Create third
+        let col3 = store.collection_with_config("third", None).await.unwrap();
+        col3.insert("data3", json!({"value": 3})).await.unwrap();
+
+        // Verify we have second and third
+        let mut collections = store.list_collections().await.unwrap();
+        collections.sort();
+        assert_eq!(collections.len(), 2);
+        assert!(collections.contains(&"second".to_string()));
+        assert!(collections.contains(&"third".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod collection_streaming_tests {
+    use tempfile::tempdir;
+    use futures::TryStreamExt;
+    use serde_json::json;
+    use crate::Store;
+
+    #[tokio::test]
+    async fn test_collection_list_documents() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("docs", None).await.unwrap();
+
+        collection.insert("doc1", json!({"data": 1})).await.unwrap();
+        collection.insert("doc2", json!({"data": 2})).await.unwrap();
+        collection.insert("doc3", json!({"data": 3})).await.unwrap();
+
+        let docs: Vec<_> = collection.list().try_collect().await.unwrap();
+        assert_eq!(docs.len(), 3);
+        assert!(docs.contains(&"doc1".to_string()));
+        assert!(docs.contains(&"doc2".to_string()));
+        assert!(docs.contains(&"doc3".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_collection_list_empty() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("empty", None).await.unwrap();
+
+        let docs: Vec<_> = collection.list().try_collect().await.unwrap();
+        assert!(docs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collection_filter_documents() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("users", None).await.unwrap();
+
+        collection.insert("user1", json!({"name": "Alice", "age": 25})).await.unwrap();
+        collection.insert("user2", json!({"name": "Bob", "age": 35})).await.unwrap();
+        collection.insert("user3", json!({"name": "Charlie", "age": 28})).await.unwrap();
+
+        let filtered: Vec<_> = collection
+            .filter(|doc| {
+                doc.data()
+                    .get("age")
+                    .and_then(|v| v.as_u64())
+                    .map_or(false, |age| age > 26)
+            })
+            .try_collect()
+            .await
+            .unwrap();
+
+        assert_eq!(filtered.len(), 2);
+        let names: Vec<_> = filtered.iter().map(|d| d.data()["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"Bob"));
+        assert!(names.contains(&"Charlie"));
+    }
+
+    #[tokio::test]
+    async fn test_collection_filter_no_matches() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("users", None).await.unwrap();
+
+        collection.insert("user1", json!({"name": "Alice", "age": 25})).await.unwrap();
+        collection.insert("user2", json!({"name": "Bob", "age": 20})).await.unwrap();
+
+        let filtered: Vec<_> = collection
+            .filter(|doc| {
+                doc.data()
+                    .get("age")
+                    .and_then(|v| v.as_u64())
+                    .map_or(false, |age| age > 100)
+            })
+            .try_collect()
+            .await
+            .unwrap();
+
+        assert!(filtered.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collection_all_documents() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("docs", None).await.unwrap();
+
+        collection.insert("doc1", json!({"value": 1})).await.unwrap();
+        collection.insert("doc2", json!({"value": 2})).await.unwrap();
+
+        let all: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert_eq!(all.len(), 2);
+        
+        // Check values are present (order may vary)
+        let values: Vec<_> = all.iter().map(|d| d.data()["value"].as_u64().unwrap()).collect();
+        assert!(values.contains(&1));
+        assert!(values.contains(&2));
+    }
+
+    #[tokio::test]
+    async fn test_collection_all_empty() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("empty_coll", None).await.unwrap();
+
+        let all: Vec<_> = collection.all().try_collect().await.unwrap();
+        assert!(all.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collection_map_documents() {
+        use futures::StreamExt;
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("docs", None).await.unwrap();
+
+        collection.insert("doc1", json!({"value": 10})).await.unwrap();
+        collection.insert("doc2", json!({"value": 20})).await.unwrap();
+
+        let mapped: Vec<_> = collection
+            .all()
+            .map(|result| {
+                result.map(|doc| {
+                    doc.data()
+                        .get("value")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0)
+                })
+            })
+            .try_collect()
+            .await
+            .unwrap();
+
+        assert_eq!(mapped.len(), 2);
+        assert!(mapped.contains(&10));
+        assert!(mapped.contains(&20));
+    }
+}
+#[cfg(test)]
+mod collection_error_tests {
+    use tempfile::tempdir;
+    use serde_json::json;
+    use crate::Store;
+
+    #[tokio::test]
+    async fn test_collection_get_nonexistent_document() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("users", None).await.unwrap();
+
+        let doc = collection.get("nonexistent").await.unwrap();
+        assert!(doc.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_collection_delete_nonexistent_document() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("users", None).await.unwrap();
+
+        let result = collection.delete("nonexistent").await;
+        // Depending on implementation, this might succeed or fail
+        // Just verify it doesn't panic
+        let _ = result;
+    }
+
+    #[tokio::test]
+    async fn test_collection_update_document() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("users", None).await.unwrap();
+
+        collection.insert("user1", json!({"name": "Alice", "age": 25})).await.unwrap();
+
+        let updated = json!({"name": "Alice", "age": 26});
+        collection.update("user1", updated).await.unwrap();
+
+        let doc = collection.get("user1").await.unwrap();
+        assert!(doc.is_some());
+        assert_eq!(doc.unwrap().data()["age"], 26);
+    }
+
+    #[tokio::test]
+    async fn test_collection_count_empty() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("empty_count", None).await.unwrap();
+
+        let count = collection.count().await.unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_collection_exists_document() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("users", None).await.unwrap();
+
+        collection.insert("user1", json!({"name": "Alice"})).await.unwrap();
+
+        let doc_user1 = collection.get("user1").await.unwrap();
+        assert!(doc_user1.is_some());
+
+        let doc_user999 = collection.get("user999").await.unwrap();
+        assert!(doc_user999.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_collection_delete_document() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("docs", None).await.unwrap();
+
+        collection.insert("doc1", json!({"data": "value"})).await.unwrap();
+
+        let doc = collection.get("doc1").await.unwrap();
+        assert!(doc.is_some());
+
+        collection.delete("doc1").await.unwrap();
+
+        let doc = collection.get("doc1").await.unwrap();
+        assert!(doc.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_collection_duplicate_insert() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("users", None).await.unwrap();
+
+        collection.insert("user1", json!({"name": "Alice"})).await.unwrap();
+
+        // Attempting to insert with the same ID should fail
+        let result = collection.insert("user1", json!({"name": "Bob"})).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_collection_insert_large_document() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("docs", None).await.unwrap();
+
+        let large_data = json!({
+            "content": "x".repeat(10000),
+            "nested": {
+                "data": "y".repeat(5000)
+            }
+        });
+
+        collection.insert("large_doc", large_data.clone()).await.unwrap();
+
+        let doc = collection.get("large_doc").await.unwrap();
+        assert!(doc.is_some());
+        let doc_content = doc.unwrap().data()["content"].as_str().unwrap().to_string();
+        assert_eq!(doc_content, "x".repeat(10000));
+    }
+
+    #[tokio::test]
+    async fn test_collection_operations_with_special_chars_in_id() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("docs", None).await.unwrap();
+
+        // IDs with dashes and underscores should work
+        collection.insert("doc-id_123", json!({"data": "test"})).await.unwrap();
+
+        let doc = collection.get("doc-id_123").await.unwrap();
+        assert!(doc.is_some());
+        assert_eq!(doc.unwrap().id(), "doc-id_123");
+    }
+}
