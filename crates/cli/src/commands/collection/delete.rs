@@ -159,4 +159,38 @@ mod tests {
         // Should succeed even if document doesn't exist (idempotent)
         assert!(result.is_ok());
     }
+
+    #[tokio::test]
+    async fn test_delete_invalid_document_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+        let doc_id = ""; // Invalid: empty document ID
+
+        // Initialize store and create collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let args = DeleteArgs {
+            id:  doc_id.to_string(),
+            wal: WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        // Should fail due to invalid document ID
+        assert!(result.is_err());
+    }
 }
