@@ -814,4 +814,252 @@ mod tests {
         // The task should still be running despite the write failure
         assert!(store.event_task.is_some());
     }
+
+    #[tokio::test]
+    async fn test_store_new_with_config_passphrase() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        // Should have created signing key
+        assert!(store.signing_key.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_config_passphrase_load_existing() {
+        let temp_dir = tempdir().unwrap();
+        // First create a store with passphrase
+        let store1 = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        assert!(store1.signing_key.is_some());
+        drop(store1); // Close the first store
+
+        // Now create another store in the same directory with the same passphrase
+        // This should load the existing signing key
+        let store2 = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        // Should have loaded the existing signing key
+        assert!(store2.signing_key.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_config_passphrase_corrupted_salt() {
+        let temp_dir = tempdir().unwrap();
+        // Create a store first
+        let store1 = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        drop(store1);
+
+        // Manually corrupt the encrypted field in the data object to be invalid hex
+        let keys_path = temp_dir.path().join("data/.keys/signing_key.json");
+        let content = tokio::fs::read_to_string(&keys_path).await.unwrap();
+        let mut doc: serde_json::Value = serde_json::from_str(&content).unwrap();
+        if let Some(obj) = doc.as_object_mut() {
+            if let Some(data) = obj.get_mut("data").and_then(|d| d.as_object_mut()) {
+                data.insert(
+                    "encrypted".to_string(),
+                    serde_json::Value::String("invalid".to_string()),
+                );
+            }
+        }
+        let corrupted_content = serde_json::to_string(&doc).unwrap();
+        tokio::fs::write(&keys_path, corrupted_content)
+            .await
+            .unwrap();
+
+        // Try to create another store - this should fail due to invalid hex in encrypted field
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_config_passphrase_missing_encrypted_field() {
+        let temp_dir = tempdir().unwrap();
+        // Create a store first
+        let store1 = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        drop(store1);
+
+        // Manually remove the encrypted field from the data object
+        let keys_path = temp_dir.path().join("data/.keys/signing_key.json");
+        let content = tokio::fs::read_to_string(&keys_path).await.unwrap();
+        let mut doc: serde_json::Value = serde_json::from_str(&content).unwrap();
+        if let Some(obj) = doc.as_object_mut() {
+            if let Some(data) = obj.get_mut("data").and_then(|d| d.as_object_mut()) {
+                data.remove("encrypted");
+            }
+        }
+        let corrupted_content = serde_json::to_string(&doc).unwrap();
+        tokio::fs::write(&keys_path, corrupted_content)
+            .await
+            .unwrap();
+
+        // Try to create another store - this should fail due to missing encrypted field
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SentinelError::StoreCorruption { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_config_passphrase_missing_salt_field() {
+        let temp_dir = tempdir().unwrap();
+        // Create a store first
+        let store1 = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        drop(store1);
+
+        // Manually remove the salt field from the data object
+        let keys_path = temp_dir.path().join("data/.keys/signing_key.json");
+        let content = tokio::fs::read_to_string(&keys_path).await.unwrap();
+        let mut doc: serde_json::Value = serde_json::from_str(&content).unwrap();
+        if let Some(obj) = doc.as_object_mut() {
+            if let Some(data) = obj.get_mut("data").and_then(|d| d.as_object_mut()) {
+                data.remove("salt");
+            }
+        }
+        let corrupted_content = serde_json::to_string(&doc).unwrap();
+        tokio::fs::write(&keys_path, corrupted_content)
+            .await
+            .unwrap();
+
+        // Try to create another store - this should fail due to missing salt field
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SentinelError::StoreCorruption { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_config_passphrase_invalid_salt_hex() {
+        let temp_dir = tempdir().unwrap();
+        // Create a store first
+        let store1 = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        drop(store1);
+
+        // Manually corrupt the salt field to be invalid hex
+        let keys_path = temp_dir.path().join("data/.keys/signing_key.json");
+        let content = tokio::fs::read_to_string(&keys_path).await.unwrap();
+        let mut doc: serde_json::Value = serde_json::from_str(&content).unwrap();
+        if let Some(obj) = doc.as_object_mut() {
+            if let Some(data) = obj.get_mut("data").and_then(|d| d.as_object_mut()) {
+                data.insert(
+                    "salt".to_string(),
+                    serde_json::Value::String("invalid_hex".to_string()),
+                );
+            }
+        }
+        let corrupted_content = serde_json::to_string(&doc).unwrap();
+        tokio::fs::write(&keys_path, corrupted_content)
+            .await
+            .unwrap();
+
+        // Try to create another store - this should fail due to invalid hex in salt field
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            SentinelError::StoreCorruption { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_store_new_with_config_passphrase_invalid_key_length() {
+        let temp_dir = tempdir().unwrap();
+        // Create a store first
+        let store1 = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        drop(store1);
+
+        // Manually corrupt the encrypted field to decrypt to wrong length
+        let keys_path = temp_dir.path().join("data/.keys/signing_key.json");
+        let content = tokio::fs::read_to_string(&keys_path).await.unwrap();
+        let mut doc: serde_json::Value = serde_json::from_str(&content).unwrap();
+        if let Some(obj) = doc.as_object_mut() {
+            if let Some(data) = obj.get_mut("data").and_then(|d| d.as_object_mut()) {
+                // Replace with encrypted data that will decrypt to wrong length
+                data.insert(
+                    "encrypted".to_string(),
+                    serde_json::Value::String("short".to_string()),
+                );
+            }
+        }
+        let corrupted_content = serde_json::to_string(&doc).unwrap();
+        tokio::fs::write(&keys_path, corrupted_content)
+            .await
+            .unwrap();
+
+        // Try to create another store - this should fail due to invalid encrypted data
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
+        assert!(result.is_err());
+    }
 }

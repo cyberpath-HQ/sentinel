@@ -2897,7 +2897,20 @@ mod collection_error_tests {
     use tempfile::tempdir;
     use serde_json::json;
 
-    use crate::Store;
+    use crate::{Collection, Store};
+
+    async fn setup_collection() -> (Collection, tempfile::TempDir) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("test", None).await.unwrap();
+        (collection, temp_dir)
+    }
 
     #[tokio::test]
     async fn test_collection_get_nonexistent_document() {
@@ -3100,5 +3113,36 @@ mod collection_error_tests {
         let doc = collection.get("doc-id_123").await.unwrap();
         assert!(doc.is_some());
         assert_eq!(doc.unwrap().id(), "doc-id_123");
+    }
+
+    #[tokio::test]
+    async fn test_collection_getters() {
+        let (collection, _temp_dir): (crate::Collection, _) = setup_collection().await;
+
+        // Test getter methods
+        assert_eq!(collection.name(), "test");
+        assert!(collection.created_at() <= chrono::Utc::now());
+        assert!(collection.updated_at() <= chrono::Utc::now());
+        assert!(collection.last_checkpoint_at().is_none()); // No checkpoint yet
+        assert_eq!(collection.total_documents(), 0);
+        assert_eq!(collection.total_size_bytes(), 0);
+        assert!(collection.stored_wal_config().max_wal_size_bytes.is_some());
+        assert!(collection.wal_config().max_wal_size_bytes.is_some());
+
+        // Insert a document to change stats
+        collection
+            .insert("test_doc", json!({"data": "test"}))
+            .await
+            .unwrap();
+
+        // Counters are updated asynchronously by event processor
+        // Just verify that the methods still work after insertion
+        let _total_docs = collection.total_documents();
+        let _total_size = collection.total_size_bytes();
+        assert!(collection.updated_at() >= collection.created_at());
+
+        // Test save_metadata and flush_metadata
+        collection.save_metadata().await.unwrap();
+        collection.flush_metadata().await.unwrap();
     }
 }
