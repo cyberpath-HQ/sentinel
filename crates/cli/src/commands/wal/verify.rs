@@ -85,10 +85,11 @@ pub async fn run(store_path: String, collection: Option<String>, _args: VerifyAr
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use sentinel_dbms::StoreWalConfig;
     use tempfile::TempDir;
     use tokio::time::{sleep, Duration};
+
+    use super::*;
 
     #[tokio::test]
     async fn test_verify_wal_specific_collection() {
@@ -96,13 +97,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         let collection = store
             .collection_with_config("test_collection", None)
@@ -124,7 +121,12 @@ mod tests {
 
         // Run verify command
         let args = VerifyArgs;
-        let result = run(store_path.clone(), Some("test_collection".to_string()), args).await;
+        let result = run(
+            store_path.clone(),
+            Some("test_collection".to_string()),
+            args,
+        )
+        .await;
 
         assert!(result.is_ok());
     }
@@ -135,13 +137,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
 
         // Create store and collections
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         let collection1 = store
             .collection_with_config("collection1", None)

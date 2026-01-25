@@ -78,9 +78,10 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
     use tempfile::tempdir;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_info_command_with_empty_collection() {
@@ -89,14 +90,13 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Run info command
         let args = InfoArgs {
@@ -120,14 +120,13 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection with some data
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Insert some documents
         collection
@@ -167,14 +166,13 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Run info command with invalid format
         let args = InfoArgs {

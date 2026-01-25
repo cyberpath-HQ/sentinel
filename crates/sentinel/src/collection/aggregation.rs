@@ -3,7 +3,6 @@ use serde_json::{json, Value};
 use tracing::{debug, trace};
 
 use crate::{filtering::matches_filters, Document, Result};
-
 use super::collection::Collection;
 
 impl Collection {

@@ -95,8 +95,9 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::tempdir;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_update_existing_document() {
@@ -105,26 +106,28 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Insert a document first
-        collection.insert("doc1", serde_json::json!({"name": "Alice", "age": 30})).await.unwrap();
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice", "age": 30}))
+            .await
+            .unwrap();
 
         // Allow event processing
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Update the document
         let args = UpdateArgs {
-            id: "doc1".to_string(),
+            id:   "doc1".to_string(),
             data: r#"{"name": "Alice", "age": 31}"#.to_string(),
-            wal: WalArgs::default(),
+            wal:  WalArgs::default(),
         };
         let result = run(
             store_path.to_string_lossy().to_string(),
@@ -144,20 +147,19 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Try to update a non-existent document
         let args = UpdateArgs {
-            id: "nonexistent".to_string(),
+            id:   "nonexistent".to_string(),
             data: r#"{"name": "Bob"}"#.to_string(),
-            wal: WalArgs::default(),
+            wal:  WalArgs::default(),
         };
         let result = run(
             store_path.to_string_lossy().to_string(),
@@ -177,26 +179,28 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Insert a document first
-        collection.insert("doc1", serde_json::json!({"name": "Alice"})).await.unwrap();
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice"}))
+            .await
+            .unwrap();
 
         // Allow event processing
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Try to update with invalid JSON
         let args = UpdateArgs {
-            id: "doc1".to_string(),
+            id:   "doc1".to_string(),
             data: r#"{"name": "Alice", "age": }"#.to_string(), // Invalid JSON
-            wal: WalArgs::default(),
+            wal:  WalArgs::default(),
         };
         let result = run(
             store_path.to_string_lossy().to_string(),
@@ -216,20 +220,19 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Try to update with invalid document ID
         let args = UpdateArgs {
-            id: "invalid/id".to_string(), // Invalid document ID with path separator
+            id:   "invalid/id".to_string(), // Invalid document ID with path separator
             data: r#"{"name": "Alice"}"#.to_string(),
-            wal: WalArgs::default(),
+            wal:  WalArgs::default(),
         };
         let result = run(
             store_path.to_string_lossy().to_string(),

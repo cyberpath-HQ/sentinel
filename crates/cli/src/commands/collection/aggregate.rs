@@ -223,13 +223,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
         let collection_name = "test_collection".to_string();
 
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let _collection = store
             .collection_with_config(&collection_name, None)
             .await
@@ -240,8 +236,8 @@ mod tests {
 
         let args = AggregateArgs {
             aggregation: "count".to_string(),
-            filter: vec![],
-            wal: crate::commands::WalArgs::default(),
+            filter:      vec![],
+            wal:         crate::commands::WalArgs::default(),
         };
 
         let result = run(store_path, collection_name, None, args).await;
@@ -254,13 +250,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
         let collection_name = "test_collection".to_string();
 
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(&collection_name, None)
             .await
@@ -281,8 +273,8 @@ mod tests {
 
         let args = AggregateArgs {
             aggregation: "count".to_string(),
-            filter: vec![],
-            wal: crate::commands::WalArgs::default(),
+            filter:      vec![],
+            wal:         crate::commands::WalArgs::default(),
         };
 
         let result = run(store_path, collection_name, None, args).await;
@@ -295,13 +287,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
         let collection_name = "test_collection".to_string();
 
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(&collection_name, None)
             .await
@@ -322,8 +310,8 @@ mod tests {
 
         let args = AggregateArgs {
             aggregation: "sum:score".to_string(),
-            filter: vec![],
-            wal: crate::commands::WalArgs::default(),
+            filter:      vec![],
+            wal:         crate::commands::WalArgs::default(),
         };
 
         let result = run(store_path, collection_name, None, args).await;
@@ -336,13 +324,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
         let collection_name = "test_collection".to_string();
 
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(&collection_name, None)
             .await
@@ -363,8 +347,8 @@ mod tests {
 
         let args = AggregateArgs {
             aggregation: "avg:score".to_string(),
-            filter: vec![],
-            wal: crate::commands::WalArgs::default(),
+            filter:      vec![],
+            wal:         crate::commands::WalArgs::default(),
         };
 
         let result = run(store_path, collection_name, None, args).await;
@@ -377,13 +361,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
         let collection_name = "test_collection".to_string();
 
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(&collection_name, None)
             .await
@@ -404,8 +384,8 @@ mod tests {
 
         let args = AggregateArgs {
             aggregation: "min:score".to_string(),
-            filter: vec![],
-            wal: crate::commands::WalArgs::default(),
+            filter:      vec![],
+            wal:         crate::commands::WalArgs::default(),
         };
 
         let result = run(store_path, collection_name, None, args).await;
@@ -418,13 +398,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
         let collection_name = "test_collection".to_string();
 
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(&collection_name, None)
             .await
@@ -445,8 +421,8 @@ mod tests {
 
         let args = AggregateArgs {
             aggregation: "max:score".to_string(),
-            filter: vec![],
-            wal: crate::commands::WalArgs::default(),
+            filter:      vec![],
+            wal:         crate::commands::WalArgs::default(),
         };
 
         let result = run(store_path, collection_name, None, args).await;
@@ -459,13 +435,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
         let collection_name = "test_collection".to_string();
 
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let collection = store
             .collection_with_config(&collection_name, None)
             .await
@@ -473,7 +445,10 @@ mod tests {
 
         // Insert test documents
         collection
-            .insert("doc1", json!({"name": "Alice", "score": 85, "active": true}))
+            .insert(
+                "doc1",
+                json!({"name": "Alice", "score": 85, "active": true}),
+            )
             .await
             .unwrap();
         collection
@@ -481,7 +456,10 @@ mod tests {
             .await
             .unwrap();
         collection
-            .insert("doc3", json!({"name": "Charlie", "score": 78, "active": true}))
+            .insert(
+                "doc3",
+                json!({"name": "Charlie", "score": 78, "active": true}),
+            )
             .await
             .unwrap();
 
@@ -490,8 +468,8 @@ mod tests {
 
         let args = AggregateArgs {
             aggregation: "count".to_string(),
-            filter: vec!["active=true".to_string()],
-            wal: crate::commands::WalArgs::default(),
+            filter:      vec!["active=true".to_string()],
+            wal:         crate::commands::WalArgs::default(),
         };
 
         let result = run(store_path, collection_name, None, args).await;
@@ -504,13 +482,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
         let collection_name = "test_collection".to_string();
 
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let _collection = store
             .collection_with_config(&collection_name, None)
             .await
@@ -521,8 +495,8 @@ mod tests {
 
         let args = AggregateArgs {
             aggregation: "invalid:operation".to_string(),
-            filter: vec![],
-            wal: crate::commands::WalArgs::default(),
+            filter:      vec![],
+            wal:         crate::commands::WalArgs::default(),
         };
 
         let result = run(store_path, collection_name, None, args).await;

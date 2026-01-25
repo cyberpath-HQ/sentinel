@@ -40,13 +40,9 @@ mod tests {
         let collection_name = "test_collection".to_string();
 
         // Create store and collection first
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
         let _collection = store
             .collection_with_config(&collection_name, None)
             .await
@@ -57,7 +53,7 @@ mod tests {
 
         // Now delete the collection
         let args = DeleteCollectionArgs {
-            path: store_path,
+            path:       store_path,
             collection: collection_name,
             passphrase: None,
         };
@@ -73,20 +69,16 @@ mod tests {
         let collection_name = "nonexistent_collection".to_string();
 
         // Create store but not the collection
-        let _store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let _store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Give time for event processing
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Try to delete non-existent collection
         let args = DeleteCollectionArgs {
-            path: store_path,
+            path:       store_path,
             collection: collection_name,
             passphrase: None,
         };

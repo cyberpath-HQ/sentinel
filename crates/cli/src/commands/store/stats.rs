@@ -44,19 +44,15 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
 
         // Create empty store
-        let _store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let _store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Give time for event processing
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         let args = StatsArgs {
-            path: store_path,
+            path:       store_path,
             passphrase: None,
         };
 
@@ -70,13 +66,9 @@ mod tests {
         let store_path = temp_dir.path().to_string_lossy().to_string();
 
         // Create store and add some data
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
 
         let collection = store
             .collection_with_config("test_collection", None)
@@ -97,7 +89,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         let args = StatsArgs {
-            path: store_path,
+            path:       store_path,
             passphrase: None,
         };
 

@@ -45,10 +45,7 @@ pub struct WalVerificationResult {
 /// 1. Replays all WAL entries to compute final expected states
 /// 2. Compares final WAL states with actual disk states
 /// 3. Checks for WAL internal consistency
-pub async fn verify_wal_consistency<D>(
-    wal: &WalManager,
-    document_ops: &D,
-) -> Result<WalVerificationResult>
+pub async fn verify_wal_consistency<D>(wal: &WalManager, document_ops: &D) -> Result<WalVerificationResult>
 where
     D: WalDocumentOps + Sync,
 {
@@ -61,12 +58,8 @@ where
     while let Some(entry_result) = pinned_stream.next().await {
         match entry_result {
             Ok(entry) => {
-                if let Some(issue) = verify_wal_entry_consistency(
-                    &entry,
-                    &mut wal_states,
-                    &mut active_transactions,
-                )
-                .await?
+                if let Some(issue) =
+                    verify_wal_entry_consistency(&entry, &mut wal_states, &mut active_transactions).await?
                 {
                     issues.push(issue);
                 }
@@ -217,10 +210,11 @@ async fn verify_wal_entry_consistency(
         },
         EntryType::Commit => {
             // Transaction commit - validate the transaction
-            if let Some(ops) = active_transactions.get(txn_id)
-                && let Some(issue) = verify_transaction_consistency(ops).await? {
-                    return Ok(Some(issue));
-                }
+            if let Some(ops) = active_transactions.get(txn_id) &&
+                let Some(issue) = verify_transaction_consistency(ops).await?
+            {
+                return Ok(Some(issue));
+            }
             active_transactions.remove(txn_id);
         },
         EntryType::Rollback => {
@@ -262,7 +256,10 @@ async fn verify_wal_entry_consistency(
 }
 
 /// Verify transaction consistency
-#[allow(clippy::expect_used, reason = "ops is guaranteed to be non-empty in this context")]
+#[allow(
+    clippy::expect_used,
+    reason = "ops is guaranteed to be non-empty in this context"
+)]
 async fn verify_transaction_consistency(ops: &[LogEntry]) -> Result<Option<WalVerificationIssue>> {
     // Check that transaction has proper begin/commit structure
     let has_begin = ops.iter().any(|op| op.entry_type == EntryType::Begin);
@@ -297,7 +294,7 @@ mod tests {
     use crate::{EntryType, LogEntry};
 
     fn create_test_entry(entry_type: EntryType, doc_id: &str, txn_id: &str) -> LogEntry {
-        use crate::entry::{FixedBytes32, FixedBytes256};
+        use crate::entry::{FixedBytes256, FixedBytes32};
         LogEntry {
             entry_type,
             collection: FixedBytes256::from(b"test" as &[u8]),
@@ -356,7 +353,9 @@ mod tests {
         let mut entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
         entry.data = Some(r#"{"name": "test"}"#.to_string());
 
-        let result = verify_wal_entry_consistency(&entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_none());
         assert!(wal_states.contains_key("doc1"));
     }
@@ -368,13 +367,17 @@ mod tests {
 
         // First insert
         let insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
-        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
 
         // Then update
         let mut update_entry = create_test_entry(EntryType::Update, "doc1", "txn2");
         update_entry.data = Some(r#"{"updated": true}"#.to_string());
 
-        let result = verify_wal_entry_consistency(&update_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&update_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_none());
     }
 
@@ -385,12 +388,16 @@ mod tests {
 
         // First insert
         let insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
-        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
 
         // Then delete
         let delete_entry = create_test_entry(EntryType::Delete, "doc1", "txn2");
 
-        let result = verify_wal_entry_consistency(&delete_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&delete_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_none());
         assert!(!wal_states.contains_key("doc1"));
     }
@@ -403,7 +410,9 @@ mod tests {
         let mut begin_entry = create_test_entry(EntryType::Begin, "doc1", "txn1");
         begin_entry.data = Some(r#"{"unexpected": "data"}"#.to_string());
 
-        let result = verify_wal_entry_consistency(&begin_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&begin_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_some());
         let issue = result.unwrap();
         assert_eq!(issue.transaction_id, "txn1");
@@ -420,7 +429,9 @@ mod tests {
         let mut insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
         insert_entry.data = Some(r#"{"invalid": json}"#.to_string());
 
-        let result = verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_some());
         let issue = result.unwrap();
         assert_eq!(issue.transaction_id, "txn1");
@@ -437,7 +448,9 @@ mod tests {
         let mut insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
         insert_entry.data = None;
 
-        let result = verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_some());
         let issue = result.unwrap();
         assert_eq!(issue.transaction_id, "txn1");
@@ -454,7 +467,9 @@ mod tests {
         let mut update_entry = create_test_entry(EntryType::Update, "doc1", "txn1");
         update_entry.data = Some(r#"{"invalid": json}"#.to_string());
 
-        let result = verify_wal_entry_consistency(&update_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&update_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_some());
         let issue = result.unwrap();
         assert_eq!(issue.transaction_id, "txn1");
@@ -471,13 +486,17 @@ mod tests {
         // First insert
         let mut insert_entry1 = create_test_entry(EntryType::Insert, "doc1", "txn1");
         insert_entry1.data = Some(r#"{"name": "test"}"#.to_string());
-        verify_wal_entry_consistency(&insert_entry1, &mut wal_states, &mut active_transactions).await.unwrap();
+        verify_wal_entry_consistency(&insert_entry1, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
 
         // Second insert of same document
         let mut insert_entry2 = create_test_entry(EntryType::Insert, "doc1", "txn2");
         insert_entry2.data = Some(r#"{"name": "test2"}"#.to_string());
 
-        let result = verify_wal_entry_consistency(&insert_entry2, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&insert_entry2, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_some());
         let issue = result.unwrap();
         assert_eq!(issue.transaction_id, "txn2");
@@ -495,7 +514,9 @@ mod tests {
         update_entry.data = Some(r#"{"name": "updated"}"#.to_string());
 
         // Update on nonexistent is actually valid (creates document-like state)
-        let result = verify_wal_entry_consistency(&update_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&update_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         // This should be None since update is allowed on nonexistent
         assert!(result.is_none());
     }
@@ -508,7 +529,9 @@ mod tests {
         let delete_entry = create_test_entry(EntryType::Delete, "nonexistent", "txn1");
 
         // Delete on nonexistent is actually valid
-        let result = verify_wal_entry_consistency(&delete_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&delete_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         // This should be None since delete is allowed on nonexistent
         assert!(result.is_none());
     }
@@ -521,11 +544,15 @@ mod tests {
         // First insert
         let mut insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
         insert_entry.data = Some(r#"{"name": "test"}"#.to_string());
-        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
 
         // Then delete
         let delete_entry = create_test_entry(EntryType::Delete, "doc1", "txn2");
-        let result = verify_wal_entry_consistency(&delete_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&delete_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_none()); // Should be valid
     }
 
@@ -536,11 +563,15 @@ mod tests {
 
         // Begin first
         let begin_entry = create_test_entry(EntryType::Begin, "doc1", "txn1");
-        verify_wal_entry_consistency(&begin_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        verify_wal_entry_consistency(&begin_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
 
         // Try to rollback without operations
         let rollback_entry = create_test_entry(EntryType::Rollback, "doc1", "txn1");
-        let result = verify_wal_entry_consistency(&rollback_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&rollback_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_none()); // Rollback after begin without operations should be fine
     }
 
@@ -552,17 +583,23 @@ mod tests {
         // Insert
         let mut insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
         insert_entry.data = Some(r#"{"v": 1}"#.to_string());
-        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
 
         // Update 1
         let mut update1 = create_test_entry(EntryType::Update, "doc1", "txn2");
         update1.data = Some(r#"{"v": 2}"#.to_string());
-        verify_wal_entry_consistency(&update1, &mut wal_states, &mut active_transactions).await.unwrap();
+        verify_wal_entry_consistency(&update1, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
 
         // Update 2
         let mut update2 = create_test_entry(EntryType::Update, "doc1", "txn3");
         update2.data = Some(r#"{"v": 3}"#.to_string());
-        let result = verify_wal_entry_consistency(&update2, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&update2, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_none()); // Should be valid
     }
 
@@ -572,10 +609,14 @@ mod tests {
         let mut active_transactions = std::collections::HashMap::new();
 
         let begin_entry = create_test_entry(EntryType::Begin, "doc1", "txn1");
-        verify_wal_entry_consistency(&begin_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        verify_wal_entry_consistency(&begin_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
 
         let commit_entry = create_test_entry(EntryType::Commit, "doc1", "txn1");
-        let result = verify_wal_entry_consistency(&commit_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        let result = verify_wal_entry_consistency(&commit_entry, &mut wal_states, &mut active_transactions)
+            .await
+            .unwrap();
         assert!(result.is_none()); // Commit should be fine after begin
     }
 }
