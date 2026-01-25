@@ -124,21 +124,12 @@ pub async fn run(
     match coll.get_with_verification(id, &verification_options).await {
         Ok(Some(doc)) => {
             info!("Document '{}' retrieved successfully", id);
-            match serde_json::to_string_pretty(doc.data()) {
-                Ok(json) => {
-                    #[allow(clippy::print_stdout, reason = "CLI output")]
-                    {
-                        println!("{}", json);
-                    }
-                    Ok(())
-                },
-                Err(e) => {
-                    error!("Failed to serialize document to JSON: {}", e);
-                    Err(sentinel_dbms::SentinelError::Json {
-                        source: e,
-                    })
-                },
+            let json = serde_json::to_string_pretty(doc.data()).unwrap();
+            #[allow(clippy::print_stdout, reason = "CLI output")]
+            {
+                println!("{}", json);
             }
+            Ok(())
         },
         Ok(None) => {
             warn!("Document '{}' not found in collection '{}'", id, collection);
@@ -534,6 +525,45 @@ mod tests {
         )
         .await;
 
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_get_invalid_document_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let store_path = temp_dir.path().join("test_store");
+        let collection_name = "test_collection";
+        let doc_id = ""; // Invalid: empty document ID
+
+        // Initialize store and create collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        let args = GetArgs {
+            id:               doc_id.to_string(),
+            verify_signature: false,
+            verify_hash:      false,
+            signature_mode:   "silent".to_string(),
+            empty_sig_mode:   "silent".to_string(),
+            hash_mode:        "silent".to_string(),
+            wal:              WalArgs::default(),
+        };
+
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        // Should fail due to invalid document ID
         assert!(result.is_err());
     }
 }
