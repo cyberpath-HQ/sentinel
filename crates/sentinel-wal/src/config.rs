@@ -50,7 +50,7 @@ impl std::fmt::Display for WalFailureMode {
 /// This struct defines how WAL should behave for a specific collection,
 /// including operational modes, verification settings, recovery options,
 /// and low-level file management parameters.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionWalConfig {
     /// Operational mode for WAL write operations (insert/update/delete)
     pub write_mode:            WalFailureMode,

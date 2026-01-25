@@ -29,6 +29,7 @@ pub struct GetManyArgs {
 ///
 /// # Returns
 /// Returns `Ok(())` on success.
+#[allow(clippy::print_stdout, reason = "CLI command output")]
 pub async fn run(
     store_path: String,
     collection_name: String,
@@ -61,19 +62,17 @@ pub async fn run(
                 .into_iter()
                 .zip(ids.iter())
                 .map(|(doc, id)| {
-                    if let Some(doc) = doc {
-                        serde_json::json!({
+                    doc.map_or_else(
+                        || serde_json::json!({
+                            "id": id,
+                            "found": false
+                        }),
+                        |doc| serde_json::json!({
                             "id": id,
                             "found": true,
                             "data": doc.data()
                         })
-                    }
-                    else {
-                        serde_json::json!({
-                            "id": id,
-                            "found": false
-                        })
-                    }
+                    )
                 })
                 .collect();
 
@@ -85,7 +84,7 @@ pub async fn run(
 
             for (doc, id) in documents.into_iter().zip(ids.iter()) {
                 let found = if doc.is_some() { "Yes" } else { "No" };
-                let preview = if let Some(doc) = &doc {
+                let preview = doc.as_ref().map_or_else(|| String::from(""), |doc| {
                     let data_str = serde_json::to_string(&doc.data()).unwrap();
                     if data_str.len() > 40 {
                         format!("{}...", &data_str[.. 37])
@@ -93,10 +92,7 @@ pub async fn run(
                     else {
                         data_str
                     }
-                }
-                else {
-                    String::from("")
-                };
+                });
                 println!("{:<30} {:<6} {}", id, found, preview);
             }
         },

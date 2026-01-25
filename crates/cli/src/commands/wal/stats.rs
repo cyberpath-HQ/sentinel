@@ -8,6 +8,7 @@ use tracing::info;
 pub struct StatsArgs;
 
 /// Execute the WAL stats operation.
+#[allow(clippy::arithmetic_side_effects, reason = "Safe arithmetic for calculating WAL statistics and averages")]
 pub async fn run(store_path: String, collection: Option<String>, _args: StatsArgs) -> sentinel_dbms::Result<()> {
     use sentinel_dbms::wal::ops::CollectionWalOps as _;
 
@@ -27,6 +28,7 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
             size as f64 / (1024.0 * 1024.0)
         );
         tracing::info!("  Entries: {}", count);
+        #[allow(clippy::arithmetic_side_effects, reason = "Safe division for calculating average entry size")]
         tracing::info!(
             "  Average entry size: {} bytes",
             if count > 0 { size / count as u64 } else { 0 }

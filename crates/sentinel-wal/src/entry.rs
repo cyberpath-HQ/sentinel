@@ -21,6 +21,7 @@ impl Serialize for FixedBytes32 {
 }
 
 impl<'de> Deserialize<'de> for FixedBytes32 {
+    #[allow(clippy::indexing_slicing, reason = "safe slicing in deserialization")]
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -47,6 +48,11 @@ impl std::ops::DerefMut for FixedBytes32 {
 }
 
 impl From<&[u8]> for FixedBytes32 {
+    #[allow(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "safe operations in From impl"
+    )]
     fn from(bytes: &[u8]) -> Self {
         let mut temp = bytes.to_vec();
         let len = temp.len();
@@ -93,6 +99,10 @@ impl std::ops::DerefMut for FixedBytes256 {
 }
 
 impl From<&[u8]> for FixedBytes256 {
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "safe arithmetic in From impl"
+    )]
     fn from(bytes: &[u8]) -> Self {
         let mut temp = bytes.to_vec();
         let len = temp.len();
@@ -287,6 +297,11 @@ impl LogEntry {
     /// assert_eq!(deserialized.collection_str(), "users");
     /// assert_eq!(deserialized.document_id_str(), "user-123");
     /// ```
+    #[allow(
+        clippy::arithmetic_side_effects,
+        clippy::indexing_slicing,
+        reason = "safe operations in from_bytes"
+    )]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 4 {
             return Err(WalError::InvalidEntry("Entry too short".to_owned()));
@@ -489,6 +504,10 @@ impl LogEntry {
     /// assert_eq!(data["name"], "Alice");
     /// assert_eq!(data["age"], 30);
     /// ```
+    #[allow(
+        clippy::pattern_type_mismatch,
+        reason = "safe pattern matching for Option"
+    )]
     pub fn data_as_value(&self) -> Result<Option<serde_json::Value>> {
         match &self.data {
             Some(s) => {

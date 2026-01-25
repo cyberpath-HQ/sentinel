@@ -45,10 +45,11 @@ pub struct WalRecoveryFailure {
 /// This function replays WAL entries to restore the collection to its
 /// correct state. It only applies operations that haven't been applied yet
 /// and handles conflicts gracefully.
-pub async fn recover_from_wal_safe<D>(wal: &WalManager, document_ops: &D) -> Result<WalRecoveryResult>
-where
-    D: WalDocumentOps,
-{
+    #[allow(clippy::arithmetic_side_effects, reason = "safe counter increments")]
+    pub async fn recover_from_wal_safe<D>(wal: &WalManager, document_ops: &D) -> Result<WalRecoveryResult>
+    where
+        D: WalDocumentOps,
+    {
     let mut recovered = 0;
     let mut skipped = 0;
     let mut failed = 0;
@@ -130,7 +131,7 @@ where
 {
     match entry.entry_type {
         EntryType::Insert => {
-            if let Some(data_str) = &entry.data {
+            if let Some(data_str) = entry.data.as_ref() {
                 // Parse the JSON data
                 let data: serde_json::Value = serde_json::from_str(data_str)
                     .map_err(|e| crate::error::WalError::Serialization(format!("Invalid JSON in WAL insert: {}", e)))?;
@@ -167,7 +168,7 @@ where
             }
         },
         EntryType::Update => {
-            if let Some(data_str) = &entry.data {
+            if let Some(data_str) = entry.data.as_ref() {
                 // Parse the JSON data
                 let data: serde_json::Value = serde_json::from_str(data_str)
                     .map_err(|e| crate::error::WalError::Serialization(format!("Invalid JSON in WAL update: {}", e)))?;
@@ -241,7 +242,8 @@ where
 ///
 /// This is a more aggressive recovery that attempts to resolve conflicts
 /// by overwriting conflicting states.
-pub async fn recover_from_wal_force<D>(wal: &WalManager, document_ops: &D) -> Result<WalRecoveryResult>
+    #[allow(clippy::arithmetic_side_effects, reason = "safe counter increments")]
+    pub async fn recover_from_wal_force<D>(wal: &WalManager, document_ops: &D) -> Result<WalRecoveryResult>
 where
     D: WalDocumentOps,
 {
@@ -307,7 +309,7 @@ where
 {
     match entry.entry_type {
         EntryType::Insert | EntryType::Update => {
-            if let Some(data_str) = &entry.data {
+            if let Some(data_str) = entry.data.as_ref() {
                 let data: serde_json::Value = serde_json::from_str(data_str)
                     .map_err(|e| crate::error::WalError::Serialization(format!("Invalid JSON in WAL entry: {}", e)))?;
 

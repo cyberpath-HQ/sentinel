@@ -32,6 +32,7 @@ pub struct AggregateArgs {
 ///
 /// # Returns
 /// Returns `Ok(())` on success.
+#[allow(clippy::print_stdout, reason = "CLI command output")]
 pub async fn run(
     store_path: String,
     collection_name: String,

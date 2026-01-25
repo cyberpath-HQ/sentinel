@@ -99,6 +99,8 @@ use sentinel_wal::{
 };
 
 use crate::{Collection, Store};
+use crate::store::operations::collection_with_config;
+use sentinel_wal::StoreWalConfig;
 
 /// Extension trait for Store to add WAL operations.
 ///
@@ -453,7 +455,7 @@ impl StoreWalOps for Store {
 
         for collection_name in collections {
             debug!("Checkpointing collection: {}", collection_name);
-            let collection = self.collection(&collection_name).await?;
+            let collection = collection_with_config(self, &collection_name, None).await?;
             CollectionWalOps::checkpoint_wal(&collection).await?;
         }
 
@@ -473,7 +475,7 @@ impl StoreWalOps for Store {
         let mut streams = Vec::new();
 
         for collection_name in collections {
-            let collection = self.collection(&collection_name).await?;
+            let collection = collection_with_config(self, &collection_name, None).await?;
             if let Ok(stream) = CollectionWalOps::stream_wal_entries(&collection).await {
                 let collection_name_clone = collection_name.clone();
                 let mapped_stream =
@@ -508,7 +510,7 @@ impl StoreWalOps for Store {
 
         for collection_name in collections {
             debug!("Verifying collection: {}", collection_name);
-            let collection = self.collection(&collection_name).await?;
+            let collection = collection_with_config(self, &collection_name, None).await?;
             match CollectionWalOps::verify_against_wal(&collection).await {
                 Ok(verification_result) => {
                     if !verification_result.issues.is_empty() {
@@ -566,7 +568,7 @@ impl StoreWalOps for Store {
 
         for collection_name in collections {
             debug!("Recovering collection: {}", collection_name);
-            let collection = self.collection(&collection_name).await?;
+            let collection = collection_with_config(self, &collection_name, None).await?;
             match CollectionWalOps::recover_from_wal(&collection).await {
                 Ok(recovery_result) => {
                     let operations = recovery_result.recovered_operations;
@@ -743,11 +745,11 @@ mod tests {
     /// Helper to create a test store with a collection
     async fn create_test_store_with_collection() -> (tempfile::TempDir, Store, String) {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().to_path_buf(), None)
+        let store = Store::new_with_config(temp_dir.path().to_path_buf(), None, StoreWalConfig::default())
             .await
             .unwrap();
         let collection_name = "test_wal_collection".to_string();
-        let _ = store.collection(&collection_name).await.unwrap();
+        let _ = collection_with_config(&store, &collection_name, None).await.unwrap();
         (temp_dir, store, collection_name)
     }
 
@@ -756,7 +758,7 @@ mod tests {
     #[tokio::test]
     async fn test_checkpoint_wal_with_wal_manager() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = collection_with_config(&store, &collection_name, None).await.unwrap();
 
         // Insert some data to create WAL entries
         collection
@@ -1037,7 +1039,7 @@ mod tests {
     #[tokio::test]
     async fn test_wal_operations_on_empty_store() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().to_path_buf(), None)
+        let store = Store::new_with_config(temp_dir.path().to_path_buf(), None, StoreWalConfig::default())
             .await
             .unwrap();
 
@@ -1202,7 +1204,7 @@ mod tests {
     async fn test_wal_ops_checkpoint_all_with_empty_store() {
         // Test checkpoint_all_collections on empty store
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().to_path_buf(), None)
+        let store = Store::new_with_config(temp_dir.path().to_path_buf(), None, StoreWalConfig::default())
             .await
             .unwrap();
 
@@ -1215,7 +1217,7 @@ mod tests {
     async fn test_wal_ops_recover_all_with_empty_store() {
         // Test recover_all_collections on empty store
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().to_path_buf(), None)
+        let store = Store::new_with_config(temp_dir.path().to_path_buf(), None, StoreWalConfig::default())
             .await
             .unwrap();
 
@@ -1250,7 +1252,7 @@ mod tests {
     async fn test_wal_ops_stream_all_with_no_collections() {
         // Test stream_all_wal_entries when there are no collections
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().to_path_buf(), None)
+        let store = Store::new_with_config(temp_dir.path().to_path_buf(), None, StoreWalConfig::default())
             .await
             .unwrap();
 
