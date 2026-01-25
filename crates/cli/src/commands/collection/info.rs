@@ -1,4 +1,5 @@
 use clap::Args;
+use sentinel_dbms::wal::ops::CollectionWalOps;
 
 /// Arguments for collection info command.
 #[derive(Args)]
@@ -137,6 +138,9 @@ mod tests {
             .insert("doc2", json!({"name": "Bob", "age": 25}))
             .await
             .unwrap();
+
+        // Create a checkpoint
+        collection.checkpoint_wal().await.unwrap();
 
         // Allow event processor to update counters
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
