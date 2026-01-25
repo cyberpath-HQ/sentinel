@@ -80,7 +80,7 @@ pub async fn run(
             println!("{}", serde_json::to_string_pretty(&results)?);
         },
         "table" => {
-            println!("{:<30} {:<6} {}", "ID", "Found", "Data Preview");
+            println!("{:<30} {:<6} Data Preview", "ID", "Found");
             println!("{}", "-".repeat(80));
 
             for (doc, id) in documents.into_iter().zip(ids.iter()) {

@@ -32,7 +32,7 @@ impl<'de> Deserialize<'de> for FixedBytes32 {
             // Pad with zeros if shorter
             arr[bytes.len() ..].fill(0);
         }
-        Ok(FixedBytes32(arr))
+        Ok(Self(arr))
     }
 }
 
@@ -50,12 +50,12 @@ impl From<&[u8]> for FixedBytes32 {
     fn from(bytes: &[u8]) -> Self {
         let mut temp = bytes.to_vec();
         let len = temp.len();
-        let padded_len = ((len + 15) / 16) * 16;
+        let padded_len = len.div_ceil(16) * 16;
         temp.resize(padded_len, 0);
         let mut arr = [0u8; 32];
         let copy_len = temp.len().min(32);
         arr[.. copy_len].copy_from_slice(&temp[.. copy_len]);
-        FixedBytes32(arr)
+        Self(arr)
     }
 }
 
@@ -78,7 +78,7 @@ impl<'de> Deserialize<'de> for FixedBytes256 {
         D: serde::Deserializer<'de>,
     {
         let bytes: &[u8] = serde::Deserialize::deserialize(deserializer)?;
-        Ok(FixedBytes256(bytes.to_vec()))
+        Ok(Self(bytes.to_vec()))
     }
 }
 
@@ -96,7 +96,7 @@ impl From<&[u8]> for FixedBytes256 {
     fn from(bytes: &[u8]) -> Self {
         let mut temp = bytes.to_vec();
         let len = temp.len();
-        let padded_len = ((len + 15) / 16) * 16;
+        let padded_len = len.div_ceil(16) * 16;
         if padded_len > 256 {
             temp.truncate(256);
             // If truncated, pad to 256
@@ -105,7 +105,7 @@ impl From<&[u8]> for FixedBytes256 {
         else {
             temp.resize(padded_len, 0);
         }
-        FixedBytes256(temp)
+        Self(temp)
     }
 }
 
@@ -289,7 +289,7 @@ impl LogEntry {
     /// ```
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 4 {
-            return Err(WalError::InvalidEntry("Entry too short".to_string()));
+            return Err(WalError::InvalidEntry("Entry too short".to_owned()));
         }
 
         let data_len = bytes.len() - 4;
@@ -305,7 +305,7 @@ impl LogEntry {
             return Err(WalError::ChecksumMismatch);
         }
 
-        let entry: LogEntry =
+        let entry: Self =
             postcard::from_bytes(data).map_err(|e: postcard::Error| WalError::Serialization(e.to_string()))?;
         trace!(
             "Deserialized binary entry (entry_type: {:?})",
@@ -407,47 +407,47 @@ impl LogEntry {
                 serde_json::from_value(v.clone())
                     .map_err(|e| WalError::Serialization(format!("Invalid entry_type: {}", e)))?
             },
-            None => return Err(WalError::InvalidEntry("Missing entry_type".to_string())),
+            None => return Err(WalError::InvalidEntry("Missing entry_type".to_owned())),
         };
 
         let transaction_id = match json_value.get("transaction_id") {
             Some(v) => {
                 v.as_str()
-                    .ok_or_else(|| WalError::InvalidEntry("transaction_id must be string".to_string()))?
+                    .ok_or_else(|| WalError::InvalidEntry("transaction_id must be string".to_owned()))?
             },
-            None => return Err(WalError::InvalidEntry("Missing transaction_id".to_string())),
+            None => return Err(WalError::InvalidEntry("Missing transaction_id".to_owned())),
         };
 
         let collection = match json_value.get("collection") {
             Some(v) => {
                 v.as_str()
-                    .ok_or_else(|| WalError::InvalidEntry("collection must be string".to_string()))?
+                    .ok_or_else(|| WalError::InvalidEntry("collection must be string".to_owned()))?
             },
-            None => return Err(WalError::InvalidEntry("Missing collection".to_string())),
+            None => return Err(WalError::InvalidEntry("Missing collection".to_owned())),
         };
 
         let document_id = match json_value.get("document_id") {
             Some(v) => {
                 v.as_str()
-                    .ok_or_else(|| WalError::InvalidEntry("document_id must be string".to_string()))?
+                    .ok_or_else(|| WalError::InvalidEntry("document_id must be string".to_owned()))?
             },
-            None => return Err(WalError::InvalidEntry("Missing document_id".to_string())),
+            None => return Err(WalError::InvalidEntry("Missing document_id".to_owned())),
         };
 
         let timestamp = match json_value.get("timestamp") {
             Some(v) => {
                 v.as_u64()
-                    .ok_or_else(|| WalError::InvalidEntry("timestamp must be number".to_string()))?
+                    .ok_or_else(|| WalError::InvalidEntry("timestamp must be number".to_owned()))?
             },
-            None => return Err(WalError::InvalidEntry("Missing timestamp".to_string())),
+            None => return Err(WalError::InvalidEntry("Missing timestamp".to_owned())),
         };
 
         let data = json_value
             .get("data")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(|s| s.to_owned());
 
-        let entry = LogEntry {
+        let entry = Self {
             entry_type,
             transaction_id: FixedBytes32::from(transaction_id.as_bytes()),
             collection: FixedBytes256::from(collection.as_bytes()),

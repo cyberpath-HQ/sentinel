@@ -1,5 +1,4 @@
 use clap::Args;
-use sentinel_dbms::wal::ops::CollectionWalOps;
 
 /// Arguments for collection info command.
 #[derive(Args)]

@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use futures::StreamExt;
+use futures::StreamExt as _;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
@@ -63,8 +63,8 @@ where
         match entry_result {
             Ok(entry) => {
                 let key = (
-                    entry.document_id_str().to_string(),
-                    entry.transaction_id_str().to_string(),
+                    entry.document_id_str().to_owned(),
+                    entry.transaction_id_str().to_owned(),
                 );
 
                 // Skip if this operation was already applied
@@ -85,8 +85,8 @@ where
                     Err(e) => {
                         failed += 1;
                         failures.push(WalRecoveryFailure {
-                            transaction_id: entry.transaction_id_str().to_string(),
-                            document_id:    entry.document_id_str().to_string(),
+                            transaction_id: entry.transaction_id_str().to_owned(),
+                            document_id:    entry.document_id_str().to_owned(),
                             operation_type: format!("{:?}", entry.entry_type),
                             reason:         format!("{}", e),
                         });
@@ -96,9 +96,9 @@ where
             Err(e) => {
                 failed += 1;
                 failures.push(WalRecoveryFailure {
-                    transaction_id: "unknown".to_string(),
-                    document_id:    "unknown".to_string(),
-                    operation_type: "read".to_string(),
+                    transaction_id: "unknown".to_owned(),
+                    document_id:    "unknown".to_owned(),
+                    operation_type: "read".to_owned(),
                     reason:         format!("Failed to read WAL entry: {}", e),
                 });
             },
@@ -267,8 +267,8 @@ where
                     Err(e) => {
                         failed += 1;
                         failures.push(WalRecoveryFailure {
-                            transaction_id: entry.transaction_id_str().to_string(),
-                            document_id:    entry.document_id_str().to_string(),
+                            transaction_id: entry.transaction_id_str().to_owned(),
+                            document_id:    entry.document_id_str().to_owned(),
                             operation_type: format!("{:?}", entry.entry_type),
                             reason:         format!("{}", e),
                         });
@@ -278,9 +278,9 @@ where
             Err(e) => {
                 failed += 1;
                 failures.push(WalRecoveryFailure {
-                    transaction_id: "unknown".to_string(),
-                    document_id:    "unknown".to_string(),
-                    operation_type: "read".to_string(),
+                    transaction_id: "unknown".to_owned(),
+                    document_id:    "unknown".to_owned(),
+                    operation_type: "read".to_owned(),
                     reason:         format!("Failed to read WAL entry: {}", e),
                 });
             },

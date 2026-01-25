@@ -9,8 +9,7 @@ impl WalDocumentOps for Collection {
             .await
             .map(|opt| opt.map(|d| d.data().clone()))
             .map_err(|e| {
-                sentinel_wal::WalError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                sentinel_wal::WalError::Io(std::io::Error::other(
                     format!("{}", e),
                 ))
             })
@@ -26,8 +25,7 @@ impl WalDocumentOps for Collection {
             sentinel_wal::EntryType::Insert => {
                 if let Some(data) = data {
                     self.insert(id, data).await.map_err(|e| {
-                        sentinel_wal::WalError::Io(std::io::Error::new(
-                            std::io::ErrorKind::Other,
+                        sentinel_wal::WalError::Io(std::io::Error::other(
                             format!("{}", e),
                         ))
                     })
@@ -41,8 +39,7 @@ impl WalDocumentOps for Collection {
             sentinel_wal::EntryType::Update => {
                 if let Some(data) = data {
                     self.update(id, data).await.map_err(|e| {
-                        sentinel_wal::WalError::Io(std::io::Error::new(
-                            std::io::ErrorKind::Other,
+                        sentinel_wal::WalError::Io(std::io::Error::other(
                             format!("{}", e),
                         ))
                     })
@@ -55,8 +52,7 @@ impl WalDocumentOps for Collection {
             },
             sentinel_wal::EntryType::Delete => {
                 self.delete(id).await.map_err(|e| {
-                    sentinel_wal::WalError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    sentinel_wal::WalError::Io(std::io::Error::other(
                         format!("{}", e),
                     ))
                 })

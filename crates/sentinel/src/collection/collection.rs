@@ -1,24 +1,14 @@
 use std::{path::PathBuf, sync::Arc};
 
-use async_stream::stream;
-use futures::{StreamExt as _, TryStreamExt as _};
-use serde_json::{json, Value};
+use futures::StreamExt as _;
 use tokio::fs as tokio_fs;
-use tokio_stream::Stream;
-use tracing::{debug, error, trace, warn};
-use sentinel_wal::{EntryType, LogEntry, WalDocumentOps, WalManager};
+use tracing::{debug, warn};
+use sentinel_wal::WalManager;
 
 use crate::{
-    comparison::compare_values,
     constants::COLLECTION_METADATA_FILE,
-    events::{EventEmitter, StoreEvent},
-    filtering::matches_filters,
     metadata::CollectionMetadata,
-    projection::project_document,
-    query::{Aggregation, Filter},
-    streaming::stream_document_ids,
-    validation::{is_reserved_name, is_valid_document_id_chars},
-    Document,
+    validation::is_valid_document_id_chars,
     Result,
     SentinelError,
 };
@@ -458,10 +448,9 @@ impl Collection {
     ///
     /// * `event` - The event to emit to the store.
     pub fn emit_event(&self, event: crate::events::StoreEvent) {
-        if let Some(sender) = &self.event_sender {
-            if let Err(e) = sender.send(event) {
+        if let Some(sender) = &self.event_sender
+            && let Err(e) = sender.send(event) {
                 warn!("Failed to emit collection event: {}", e);
             }
-        }
     }
 }

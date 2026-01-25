@@ -9,7 +9,7 @@ pub struct StatsArgs;
 
 /// Execute the WAL stats operation.
 pub async fn run(store_path: String, collection: Option<String>, _args: StatsArgs) -> sentinel_dbms::Result<()> {
-    use sentinel_dbms::wal::ops::CollectionWalOps;
+    use sentinel_dbms::wal::ops::CollectionWalOps as _;
 
     let store =
         sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default()).await?;
@@ -40,8 +40,8 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
         let mut total_entries = 0usize;
 
         for collection_name in collections {
-            if let Ok(collection) = store.collection_with_config(&collection_name, None).await {
-                if let (Ok(size), Ok(count)) = (
+            if let Ok(collection) = store.collection_with_config(&collection_name, None).await
+                && let (Ok(size), Ok(count)) = (
                     collection.wal_size().await,
                     collection.wal_entries_count().await,
                 ) {
@@ -50,7 +50,6 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
 
                     tracing::info!("  {}: {} bytes,  {} entries", collection_name, size, count);
                 }
-            }
         }
 
         tracing::info!(

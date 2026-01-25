@@ -68,19 +68,19 @@ fn parse_aggregation(spec: &str) -> sentinel_dbms::Result<Aggregation> {
     }
 
     if let Some(field) = spec.strip_prefix("sum:") {
-        return Ok(Aggregation::Sum(field.to_string()));
+        return Ok(Aggregation::Sum(field.to_owned()));
     }
 
     if let Some(field) = spec.strip_prefix("avg:") {
-        return Ok(Aggregation::Avg(field.to_string()));
+        return Ok(Aggregation::Avg(field.to_owned()));
     }
 
     if let Some(field) = spec.strip_prefix("min:") {
-        return Ok(Aggregation::Min(field.to_string()));
+        return Ok(Aggregation::Min(field.to_owned()));
     }
 
     if let Some(field) = spec.strip_prefix("max:") {
-        return Ok(Aggregation::Max(field.to_string()));
+        return Ok(Aggregation::Max(field.to_owned()));
     }
 
     Err(sentinel_dbms::SentinelError::Internal {
@@ -112,7 +112,7 @@ fn parse_filter(spec: &str) -> sentinel_dbms::Result<Filter> {
 
     for op in &operators {
         if let Some((field, value_str)) = spec.split_once(op) {
-            let field = field.trim().to_string();
+            let field = field.trim().to_owned();
 
             match *op {
                 "==" => {
@@ -141,13 +141,13 @@ fn parse_filter(spec: &str) -> sentinel_dbms::Result<Filter> {
                     return Ok(Filter::LessThan(field, value));
                 },
                 "~" => {
-                    return Ok(Filter::Contains(field, value_str.trim().to_string()));
+                    return Ok(Filter::Contains(field, value_str.trim().to_owned()));
                 },
                 "^" => {
-                    return Ok(Filter::StartsWith(field, value_str.trim().to_string()));
+                    return Ok(Filter::StartsWith(field, value_str.trim().to_owned()));
                 },
                 "$" => {
-                    return Ok(Filter::EndsWith(field, value_str.trim().to_string()));
+                    return Ok(Filter::EndsWith(field, value_str.trim().to_owned()));
                 },
                 " in:" => {
                     let values = parse_value_list(value_str.trim())?;
@@ -165,7 +165,7 @@ fn parse_filter(spec: &str) -> sentinel_dbms::Result<Filter> {
     // Default to equals if no operator found
     if let Some((field, value_str)) = spec.split_once('=') {
         let value = parse_value(value_str.trim())?;
-        return Ok(Filter::Equals(field.trim().to_string(), value));
+        return Ok(Filter::Equals(field.trim().to_owned(), value));
     }
 
     Err(sentinel_dbms::SentinelError::Internal {
@@ -184,7 +184,7 @@ fn parse_value(s: &str) -> sentinel_dbms::Result<Value> {
     }
 
     // If not valid JSON, treat as string
-    Ok(Value::String(s.to_string()))
+    Ok(Value::String(s.to_owned()))
 }
 
 /// Parse a list of values from comma-separated string.

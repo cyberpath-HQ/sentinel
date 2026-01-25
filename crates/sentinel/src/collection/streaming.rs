@@ -1,11 +1,9 @@
-use std::{path::PathBuf, sync::Arc};
 
 use async_stream::stream;
 use futures::{StreamExt as _, TryStreamExt as _};
-use serde_json::Value;
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 
 use crate::{streaming::stream_document_ids, Document, Result, SentinelError};
 use super::collection::Collection;

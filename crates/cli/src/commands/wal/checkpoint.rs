@@ -9,7 +9,7 @@ pub struct CheckpointArgs;
 
 /// Execute the WAL checkpoint operation.
 pub async fn run(store_path: String, collection: Option<String>, _args: CheckpointArgs) -> sentinel_dbms::Result<()> {
-    use sentinel_dbms::wal::ops::{CollectionWalOps as _, StoreWalOps};
+    use sentinel_dbms::wal::ops::{CollectionWalOps as _, StoreWalOps as _};
 
     let store =
         sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default()).await?;

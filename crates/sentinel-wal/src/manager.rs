@@ -5,7 +5,7 @@ use std::{fs, path::PathBuf, sync::Arc};
 use crc32fast::Hasher as Crc32Hasher;
 use tokio::{
     fs::{File, OpenOptions},
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader, BufWriter},
     sync::Mutex,
 };
 use tracing::{debug, info, trace, warn};
@@ -14,7 +14,7 @@ use async_stream::stream;
 use crate::{LogEntry, Result};
 
 /// WAL file format options
-#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum WalFormat {
     /// Binary format (compact, default)
     #[default]
@@ -28,8 +28,8 @@ impl std::str::FromStr for WalFormat {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "binary" => Ok(WalFormat::Binary),
-            "json_lines" => Ok(WalFormat::JsonLines),
+            "binary" => Ok(Self::Binary),
+            "json_lines" => Ok(Self::JsonLines),
             _ => Err(format!("Invalid WAL format: {}", s)),
         }
     }
@@ -38,8 +38,8 @@ impl std::str::FromStr for WalFormat {
 impl std::fmt::Display for WalFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WalFormat::Binary => write!(f, "binary"),
-            WalFormat::JsonLines => write!(f, "json_lines"),
+            Self::Binary => write!(f, "binary"),
+            Self::JsonLines => write!(f, "json_lines"),
         }
     }
 }
@@ -483,15 +483,14 @@ impl WalManager {
             for entry in dir {
                 let entry = entry?;
                 let path = entry.path();
-                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                    if file_name != self.path.file_name().unwrap().to_str().unwrap() &&
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str())
+                    && file_name != self.path.file_name().unwrap().to_str().unwrap() &&
                         file_name.starts_with("wal") &&
                         file_name.ends_with(".wal")
                     {
                         trace!("Found WAL file: {:?}", path);
                         files.push(path);
                     }
-                }
             }
         }
         files.sort_by(|a, b| {
@@ -708,7 +707,7 @@ impl WalManager {
                                         }
                                     },
                                     Err(e) => {
-                                        yield Err(crate::WalError::Io(e).into());
+                                        yield Err(crate::WalError::Io(e));
                                         break;
                                     }
                                 }

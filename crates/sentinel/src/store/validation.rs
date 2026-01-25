@@ -1,4 +1,4 @@
-use tracing::{debug, trace, warn};
+use tracing::{trace, warn};
 
 use crate::{
     validation::{is_reserved_name, is_valid_name_chars},

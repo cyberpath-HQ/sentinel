@@ -13,7 +13,6 @@ use crate::{
     SentinelError,
     StoreMetadata,
     KEYS_COLLECTION,
-    META_SENTINEL_VERSION,
     STORE_METADATA_FILE,
 };
 use super::{events::start_event_processor, operations::collection_with_config};

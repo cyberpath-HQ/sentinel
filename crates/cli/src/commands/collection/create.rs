@@ -46,7 +46,7 @@ fn build_collection_wal_config_overrides(
     global_wal: &WalArgs,
 ) -> Option<CollectionWalConfigOverrides> {
     // Only build overrides if any WAL options are provided
-    if args.wal.wal_max_file_size.is_some() ||
+    (args.wal.wal_max_file_size.is_some() ||
         args.wal.wal_format.is_some() ||
         args.wal.wal_compression.is_some() ||
         args.wal.wal_max_records.is_some() ||
@@ -62,10 +62,7 @@ fn build_collection_wal_config_overrides(
         global_wal.wal_verify_mode.is_some() ||
         global_wal.wal_auto_verify.is_some() ||
         global_wal.wal_enable_recovery.is_some() ||
-        args.wal.wal_persist_overrides ||
-        global_wal.wal_persist_overrides
-    {
-        Some(CollectionWalConfigOverrides {
+        args.wal.wal_persist_overrides || global_wal.wal_persist_overrides).then(|| CollectionWalConfigOverrides {
             write_mode:            args.wal.wal_write_mode.or(global_wal.wal_write_mode),
             verification_mode:     args.wal.wal_verify_mode.or(global_wal.wal_verify_mode),
             auto_verify:           args.wal.wal_auto_verify.or(global_wal.wal_auto_verify),
@@ -91,10 +88,6 @@ fn build_collection_wal_config_overrides(
             format:                args.wal.wal_format.or(global_wal.wal_format),
             persist_overrides:     args.wal.wal_persist_overrides || global_wal.wal_persist_overrides,
         })
-    }
-    else {
-        None
-    }
 }
 
 pub async fn run(

@@ -150,17 +150,16 @@ pub async fn run(
                 {
                     println!(
                         "{}",
-                        serde_json::to_string_pretty(doc.data()).unwrap_or_else(|_| "{}".to_string())
+                        serde_json::to_string_pretty(doc.data()).unwrap_or_else(|_| "{}".to_owned())
                     );
                 }
                 count = count.saturating_add(1);
 
                 // Apply limit if specified
-                if let Some(limit) = args.limit {
-                    if count >= limit {
+                if let Some(limit) = args.limit
+                    && count >= limit {
                         break;
                     }
-                }
             },
             Err(e) => {
                 error!(

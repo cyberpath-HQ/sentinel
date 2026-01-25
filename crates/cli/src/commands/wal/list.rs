@@ -2,7 +2,7 @@
 
 use clap::Args;
 use serde_json::json;
-use sentinel_dbms::futures::StreamExt;
+use sentinel_dbms::futures::StreamExt as _;
 use tracing::info;
 
 /// Arguments for the WAL list command.
@@ -19,7 +19,7 @@ pub struct ListArgs {
 
 /// Execute the WAL list operation.
 pub async fn run(store_path: String, collection: Option<String>, args: ListArgs) -> sentinel_dbms::Result<()> {
-    use sentinel_dbms::wal::ops::{CollectionWalOps as _, StoreWalOps};
+    use sentinel_dbms::wal::ops::{CollectionWalOps as _, StoreWalOps as _};
 
     // Validate format before starting
     match args.format.as_str() {
@@ -75,7 +75,7 @@ pub async fn run(store_path: String, collection: Option<String>, args: ListArgs)
                         entry.document_id_str(),
                         chrono::DateTime::from_timestamp(entry.timestamp as i64, 0)
                             .map(|dt| dt.to_rfc3339())
-                            .unwrap_or_else(|| "invalid timestamp".to_string())
+                            .unwrap_or_else(|| "invalid timestamp".to_owned())
                     );
                 },
                 _ => unreachable!("Format should have been validated at function start"),
