@@ -27,6 +27,7 @@ jobs:
       - name: Generate coverage reports
         run: |
           mkdir -p target/profraw
+          mkdir -p target/coverage
           RUSTFLAGS="-Cinstrument-coverage" LLVM_PROFILE_FILE="target/profraw/cyberpath-%p-%m.profraw" cargo test
           grcov . --binary-path ./target/debug/deps/ -s . -t lcov --branch --ignore-not-existing -o ./target/coverage/lcov.info
 
