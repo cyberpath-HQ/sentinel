@@ -466,6 +466,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_bulk_insert_mixed_success_failure() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert one document first to cause duplicate ID error
+        collection
+            .insert("doc1", serde_json::json!({"name": "Existing"}))
+            .await
+            .unwrap();
+
+        // Create bulk file with mix of valid and invalid documents
+        let bulk_file = temp_dir.path().join("bulk_mixed.json");
+        let bulk_data = r#"{
+            "doc1": {"name": "Alice"},
+            "doc2": {"name": "Bob"},
+            "invalid id with spaces": {"name": "Charlie"}
+        }"#;
+        fs::write(&bulk_file, bulk_data).await.unwrap();
+
+        // Run bulk insert command
+        let args = InsertArgs {
+            id:   None,
+            data: None,
+            bulk: Some(bulk_file.to_string_lossy().to_string()),
+            wal:  WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        // Should fail due to invalid document ID and duplicate ID
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn test_single_insert_duplicate_id() {
         let temp_dir = tempdir().unwrap();
         let store_path = temp_dir.path().join("store");
@@ -490,6 +539,39 @@ mod tests {
         let args = InsertArgs {
             id:   Some("doc1".to_string()),
             data: Some(r#"{"name": "Bob"}"#.to_string()),
+            bulk: None,
+            wal:  WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_single_insert_invalid_document_id() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Run insert command with invalid document ID
+        let args = InsertArgs {
+            id:   Some("invalid id with spaces".to_string()),
+            data: Some(r#"{"name": "Alice"}"#.to_string()),
             bulk: None,
             wal:  WalArgs::default(),
         };
