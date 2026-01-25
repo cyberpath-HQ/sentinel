@@ -207,4 +207,37 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_upsert_invalid_document_id() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            None,
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+
+        // Try to upsert with invalid document ID
+        let args = UpsertArgs {
+            id: "invalid/id".to_string(), // Invalid document ID with path separator
+            data: r#"{"name": "Alice"}"#.to_string(),
+            wal: WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
 }
