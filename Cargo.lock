@@ -1641,6 +1641,7 @@ dependencies = [
  "hex",
  "sentinel-dbms",
  "serde_json",
+ "serial_test",
  "tempfile",
  "tokio",
  "tracing",
