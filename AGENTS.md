@@ -40,6 +40,9 @@ cargo clippy -p sentinel-dbms --all-features
 cargo bench
 cargo bench -p sentinel-dbms
 cargo bench -p sentinel-crypto
+
+# Run coverage
+./scripts/run_coverage.sh
 ```
 
 ### Development Workflow Commands
@@ -298,6 +301,7 @@ src/
 ### Pre-commit Checklist
 - [ ] Code compiles without warnings
 - [ ] All tests pass (`cargo test`)
+- [ ] Coverage is 90%+ (`./scripts/run_coverage.sh`)
 - [ ] Clippy passes without warnings
 - [ ] Code is formatted (`cargo fmt`)
 - [ ] Documentation is updated
