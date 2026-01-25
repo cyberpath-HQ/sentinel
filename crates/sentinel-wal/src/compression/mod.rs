@@ -88,3 +88,241 @@ pub fn get_compressor(algorithm: CompressionAlgorithm) -> Box<dyn CompressionTra
         CompressionAlgorithm::Gzip => Box::new(GzipCompressor),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn test_compression_algorithm_from_str_valid() {
+        assert_eq!(
+            CompressionAlgorithm::from_str("zstd").unwrap(),
+            CompressionAlgorithm::Zstd
+        );
+        assert_eq!(
+            CompressionAlgorithm::from_str("lz4").unwrap(),
+            CompressionAlgorithm::Lz4
+        );
+        assert_eq!(
+            CompressionAlgorithm::from_str("brotli").unwrap(),
+            CompressionAlgorithm::Brotli
+        );
+        assert_eq!(
+            CompressionAlgorithm::from_str("deflate").unwrap(),
+            CompressionAlgorithm::Deflate
+        );
+        assert_eq!(
+            CompressionAlgorithm::from_str("gzip").unwrap(),
+            CompressionAlgorithm::Gzip
+        );
+    }
+
+    #[test]
+    fn test_compression_algorithm_from_str_case_insensitive() {
+        assert_eq!(
+            CompressionAlgorithm::from_str("ZSTD").unwrap(),
+            CompressionAlgorithm::Zstd
+        );
+        assert_eq!(
+            CompressionAlgorithm::from_str("Lz4").unwrap(),
+            CompressionAlgorithm::Lz4
+        );
+        assert_eq!(
+            CompressionAlgorithm::from_str("BrOtLi").unwrap(),
+            CompressionAlgorithm::Brotli
+        );
+    }
+
+    #[test]
+    fn test_compression_algorithm_from_str_invalid() {
+        assert!(CompressionAlgorithm::from_str("invalid").is_err());
+        assert!(CompressionAlgorithm::from_str("foobar").is_err());
+        assert!(CompressionAlgorithm::from_str("").is_err());
+    }
+
+    #[test]
+    fn test_compression_algorithm_display() {
+        assert_eq!(CompressionAlgorithm::Zstd.to_string(), "zstd");
+        assert_eq!(CompressionAlgorithm::Lz4.to_string(), "lz4");
+        assert_eq!(CompressionAlgorithm::Brotli.to_string(), "brotli");
+        assert_eq!(CompressionAlgorithm::Deflate.to_string(), "deflate");
+        assert_eq!(CompressionAlgorithm::Gzip.to_string(), "gzip");
+    }
+
+    #[test]
+    fn test_compression_algorithm_debug() {
+        let algo = CompressionAlgorithm::Zstd;
+        let debug_str = format!("{:?}", algo);
+        assert!(debug_str.contains("Zstd"));
+    }
+
+    #[test]
+    fn test_compression_algorithm_serialization() {
+        let algorithms = vec![
+            CompressionAlgorithm::Zstd,
+            CompressionAlgorithm::Lz4,
+            CompressionAlgorithm::Brotli,
+            CompressionAlgorithm::Deflate,
+            CompressionAlgorithm::Gzip,
+        ];
+
+        for algo in algorithms {
+            let serialized = serde_json::to_string(&algo).unwrap();
+            let deserialized: CompressionAlgorithm = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(algo, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_compression_algorithm_equality() {
+        assert_eq!(CompressionAlgorithm::Zstd, CompressionAlgorithm::Zstd);
+        assert_ne!(CompressionAlgorithm::Zstd, CompressionAlgorithm::Lz4);
+    }
+
+    #[test]
+    fn test_compression_algorithm_clone() {
+        let original = CompressionAlgorithm::Zstd;
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_get_compressor_zstd() {
+        let _compressor = get_compressor(CompressionAlgorithm::Zstd);
+        // Verify it returns a valid compressor trait object
+        let _trait_obj: &dyn CompressionTrait = &*_compressor;
+    }
+
+    #[test]
+    fn test_get_compressor_lz4() {
+        let _compressor = get_compressor(CompressionAlgorithm::Lz4);
+        let _trait_obj: &dyn CompressionTrait = &*_compressor;
+    }
+
+    #[test]
+    fn test_get_compressor_brotli() {
+        let _compressor = get_compressor(CompressionAlgorithm::Brotli);
+        let _trait_obj: &dyn CompressionTrait = &*_compressor;
+    }
+
+    #[test]
+    fn test_get_compressor_deflate() {
+        let _compressor = get_compressor(CompressionAlgorithm::Deflate);
+        let _trait_obj: &dyn CompressionTrait = &*_compressor;
+    }
+
+    #[test]
+    fn test_get_compressor_gzip() {
+        let _compressor = get_compressor(CompressionAlgorithm::Gzip);
+        let _trait_obj: &dyn CompressionTrait = &*_compressor;
+    }
+
+    #[tokio::test]
+    async fn test_compression_roundtrip_zstd() {
+        let compressor = get_compressor(CompressionAlgorithm::Zstd);
+        let original_data = b"Hello, World! This is test data for compression roundtrip testing.";
+
+        let compressed = compressor.compress(original_data).await.unwrap();
+        assert!(compressed.len() > 0);
+
+        let decompressed = compressor.decompress(&compressed).await.unwrap();
+        assert_eq!(decompressed, original_data);
+    }
+
+    #[tokio::test]
+    async fn test_compression_roundtrip_lz4() {
+        let compressor = get_compressor(CompressionAlgorithm::Lz4);
+        let original_data = b"Hello, World! This is test data for compression roundtrip testing.";
+
+        let compressed = compressor.compress(original_data).await.unwrap();
+        let decompressed = compressor.decompress(&compressed).await.unwrap();
+        assert_eq!(decompressed, original_data);
+    }
+
+    #[tokio::test]
+    async fn test_compression_roundtrip_brotli() {
+        let compressor = get_compressor(CompressionAlgorithm::Brotli);
+        let original_data = b"Hello, World! This is test data for compression roundtrip testing.";
+
+        let compressed = compressor.compress(original_data).await.unwrap();
+        let decompressed = compressor.decompress(&compressed).await.unwrap();
+        assert_eq!(decompressed, original_data);
+    }
+
+    #[tokio::test]
+    async fn test_compression_roundtrip_deflate() {
+        let compressor = get_compressor(CompressionAlgorithm::Deflate);
+        let original_data = b"Hello, World! This is test data for compression roundtrip testing.";
+
+        let compressed = compressor.compress(original_data).await.unwrap();
+        let decompressed = compressor.decompress(&compressed).await.unwrap();
+        assert_eq!(decompressed, original_data);
+    }
+
+    #[tokio::test]
+    async fn test_compression_roundtrip_gzip() {
+        let compressor = get_compressor(CompressionAlgorithm::Gzip);
+        let original_data = b"Hello, World! This is test data for compression roundtrip testing.";
+
+        let compressed = compressor.compress(original_data).await.unwrap();
+        let decompressed = compressor.decompress(&compressed).await.unwrap();
+        assert_eq!(decompressed, original_data);
+    }
+
+    #[tokio::test]
+    async fn test_compression_empty_data() {
+        let algorithms = vec![
+            CompressionAlgorithm::Zstd,
+            CompressionAlgorithm::Lz4,
+            CompressionAlgorithm::Brotli,
+            CompressionAlgorithm::Deflate,
+            CompressionAlgorithm::Gzip,
+        ];
+
+        for algo in algorithms {
+            let compressor = get_compressor(algo);
+            let empty_data = b"";
+
+            let compressed = compressor.compress(empty_data).await.unwrap();
+            let decompressed = compressor.decompress(&compressed).await.unwrap();
+            assert_eq!(decompressed, empty_data);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_compression_large_data() {
+        let compressor = get_compressor(CompressionAlgorithm::Zstd);
+        let original_data: Vec<u8> = (0 .. 10000).map(|i| (i % 256) as u8).collect();
+
+        let compressed = compressor.compress(&original_data).await.unwrap();
+        // Compression should reduce size for repetitive data
+        assert!(compressed.len() < original_data.len());
+
+        let decompressed = compressor.decompress(&compressed).await.unwrap();
+        assert_eq!(decompressed, original_data);
+    }
+
+    #[test]
+    fn test_compression_algorithm_all_variants_covered() {
+        // Ensure all enum variants are covered
+        let algorithms = vec![
+            CompressionAlgorithm::Zstd,
+            CompressionAlgorithm::Lz4,
+            CompressionAlgorithm::Brotli,
+            CompressionAlgorithm::Deflate,
+            CompressionAlgorithm::Gzip,
+        ];
+
+        for algo in algorithms {
+            match algo {
+                CompressionAlgorithm::Zstd => assert_eq!(algo.to_string(), "zstd"),
+                CompressionAlgorithm::Lz4 => assert_eq!(algo.to_string(), "lz4"),
+                CompressionAlgorithm::Brotli => assert_eq!(algo.to_string(), "brotli"),
+                CompressionAlgorithm::Deflate => assert_eq!(algo.to_string(), "deflate"),
+                CompressionAlgorithm::Gzip => assert_eq!(algo.to_string(), "gzip"),
+            }
+        }
+    }
+}
