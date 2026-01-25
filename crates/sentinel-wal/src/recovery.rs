@@ -1014,9 +1014,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WalDocumentOps for FailingDocumentOps {
-            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> {
-                Ok(None)
-            }
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> { Ok(None) }
 
             async fn apply_operation(
                 &self,
@@ -1029,13 +1027,16 @@ mod tests {
                         std::io::ErrorKind::Other,
                         "apply failed",
                     )))
-                } else {
+                }
+                else {
                     Ok(())
                 }
             }
         }
 
-        let ops = FailingDocumentOps { fail_on_insert: true };
+        let ops = FailingDocumentOps {
+            fail_on_insert: true,
+        };
         let entry = create_test_entry(EntryType::Insert, "doc1", Some(r#"{"name": "test"}"#));
 
         let result = replay_wal_entry_safe(&entry, &ops).await;
@@ -1120,9 +1121,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WalDocumentOps for DeleteFailsDocumentOps {
-            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> {
-                Ok(None)
-            }
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> { Ok(None) }
 
             async fn apply_operation(
                 &self,
@@ -1192,9 +1191,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WalDocumentOps for CustomErrorOps {
-            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> {
-                Ok(None)
-            }
+            async fn get_document(&self, _id: &str) -> Result<Option<serde_json::Value>> { Ok(None) }
 
             async fn apply_operation(
                 &self,
@@ -1211,4 +1208,5 @@ mod tests {
 
         let result = replay_wal_entry_force(&entry, &ops).await;
         assert!(result.is_err());
-    }}
+    }
+}
