@@ -28,7 +28,7 @@ pub async fn run(store_path: String, collection: Option<String>, _args: StatsArg
             size as f64 / (1024.0 * 1024.0)
         );
         tracing::info!("  Entries: {}", count);
-        #[allow(clippy::arithmetic_side_effects, reason = "Safe division for calculating average entry size")]
+        
         tracing::info!(
             "  Average entry size: {} bytes",
             if count > 0 { size / count as u64 } else { 0 }

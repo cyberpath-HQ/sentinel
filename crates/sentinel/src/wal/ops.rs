@@ -100,7 +100,6 @@ use sentinel_wal::{
 
 use crate::{Collection, Store};
 use crate::store::operations::collection_with_config;
-use sentinel_wal::StoreWalConfig;
 
 /// Extension trait for Store to add WAL operations.
 ///
