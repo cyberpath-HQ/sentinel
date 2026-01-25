@@ -2700,6 +2700,158 @@ mod collection_streaming_tests {
     }
 
     #[tokio::test]
+    async fn test_collection_filter_with_corrupted_json_strict_verification() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("test", None).await.unwrap();
+
+        // Insert a valid document
+        collection
+            .insert("valid", json!({"data": "good"}))
+            .await
+            .unwrap();
+
+        // Manually create a corrupted JSON file
+        let corrupted_path = collection.path.join("corrupted.json");
+        tokio::fs::write(&corrupted_path, "invalid json content")
+            .await
+            .unwrap();
+
+        // Try to filter with strict verification - should fail on corrupted JSON
+        let result: Result<Vec<_>, _> = collection.filter(|_| true).try_collect().await;
+
+        // Should fail due to JSON parsing error
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_collection_all_with_corrupted_json_strict_verification() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            None,
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("test", None).await.unwrap();
+
+        // Insert a valid document
+        collection
+            .insert("valid", json!({"data": "good"}))
+            .await
+            .unwrap();
+
+        // Manually create a corrupted JSON file
+        let corrupted_path = collection.path.join("corrupted.json");
+        tokio::fs::write(&corrupted_path, "invalid json content")
+            .await
+            .unwrap();
+
+        // Try to get all with strict verification - should fail on corrupted JSON
+        let result: Result<Vec<_>, _> = collection.all().try_collect().await;
+
+        // Should fail due to JSON parsing error
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_collection_filter_with_verification_failure_strict() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("test", None).await.unwrap();
+
+        // Insert a valid document
+        collection
+            .insert("valid", json!({"data": "good"}))
+            .await
+            .unwrap();
+
+        // Manually corrupt the document file to break hash verification
+        let doc_path = collection.path.join("valid.json");
+        let mut doc: serde_json::Value = tokio::fs::read_to_string(&doc_path)
+            .await
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        // Corrupt the hash field
+        if let Some(obj) = doc.as_object_mut() {
+            obj.insert(
+                "hash".to_string(),
+                serde_json::Value::String("corrupted_hash".to_string()),
+            );
+        }
+
+        tokio::fs::write(&doc_path, serde_json::to_string(&doc).unwrap())
+            .await
+            .unwrap();
+
+        // Try to filter with strict hash verification - should fail
+        let result: Result<Vec<_>, _> = collection.filter(|_| true).try_collect().await;
+
+        // Should fail due to hash verification error
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_collection_all_with_verification_failure_strict() {
+        let temp_dir = tempdir().unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            sentinel_wal::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("test", None).await.unwrap();
+
+        // Insert a valid document
+        collection
+            .insert("valid", json!({"data": "good"}))
+            .await
+            .unwrap();
+
+        // Manually corrupt the document file to break hash verification
+        let doc_path = collection.path.join("valid.json");
+        let mut doc: serde_json::Value = tokio::fs::read_to_string(&doc_path)
+            .await
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        // Corrupt the hash field
+        if let Some(obj) = doc.as_object_mut() {
+            obj.insert(
+                "hash".to_string(),
+                serde_json::Value::String("corrupted_hash".to_string()),
+            );
+        }
+
+        tokio::fs::write(&doc_path, serde_json::to_string(&doc).unwrap())
+            .await
+            .unwrap();
+
+        // Try to get all with strict hash verification - should fail
+        let result: Result<Vec<_>, _> = collection.all().try_collect().await;
+
+        // Should fail due to hash verification error
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
     async fn test_collection_map_documents() {
         use futures::StreamExt;
         let temp_dir = tempdir().unwrap();
