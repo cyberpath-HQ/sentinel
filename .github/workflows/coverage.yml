@@ -19,12 +19,14 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
+      - name: Install grcov
+        run: cargo install grcov
 
       - name: Generate coverage reports
         run: |
-          cargo tarpaulin
+          mkdir -p target/profraw
+          RUSTFLAGS="-Cinstrument-coverage" LLVM_PROFILE_FILE="target/profraw/cyberpath-%p-%m.profraw" cargo test
+          grcov . --binary-path ./target/debug/deps/ -s . -t lcov --branch --ignore-not-existing -o ./target/coverage/lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -34,4 +36,4 @@ jobs:
           flags: rust
           name: codecov-umbrella
           fail_ci_if_error: true
-          directory: ./target/tarpaulin
+          files: ./target/coverage/lcov.info
