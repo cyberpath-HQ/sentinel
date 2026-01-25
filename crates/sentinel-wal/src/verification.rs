@@ -485,4 +485,97 @@ mod tests {
         assert!(issue.description.contains("already exists"));
         assert!(issue.is_critical);
     }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_update_nonexistent_doc() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        let mut update_entry = create_test_entry(EntryType::Update, "nonexistent", "txn1");
+        update_entry.data = Some(r#"{"name": "updated"}"#.to_string());
+
+        // Update on nonexistent is actually valid (creates document-like state)
+        let result = verify_wal_entry_consistency(&update_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        // This should be None since update is allowed on nonexistent
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_delete_nonexistent_doc() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        let delete_entry = create_test_entry(EntryType::Delete, "nonexistent", "txn1");
+
+        // Delete on nonexistent is actually valid
+        let result = verify_wal_entry_consistency(&delete_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        // This should be None since delete is allowed on nonexistent
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_delete_after_insert() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        // First insert
+        let mut insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        insert_entry.data = Some(r#"{"name": "test"}"#.to_string());
+        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+
+        // Then delete
+        let delete_entry = create_test_entry(EntryType::Delete, "doc1", "txn2");
+        let result = verify_wal_entry_consistency(&delete_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_none()); // Should be valid
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_rollback_issue() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        // Begin first
+        let begin_entry = create_test_entry(EntryType::Begin, "doc1", "txn1");
+        verify_wal_entry_consistency(&begin_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+
+        // Try to rollback without operations
+        let rollback_entry = create_test_entry(EntryType::Rollback, "doc1", "txn1");
+        let result = verify_wal_entry_consistency(&rollback_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_none()); // Rollback after begin without operations should be fine
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_multiple_updates() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        // Insert
+        let mut insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        insert_entry.data = Some(r#"{"v": 1}"#.to_string());
+        verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+
+        // Update 1
+        let mut update1 = create_test_entry(EntryType::Update, "doc1", "txn2");
+        update1.data = Some(r#"{"v": 2}"#.to_string());
+        verify_wal_entry_consistency(&update1, &mut wal_states, &mut active_transactions).await.unwrap();
+
+        // Update 2
+        let mut update2 = create_test_entry(EntryType::Update, "doc1", "txn3");
+        update2.data = Some(r#"{"v": 3}"#.to_string());
+        let result = verify_wal_entry_consistency(&update2, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_none()); // Should be valid
+    }
+
+    #[tokio::test]
+    async fn test_verify_wal_entry_consistency_commit_valid() {
+        let mut wal_states = std::collections::HashMap::new();
+        let mut active_transactions = std::collections::HashMap::new();
+
+        let begin_entry = create_test_entry(EntryType::Begin, "doc1", "txn1");
+        verify_wal_entry_consistency(&begin_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+
+        let commit_entry = create_test_entry(EntryType::Commit, "doc1", "txn1");
+        let result = verify_wal_entry_consistency(&commit_entry, &mut wal_states, &mut active_transactions).await.unwrap();
+        assert!(result.is_none()); // Commit should be fine after begin
+    }
 }
