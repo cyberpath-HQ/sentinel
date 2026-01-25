@@ -590,3 +590,341 @@ impl LogEntry {
             .trim_end_matches('\0')
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    // Tests for FixedBytes32
+    #[test]
+    fn test_fixed_bytes32_from_slice() {
+        let input = b"hello world" as &[u8];
+        let fixed = FixedBytes32::from(input);
+        assert_eq!(&fixed[.. 11], input);
+    }
+
+    #[test]
+    fn test_fixed_bytes32_from_slice_longer_than_32() {
+        let input = b"this is a very long string that exceeds 32 bytes in length" as &[u8];
+        let fixed = FixedBytes32::from(input);
+        assert_eq!(fixed.len(), 32);
+        assert_eq!(&fixed[.. 32], &input[.. 32]);
+    }
+
+    #[test]
+    fn test_fixed_bytes32_serialization() {
+        let input = b"test data" as &[u8];
+        let fixed = FixedBytes32::from(input);
+
+        let serialized = serde_json::to_string(&fixed).unwrap();
+        // Just verify it serializes without error
+        assert!(!serialized.is_empty());
+    }
+
+    #[test]
+    fn test_fixed_bytes32_equality() {
+        let bytes1 = FixedBytes32::from(b"same" as &[u8]);
+        let bytes2 = FixedBytes32::from(b"same" as &[u8]);
+        assert_eq!(bytes1, bytes2);
+
+        let bytes3 = FixedBytes32::from(b"different" as &[u8]);
+        assert_ne!(bytes1, bytes3);
+    }
+
+    #[test]
+    fn test_fixed_bytes32_clone() {
+        let original = FixedBytes32::from(b"test" as &[u8]);
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_fixed_bytes32_deref() {
+        let fixed = FixedBytes32::from(b"hello" as &[u8]);
+        let slice: &[u8] = &*fixed;
+        assert_eq!(&slice[.. 5], b"hello");
+    }
+
+    #[test]
+    fn test_fixed_bytes32_deref_mut() {
+        let mut fixed = FixedBytes32::from(b"hello" as &[u8]);
+        fixed[0] = b'H';
+        assert_eq!(fixed[0], b'H');
+    }
+
+    // Tests for FixedBytes256
+    #[test]
+    fn test_fixed_bytes256_from_slice() {
+        let input = b"collection name" as &[u8];
+        let fixed = FixedBytes256::from(input);
+        assert_eq!(&fixed[.. 15], input);
+    }
+
+    #[test]
+    fn test_fixed_bytes256_serialization() {
+        let input = b"test_collection" as &[u8];
+        let fixed = FixedBytes256::from(input);
+
+        let serialized = serde_json::to_string(&fixed).unwrap();
+        // Just verify it serializes without error
+        assert!(!serialized.is_empty());
+    }
+
+    #[test]
+    fn test_fixed_bytes256_equality() {
+        let bytes1 = FixedBytes256::from(b"collection" as &[u8]);
+        let bytes2 = FixedBytes256::from(b"collection" as &[u8]);
+        assert_eq!(bytes1, bytes2);
+    }
+
+    #[test]
+    fn test_fixed_bytes256_clone() {
+        let original = FixedBytes256::from(b"document-id" as &[u8]);
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_fixed_bytes256_padding() {
+        let input = b"test" as &[u8];
+        let fixed = FixedBytes256::from(input);
+        // Should be padded to multiple of 16
+        assert_eq!(fixed.len() % 16, 0);
+    }
+
+    // Tests for EntryType
+    #[test]
+    fn test_entry_type_equality() {
+        assert_eq!(EntryType::Insert, EntryType::Insert);
+        assert_ne!(EntryType::Insert, EntryType::Delete);
+    }
+
+    #[test]
+    fn test_entry_type_clone() {
+        let original = EntryType::Update;
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_entry_type_serialization() {
+        let entry_types = vec![
+            EntryType::Begin,
+            EntryType::Insert,
+            EntryType::Update,
+            EntryType::Delete,
+            EntryType::Commit,
+            EntryType::Rollback,
+        ];
+
+        for entry_type in entry_types {
+            let serialized = serde_json::to_string(&entry_type).unwrap();
+            let deserialized: EntryType = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(entry_type, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_entry_type_debug() {
+        let debug_str = format!("{:?}", EntryType::Insert);
+        assert!(debug_str.contains("Insert"));
+    }
+
+    // Tests for LogEntry
+    #[test]
+    fn test_log_entry_new_with_data() {
+        let entry = LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-123".to_string(),
+            Some(json!({"name": "Alice"})),
+        );
+
+        assert_eq!(entry.entry_type, EntryType::Insert);
+        assert!(entry.data.is_some());
+        assert!(entry.timestamp > 0);
+    }
+
+    #[test]
+    fn test_log_entry_new_without_data() {
+        let entry = LogEntry::new(
+            EntryType::Delete,
+            "users".to_string(),
+            "user-123".to_string(),
+            None,
+        );
+
+        assert_eq!(entry.entry_type, EntryType::Delete);
+        assert!(entry.data.is_none());
+    }
+
+    #[test]
+    fn test_log_entry_to_bytes() {
+        let entry = LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-123".to_string(),
+            Some(json!({"name": "Bob"})),
+        );
+
+        let bytes = entry.to_bytes().unwrap();
+        assert!(!bytes.is_empty());
+        assert!(bytes.len() > 4); // Should include CRC32 checksum
+    }
+
+    #[test]
+    fn test_log_entry_from_bytes_roundtrip() {
+        let original = LogEntry::new(
+            EntryType::Update,
+            "orders".to_string(),
+            "order-456".to_string(),
+            Some(json!({"status": "shipped", "cost": 99.99})),
+        );
+
+        let bytes = original.to_bytes().unwrap();
+        let restored = LogEntry::from_bytes(&bytes).unwrap();
+
+        assert_eq!(original.entry_type, restored.entry_type);
+        assert_eq!(original.data, restored.data);
+    }
+
+    #[test]
+    fn test_log_entry_from_bytes_invalid_checksum() {
+        let entry = LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-1".to_string(),
+            None,
+        );
+
+        let mut bytes = entry.to_bytes().unwrap();
+        // Corrupt the checksum
+        let last_idx = bytes.len() - 1;
+        bytes[last_idx] ^= 0xff;
+
+        let result = LogEntry::from_bytes(&bytes);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_log_entry_from_bytes_truncated() {
+        let result = LogEntry::from_bytes(b"truncated");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_log_entry_collection_str() {
+        let entry = LogEntry::new(
+            EntryType::Insert,
+            "my_collection".to_string(),
+            "doc-1".to_string(),
+            None,
+        );
+
+        assert_eq!(entry.collection_str(), "my_collection");
+    }
+
+    #[test]
+    fn test_log_entry_document_id_str() {
+        let entry = LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-abc-123".to_string(),
+            None,
+        );
+
+        assert_eq!(entry.document_id_str(), "user-abc-123");
+    }
+
+    #[test]
+    fn test_log_entry_collection_str_with_nulls() {
+        let entry = LogEntry::new(
+            EntryType::Insert,
+            "collection".to_string(),
+            "doc".to_string(),
+            None,
+        );
+        // collection is padded with zeros
+        let collection_str = entry.collection_str();
+        assert_eq!(collection_str, "collection");
+    }
+
+    #[test]
+    fn test_log_entry_document_id_str_with_nulls() {
+        let entry = LogEntry::new(
+            EntryType::Delete,
+            "col".to_string(),
+            "document-id".to_string(),
+            None,
+        );
+        let document_id_str = entry.document_id_str();
+        assert_eq!(document_id_str, "document-id");
+    }
+
+    #[test]
+    fn test_log_entry_clone() {
+        let original = LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(json!({"name": "Test"})),
+        );
+
+        let cloned = original.clone();
+        assert_eq!(original.entry_type, cloned.entry_type);
+        assert_eq!(original.data, cloned.data);
+    }
+
+    #[test]
+    fn test_log_entry_equality() {
+        let entry1 = LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(json!({"name": "Alice"})),
+        );
+
+        let entry2 = entry1.clone();
+        assert_eq!(entry1, entry2);
+    }
+
+    #[test]
+    fn test_log_entry_various_entry_types() {
+        let entry_types = vec![
+            (EntryType::Begin, "test_col", "txn-1", None),
+            (EntryType::Insert, "users", "user-1", Some(json!({"id": 1}))),
+            (EntryType::Update, "users", "user-2", Some(json!({"id": 2}))),
+            (EntryType::Delete, "users", "user-3", None),
+            (EntryType::Commit, "test_col", "txn-2", None),
+            (EntryType::Rollback, "test_col", "txn-3", None),
+        ];
+
+        for (entry_type, col, doc, data) in entry_types {
+            let entry = LogEntry::new(entry_type, col.to_string(), doc.to_string(), data);
+            assert_eq!(entry.entry_type, entry_type);
+            assert_eq!(entry.collection_str(), col);
+            assert_eq!(entry.document_id_str(), doc);
+        }
+    }
+
+    #[test]
+    fn test_log_entry_postcard_roundtrip_with_json() {
+        // Test postcard serialization roundtrip which preserves FixedBytes types correctly
+        let entry = LogEntry::new(
+            EntryType::Insert,
+            "users".to_string(),
+            "user-1".to_string(),
+            Some(json!({"name": "Dave", "age": 25})),
+        );
+
+        let bytes = postcard::to_stdvec(&entry).unwrap();
+        let restored: LogEntry = postcard::from_bytes(&bytes).unwrap();
+
+        assert_eq!(entry.entry_type, restored.entry_type);
+        assert_eq!(entry.data, restored.data);
+        assert_eq!(entry.collection_str(), restored.collection_str());
+        assert_eq!(entry.document_id_str(), restored.document_id_str());
+    }
+}
