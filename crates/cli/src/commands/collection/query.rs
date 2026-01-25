@@ -178,8 +178,9 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::tempdir;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_query_empty_collection() {
@@ -188,29 +189,28 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Run query command
         let args = QueryArgs {
             verify_signature: true,
-            verify_hash: true,
-            signature_mode: "strict".to_string(),
-            empty_sig_mode: "warn".to_string(),
-            hash_mode: "strict".to_string(),
-            filter: vec![],
-            sort: None,
-            limit: None,
-            offset: None,
-            project: None,
-            format: "json".to_string(),
-            wal: WalArgs::default(),
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
+            wal:              WalArgs::default(),
         };
         let result = run(
             store_path.to_string_lossy().to_string(),
@@ -230,18 +230,23 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Insert some documents
-        collection.insert("doc1", serde_json::json!({"name": "Alice", "age": 30})).await.unwrap();
-        collection.insert("doc2", serde_json::json!({"name": "Bob", "age": 25})).await.unwrap();
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice", "age": 30}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", serde_json::json!({"name": "Bob", "age": 25}))
+            .await
+            .unwrap();
 
         // Allow event processing
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -249,17 +254,17 @@ mod tests {
         // Run query command
         let args = QueryArgs {
             verify_signature: true,
-            verify_hash: true,
-            signature_mode: "strict".to_string(),
-            empty_sig_mode: "warn".to_string(),
-            hash_mode: "strict".to_string(),
-            filter: vec![],
-            sort: None,
-            limit: None,
-            offset: None,
-            project: None,
-            format: "json".to_string(),
-            wal: WalArgs::default(),
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
+            wal:              WalArgs::default(),
         };
         let result = run(
             store_path.to_string_lossy().to_string(),
@@ -279,19 +284,27 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Insert some documents
-        collection.insert("doc1", serde_json::json!({"name": "Alice"})).await.unwrap();
-        collection.insert("doc2", serde_json::json!({"name": "Bob"})).await.unwrap();
-        collection.insert("doc3", serde_json::json!({"name": "Charlie"})).await.unwrap();
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", serde_json::json!({"name": "Bob"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc3", serde_json::json!({"name": "Charlie"}))
+            .await
+            .unwrap();
 
         // Allow event processing
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -299,17 +312,17 @@ mod tests {
         // Run query command with limit
         let args = QueryArgs {
             verify_signature: true,
-            verify_hash: true,
-            signature_mode: "strict".to_string(),
-            empty_sig_mode: "warn".to_string(),
-            hash_mode: "strict".to_string(),
-            filter: vec![],
-            sort: None,
-            limit: Some(2),
-            offset: None,
-            project: None,
-            format: "json".to_string(),
-            wal: WalArgs::default(),
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             None,
+            limit:            Some(2),
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
+            wal:              WalArgs::default(),
         };
         let result = run(
             store_path.to_string_lossy().to_string(),
@@ -329,29 +342,28 @@ mod tests {
         let collection_name = "test_collection";
 
         // Create store and collection
-        let store = sentinel_dbms::Store::new_with_config(
-            &store_path,
-            None,
-            sentinel_dbms::StoreWalConfig::default(),
-        )
-        .await
-        .unwrap();
-        let _collection = store.collection_with_config(collection_name, None).await.unwrap();
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
 
         // Run query command with invalid verification mode
         let args = QueryArgs {
             verify_signature: true,
-            verify_hash: true,
-            signature_mode: "invalid".to_string(),
-            empty_sig_mode: "warn".to_string(),
-            hash_mode: "strict".to_string(),
-            filter: vec![],
-            sort: None,
-            limit: None,
-            offset: None,
-            project: None,
-            format: "json".to_string(),
-            wal: WalArgs::default(),
+            verify_hash:      true,
+            signature_mode:   "invalid".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
+            wal:              WalArgs::default(),
         };
         let result = run(
             store_path.to_string_lossy().to_string(),
@@ -361,6 +373,74 @@ mod tests {
         )
         .await;
 
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_query_with_corrupted_documents_strict_verification() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+        let passphrase = "test_passphrase";
+
+        // Create store and collection with passphrase
+        let store = sentinel_dbms::Store::new_with_config(
+            &store_path,
+            Some(passphrase),
+            sentinel_dbms::StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert a valid document first
+        let data = serde_json::json!({"name": "test", "value": 42});
+        collection.insert("doc1", data).await.unwrap();
+
+        // Manually corrupt the document file by changing its signature
+        let doc_path = store_path
+            .join("data")
+            .join(collection_name)
+            .join("doc1.json");
+        let mut content: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(&doc_path).await.unwrap()).unwrap();
+
+        // Corrupt the signature
+        if let Some(signature) = content.get_mut("signature") {
+            *signature = serde_json::json!("corrupted_signature");
+        }
+
+        tokio::fs::write(&doc_path, serde_json::to_string_pretty(&content).unwrap())
+            .await
+            .unwrap();
+
+        // Run query command with strict verification and passphrase
+        let args = QueryArgs {
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            filter:           vec![],
+            sort:             None,
+            limit:            None,
+            offset:           None,
+            project:          None,
+            format:           "json".to_string(),
+            wal:              WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            Some(passphrase.to_string()),
+            args,
+        )
+        .await;
+
+        // Should fail due to corrupted document signature
         assert!(result.is_err());
     }
 }
