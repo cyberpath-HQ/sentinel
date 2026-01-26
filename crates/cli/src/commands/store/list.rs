@@ -21,7 +21,7 @@ pub async fn run(args: ListCollectionsArgs) -> sentinel_dbms::Result<()> {
     .await?;
     let collections = store.list_collections().await?;
     for collection in collections {
-        tracing::info!("{}", collection);
+        println!("{}", collection);
     }
     Ok(())
 }
