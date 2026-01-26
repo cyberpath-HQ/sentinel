@@ -44,6 +44,7 @@ use super::{events::start_event_processor, operations::collection_with_config};
 ///
 /// `Store` is safe to share across threads. Multiple collections can be accessed
 /// concurrently, with each collection managing its own locking internally.
+#[allow(clippy::field_scoped_visibility_modifiers)]
 #[derive(Debug)]
 pub struct Store {
     /// The root path of the store.
@@ -283,6 +284,7 @@ impl Store {
     /// # Ok(())
     /// # }
     /// ```
+#[allow(clippy::cognitive_complexity, reason = "complex initialization logic")]
     pub async fn new_with_config<P>(
         root_path: P,
         passphrase: Option<&str>,
@@ -429,7 +431,7 @@ impl Store {
     }
 
     /// Returns the creation timestamp of the store.
-    pub fn created_at(&self) -> DateTime<Utc> { self.created_at }
+    pub const fn created_at(&self) -> DateTime<Utc> { self.created_at }
 
     /// Returns the last access timestamp of the store.
     pub fn last_accessed_at(&self) -> DateTime<Utc> { *self.last_accessed_at.read().unwrap() }
@@ -461,7 +463,7 @@ impl Store {
     /// # Returns
     ///
     /// Returns a reference to the `PathBuf` containing the store's root path.
-    pub fn root_path(&self) -> &PathBuf { &self.root_path }
+    pub const fn root_path(&self) -> &PathBuf { &self.root_path }
 
     /// Returns a clone of the event sender for collections to emit events.
     pub(crate) fn event_sender(&self) -> mpsc::UnboundedSender<StoreEvent> { self.event_sender.clone() }
