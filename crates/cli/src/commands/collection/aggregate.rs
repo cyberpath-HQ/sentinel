@@ -122,7 +122,7 @@ fn parse_filter(spec: &str) -> sentinel_dbms::Result<Filter> {
                 },
                 "!=" => {
                     return Err(sentinel_dbms::SentinelError::Internal {
-                        message: "Not equals operator (!=) is not supported".to_string(),
+                        message: "Not equals operator (!=) is not supported".to_owned(),
                     });
                 },
                 ">=" => {
