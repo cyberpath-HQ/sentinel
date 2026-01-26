@@ -290,6 +290,7 @@ impl Collection {
                             if matches!(e, SentinelError::HashVerificationFailed { .. } | SentinelError::SignatureVerificationFailed { .. }) {
                                 if options.hash_verification_mode == crate::VerificationMode::Strict
                                     || options.signature_verification_mode == crate::VerificationMode::Strict
+                                    || options.empty_signature_mode == crate::VerificationMode::Strict
                                 {
                                     yield Err(e);
                                     continue;
