@@ -19,34 +19,22 @@ This guide provides proven patterns and best practices for using Write-Ahead Log
 Match your failure mode to your data's importance:
 
 ```rust
-use sentinel_wal::WalFailureMode;
+use sentinel_wal::{WalFailureMode, CollectionWalConfig};
 
 // Critical audit logs - no data loss acceptable
-audit_logs_collection.update_wal_config(
-    CollectionWalConfigOverrides {
-        write_mode: Some(WalFailureMode::Strict),
-        ..Default::default()
-    },
-    true
-).await?;
+let mut audit_config = CollectionWalConfig::default();
+audit_config.write_mode = WalFailureMode::Strict;
+let audit_logs_collection = store.collection_with_config("audit_logs", Some(audit_config)).await?;
 
 // Non-critical metrics - availability more important
-metrics_collection.update_wal_config(
-    CollectionWalConfigOverrides {
-        write_mode: Some(WalFailureMode::Warn),
-        ..Default::default()
-    },
-    true
-).await?;
+let mut metrics_config = CollectionWalConfig::default();
+metrics_config.write_mode = WalFailureMode::Warn;
+let metrics_collection = store.collection_with_config("metrics", Some(metrics_config)).await?;
 
 // Temporary cache - no durability needed
-cache_collection.update_wal_config(
-    CollectionWalConfigOverrides {
-        write_mode: Some(WalFailureMode::Disabled),
-        ..Default::default()
-    },
-    true
-).await?;
+let mut cache_config = CollectionWalConfig::default();
+cache_config.write_mode = WalFailureMode::Disabled;
+let cache_collection = store.collection_with_config("cache", Some(cache_config)).await?;
 ```
 
 ### 2. Configure File Rotation Appropriately

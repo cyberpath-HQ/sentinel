@@ -994,7 +994,7 @@ if result.failed_operations > 0 {
 Creates or opens a collection with custom WAL configuration.
 
 ```rust
-use sentinel_wal::CollectionWalConfig;
+use sentinel_wal::{CollectionWalConfig, WalFailureMode};
 
 let mut wal_config = CollectionWalConfig::default();
 wal_config.write_mode = WalFailureMode::Strict;

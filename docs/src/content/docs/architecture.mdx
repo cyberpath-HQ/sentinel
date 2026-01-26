@@ -422,7 +422,7 @@ This ensures that even if a crash occurs, the WAL can be replayed to restore the
 - **Entry Types**: Begin, Insert, Update, Delete, Commit, Rollback
 - **Serialization**: Binary (compact, default) or JSON Lines (human-readable)
 - **Integrity**: CRC32 checksums for corruption detection
-- **Compression**: Automatic compression of rotated files (Zstd, Gzip, or none)
+- **Compression**: Automatic compression of rotated files (Zstd, Lz4, Brotli, Deflate, Gzip, or none)
 - **Rotation**: Based on file size or entry count limits
 - **Recovery**: Safe, idempotent replay of WAL entries
 - **Verification**: Consistency checks between WAL and disk state

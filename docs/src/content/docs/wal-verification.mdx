@@ -52,7 +52,7 @@ Explicitly verify a collection's WAL:
 ```rust
 use sentinel_dbms::wal::ops::CollectionWalOps;
 
-let result = collection.verify_wal().await?;
+let result = collection.verify_against_wal().await?;
 
 if result.passed {
     println!("✓ WAL verification passed");
@@ -97,7 +97,7 @@ pub struct WalVerificationIssue {
 ```rust
 use sentinel_dbms::wal::ops::CollectionWalOps;
 
-let result = collection.verify_wal().await?;
+let result = collection.verify_against_wal().await?;
 
 println!("Verification Report");
 println!("  Passed: {}", result.passed);
@@ -183,7 +183,7 @@ pub async fn safe_bulk_delete(
     ids: &[String],
 ) -> Result<usize> {
     // Verify WAL first
-    let verification = collection.verify_wal().await?;
+    let verification = collection.verify_against_wal().await?;
 
     if !verification.passed {
         return Err(SentinelError::VerificationFailed {
@@ -217,7 +217,7 @@ async fn verification_loop(collection: Collection) {
     loop {
         ticker.tick().await;
 
-        match collection.verify_wal().await {
+        match collection.verify_against_wal().await {
             Ok(result) => {
                 if result.passed {
                     println!("✓ Hourly verification passed");
@@ -243,7 +243,7 @@ use sentinel_dbms::wal::ops::CollectionWalOps;
 
 pub async fn safe_recovery(collection: &Collection) -> Result<()> {
     println!("Verifying WAL...");
-    let verification = collection.verify_wal().await?;
+    let verification = collection.verify_against_wal().await?;
 
     if !verification.passed {
         eprintln!("⚠ Verification found {} issues", verification.issues.len());
@@ -265,7 +265,7 @@ pub async fn safe_recovery(collection: &Collection) -> Result<()> {
     }
 
     println!("Re-verifying after recovery...");
-    let re_verification = collection.verify_wal().await?;
+    let re_verification = collection.verify_against_wal().await?;
 
     if re_verification.passed {
         println!("✓ Post-recovery verification passed");
@@ -318,7 +318,7 @@ Track verification metrics over time:
 use sentinel_dbms::wal::ops::CollectionWalOps;
 
 pub async fn check_wal_health(collection: &Collection) -> WalHealthReport {
-    let result = collection.verify_wal().await.ok();
+    let result = collection.verify_against_wal().await.ok();
 
     WalHealthReport {
         passed: result.as_ref().map(|r| r.passed).unwrap_or(false),
@@ -343,7 +343,7 @@ pub async fn check_wal_health(collection: &Collection) -> WalHealthReport {
 ```rust
 use sentinel_dbms::wal::ops::CollectionWalOps;
 
-match collection.verify_wal().await {
+match collection.verify_against_wal().await {
     Ok(result) if !result.passed => {
         // Verification failed - analyze issues
         for issue in &result.issues {
@@ -399,7 +399,7 @@ config.verification_mode = WalFailureMode::Warn; // Non-blocking checks
 tokio::spawn({
     let collection = collection.clone();
     async move {
-        let _ = collection.verify_wal().await;
+        let _ = collection.verify_against_wal().await;
     }
 });
 ```

@@ -347,22 +347,13 @@ println!("Format: {:?}", wal_config.format);
 println!("Recovery enabled: {}", wal_config.enable_recovery);
 ```
 
-### Updating Configuration
-
-```rust
-use sentinel_wal::CollectionWalConfigOverrides;
-
-let mut overrides = CollectionWalConfigOverrides::default();
-overrides.write_mode = Some(WalFailureMode::Warn);
-overrides.enable_recovery = Some(true);
-
-collection.update_wal_config(overrides, true).await?;
-```
-
 ## Configuration Persistence
 
 When you create a collection with custom WAL configuration, the settings are persisted in the collection's
 `.metadata.json` file. This ensures the same configuration is applied when the collection is reopened.
+
+**Note:** WAL configuration is immutable after collection creation. To change configuration, you must create a new
+collection with the desired settings.
 
 ```json
 {
@@ -380,6 +371,19 @@ When you create a collection with custom WAL configuration, the settings are per
 }
 ```
 
+    "write_mode": "strict",
+    "verification_mode": "warn",
+    "auto_verify": false,
+    "enable_recovery": true,
+    "max_wal_size_bytes": 10485760,
+    "compression_algorithm": "zstd",
+    "max_records_per_file": 1000,
+    "format": "binary"
+
+} }
+
+````
+
 ## Environment-Based Configuration
 
 Use environment variables to change configuration per environment:
@@ -395,7 +399,7 @@ let write_mode = match std::env::var("ENV").as_deref() {
 
 let mut config = CollectionWalConfig::default();
 config.write_mode = write_mode;
-```
+````
 
 ## Monitoring Configuration
 
