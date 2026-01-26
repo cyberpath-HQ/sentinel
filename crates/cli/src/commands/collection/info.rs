@@ -3,7 +3,7 @@ use clap::Args;
 /// Arguments for collection info command.
 #[derive(Args)]
 pub struct InfoArgs {
-    /// Output format: table (default) or json
+    /// Output format: table (default)
     #[arg(long, default_value = "table")]
     pub format: String,
 }
