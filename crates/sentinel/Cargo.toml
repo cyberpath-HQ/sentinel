@@ -37,7 +37,8 @@ rand = "0.8"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 serial_test = "3.3.1"
 
-[lints.rust]
+[lints]
+workspace = true
 
 [[bench]]
 name = "collection_ops"
