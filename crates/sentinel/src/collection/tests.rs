@@ -2393,10 +2393,13 @@ mod store_tests {
         let _ = store.collection_with_config("col2", None).await.unwrap();
         let _ = store.collection_with_config("col3", None).await.unwrap();
 
-        // Allow event processor to update counters
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-
-        let count = store.collection_count();
+        // Poll for the expected count with timeout instead of fixed sleep
+        let mut count = store.collection_count();
+        let start_time = std::time::Instant::now();
+        while count != 3 && start_time.elapsed() < std::time::Duration::from_secs(1) {
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+            count = store.collection_count();
+        }
         assert_eq!(count, 3);
     }
 
