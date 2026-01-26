@@ -58,6 +58,7 @@ impl Collection {
         let mut sum = 0.0f64;
         let mut min = f64::INFINITY;
         let mut max = f64::NEG_INFINITY;
+        let mut numeric_count = 0usize;
 
         while let Some(doc) = stream.try_next().await? {
             // Apply filters
@@ -80,6 +81,7 @@ impl Collection {
                 sum += value;
                 min = min.min(value);
                 max = max.max(value);
+                numeric_count += 1;
             }
         }
 
@@ -87,11 +89,11 @@ impl Collection {
             crate::Aggregation::Count => json!(count),
             crate::Aggregation::Sum(_) => json!(sum),
             crate::Aggregation::Avg(_) => {
-                if count == 0 {
+                if numeric_count == 0 {
                     json!(null)
                 }
                 else {
-                    json!(sum / count as f64)
+                    json!(sum / numeric_count as f64)
                 }
             },
             crate::Aggregation::Min(_) => {
