@@ -14,6 +14,8 @@ const docsCollection = defineCollection({
         description: z.string(),
         // Sidebar section grouping (e.g., "Getting Started", "Core Concepts")
         section: z.string().default("General"),
+        // Optional subsection for nested grouping within a section (e.g., "WAL" under "Advanced Topics")
+        subsection: z.string().optional(),
         // Order within the section (lower numbers appear first)
         order: z.number().default(100),
         // Whether this page appears in the sidebar navigation
