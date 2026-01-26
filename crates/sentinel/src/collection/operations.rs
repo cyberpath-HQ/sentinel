@@ -59,20 +59,19 @@ impl Collection {
         }
 
         // Write to WAL before filesystem operation
-        if let Some(wal) = &self.wal_manager {
-            if !self
+        if let Some(wal) = self.wal_manager.as_ref() &&
+            !self
                 .recovery_mode
                 .load(std::sync::atomic::Ordering::Relaxed)
-            {
-                let entry = LogEntry::new(
-                    EntryType::Insert,
-                    self.name().to_string(),
-                    id.to_string(),
-                    Some(data.clone()),
-                );
-                wal.write_entry(entry).await?;
-                debug!("WAL entry written for insert operation on document {}", id);
-            }
+        {
+            let entry = LogEntry::new(
+                EntryType::Insert,
+                self.name().to_owned(),
+                id.to_owned(),
+                Some(data.clone()),
+            );
+            wal.write_entry(entry).await?;
+            debug!("WAL entry written for insert operation on document {}", id);
         }
 
         #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
@@ -298,20 +297,19 @@ impl Collection {
 
         // Generate transaction ID for WAL
         // Write to WAL before filesystem operation
-        if let Some(wal) = &self.wal_manager {
-            if !self
+        if let Some(wal) = self.wal_manager.as_ref() &&
+            !self
                 .recovery_mode
                 .load(std::sync::atomic::Ordering::Relaxed)
-            {
-                let entry = LogEntry::new(
-                    EntryType::Delete,
-                    self.name().to_string(),
-                    id.to_string(),
-                    None,
-                );
-                wal.write_entry(entry).await?;
-                debug!("WAL entry written for delete operation on document {}", id);
-            }
+        {
+            let entry = LogEntry::new(
+                EntryType::Delete,
+                self.name().to_owned(),
+                id.to_owned(),
+                None,
+            );
+            wal.write_entry(entry).await?;
+            debug!("WAL entry written for delete operation on document {}", id);
         }
 
         // Check if source exists
@@ -340,9 +338,9 @@ impl Collection {
                 *self.updated_at.write().unwrap() = chrono::Utc::now();
 
                 // Emit event - all metadata updates handled asynchronously by event processor
-                if let Some(sender) = &self.event_sender {
+                if let Some(sender) = self.event_sender.as_ref() {
                     let event = StoreEvent::DocumentDeleted {
-                        collection: self.name().to_string(),
+                        collection: self.name().to_owned(),
                         size_bytes: file_size,
                     };
                     if let Err(e) = sender.send(event) {
@@ -741,8 +739,9 @@ mod tests {
     use tempfile::tempdir;
     use tokio::fs as tokio_fs;
     use serde_json::json;
+    use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
 
-    use crate::{Collection, Document, Store};
+    use crate::{Collection, Store};
 
     // ============ Document ID Validation Tests ============
 
@@ -750,10 +749,14 @@ mod tests {
     async fn test_insert_with_special_characters_in_id() {
         // Test document IDs with various special characters
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
-            .await
-            .unwrap();
-        let collection = store.collection("test").await.unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("test", None).await.unwrap();
 
         // Test with underscores, hyphens, and numbers (dots may cause issues on some filesystems)
         let special_ids = vec![
@@ -781,10 +784,14 @@ mod tests {
     #[tokio::test]
     async fn test_insert_with_unicode_characters_in_id() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
-            .await
-            .unwrap();
-        let collection = store.collection("test").await.unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store.collection_with_config("test", None).await.unwrap();
 
         // Test with unicode characters (note: unicode in filenames may have filesystem limitations)
         // Using ASCII fallback for reliable testing
