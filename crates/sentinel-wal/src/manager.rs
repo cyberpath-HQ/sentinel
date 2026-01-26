@@ -662,13 +662,17 @@ impl WalManager {
                             let mut buffer = Vec::new();
                             let mut entry_start = 0;
                             let mut min_read_size = 1024; // Start with reasonable chunk size
+                            let mut eof = false;
 
                             loop {
                                 // Ensure we have enough data to potentially find an entry
-                                while buffer.len() - entry_start < min_read_size {
+                                while buffer.len() - entry_start < min_read_size && !eof {
                                     let mut chunk = vec![0u8; 4096];
                                     match reader.read(&mut chunk).await {
-                                        Ok(0) => break, // EOF
+                                        Ok(0) => {
+                                            eof = true;
+                                            break;
+                                        },
                                         Ok(n) => {
                                             buffer.extend_from_slice(&chunk[..n]);
                                         },
@@ -723,6 +727,10 @@ impl WalManager {
                                     }
                                     // If we scanned too far without finding an entry, increase min_read_size
                                     // to avoid excessive scanning of corrupted data
+                                    if eof {
+                                        // At EOF and no valid entry in remaining buffer, stop
+                                        break;
+                                    }
                                     min_read_size = min_read_size.saturating_mul(2).min(65536);
                                 }
                             }
