@@ -294,6 +294,7 @@ data/
 - **Global Crypto Config** - Flexible configuration for algorithm selection
 - **Comprehensive Testing** - Extensive unit and integration tests
 - **Benchmarking** - Performance benchmarks with Criterion
+- **WAL (Write-Ahead Logging)** - Durable transaction logging for crash recovery
 
 ### 🚧 In Progress
 
