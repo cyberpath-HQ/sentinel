@@ -167,7 +167,7 @@ pub trait StoreWalOps {
     /// ```
     async fn stream_all_wal_entries(
         &self,
-    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<(String, LogEntry)>> + Send>>>;
+    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<(String, LogEntry)>> + Send + 'static>>>;
 
     /// Verify all collections against their WAL files.
     ///
@@ -310,9 +310,7 @@ pub trait CollectionWalOps {
     /// # Ok(())
     /// # }
     /// ```
-    async fn stream_wal_entries(
-        &self,
-    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + '_>>>;
+    async fn stream_wal_entries(self) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send>>>;
 
     /// Verify this collection against its WAL file.
     ///
@@ -466,41 +464,33 @@ impl StoreWalOps for Store {
     async fn stream_all_wal_entries(
         &self,
     ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<(String, LogEntry)>> + Send>>> {
-        let collections = self.list_collections().await?;
+        let collection_names = self.list_collections().await?;
         debug!(
             "Streaming WAL entries from {} collections",
-            collections.len()
+            collection_names.len()
         );
 
-        let mut all_entries = Vec::new();
-
-        for collection_name in collections {
-            let collection = collection_with_config(self, &collection_name, None).await?;
-            if let Ok(stream) = CollectionWalOps::stream_wal_entries(&collection).await {
-                let entries: Vec<crate::Result<LogEntry>> = stream.collect().await;
-                for entry in entries {
-                    all_entries.push(entry.map(|e| (collection_name.clone(), e)));
-                }
-                debug!(
-                    "Collected {} WAL entries for collection: {}",
-                    all_entries.len(),
-                    collection_name
-                );
-            }
-            else {
-                warn!(
-                    "Failed to stream WAL entries for collection: {}",
-                    collection_name
-                );
+        // Collect all collections to avoid borrowing self in the stream
+        let mut collections = Vec::new();
+        for name in collection_names {
+            match collection_with_config(self, &name, None).await {
+                Ok(collection) => collections.push(collection),
+                Err(e) => warn!("Failed to load collection {}: {}", name, e),
             }
         }
 
-        info!(
-            "Collected total {} WAL entries from all collections",
-            all_entries.len()
-        );
-        let stream = futures::stream::iter(all_entries);
-        Ok(Box::pin(stream))
+        let stream_of_streams = futures::stream::iter(collections).filter_map(|collection| {
+            async move {
+                let name = collection.name().to_string();
+                match CollectionWalOps::stream_wal_entries(collection).await {
+                    Ok(stream) => Some(stream.map(move |entry| entry.map(|e| (name.clone(), e)))),
+                    Err(_) => None,
+                }
+            }
+        });
+
+        let combined_stream = stream_of_streams.flatten();
+        Ok(Box::pin(combined_stream))
     }
 
     async fn verify_all_collections(&self) -> crate::Result<HashMap<String, Vec<WalVerificationIssue>>> {
@@ -619,15 +609,18 @@ impl CollectionWalOps for Collection {
         Ok(())
     }
 
-    async fn stream_wal_entries(
-        &self,
-    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + '_>>> {
+    async fn stream_wal_entries(self) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send>>> {
         if let Some(wal) = &self.wal_manager {
-            debug!("Streaming WAL entries for collection {}", self.name());
+            let name = self.name().to_string();
+            debug!("Streaming WAL entries for collection {}", name);
             let stream = wal
                 .stream_entries()
-                .map(|result| result.map_err(Into::into));
-            Ok(Box::pin(stream))
+                .map(|result| result.map_err(|e| crate::error::SentinelError::from(e)));
+            let wal = wal.clone();
+            // let stream = wal.stream_entries().map(|result| result.map_err(|e|
+            // crate::error::SentinelError::from(e)));
+            let stream = Box::pin(stream) as Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + 'static>>;
+            Ok(stream)
         }
         else {
             debug!(
