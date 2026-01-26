@@ -472,30 +472,31 @@ impl StoreWalOps for Store {
             collections.len()
         );
 
-        let mut streams = Vec::new();
+        let mut all_entries = Vec::new();
 
         for collection_name in collections {
             let collection = collection_with_config(self, &collection_name, None).await?;
             if let Ok(stream) = CollectionWalOps::stream_wal_entries(&collection).await {
-                let collection_name_clone = collection_name.clone();
-                let mapped_stream =
-                    stream.map(move |entry: crate::Result<LogEntry>| entry.map(|e| (collection_name_clone.clone(), e)));
-                streams.push(Box::pin(mapped_stream));
-                debug!("Added WAL stream for collection: {}", collection_name);
+                let entries: Vec<crate::Result<LogEntry>> = stream.collect().await;
+                for entry in entries {
+                    all_entries.push(entry.map(|e| (collection_name.clone(), e)));
+                }
+                debug!("Collected {} WAL entries for collection: {}", all_entries.len(), collection_name);
             }
             else {
                 warn!(
-                    "Failed to create WAL stream for collection: {}",
+                    "Failed to stream WAL entries for collection: {}",
                     collection_name
                 );
             }
         }
 
         info!(
-            "Created unified WAL stream from {} collections",
-            streams.len()
+            "Collected total {} WAL entries from all collections",
+            all_entries.len()
         );
-        Ok(Box::pin(futures::stream::select_all(streams)))
+        let stream = futures::stream::iter(all_entries);
+        Ok(Box::pin(stream))
     }
 
     async fn verify_all_collections(&self) -> crate::Result<HashMap<String, Vec<WalVerificationIssue>>> {
@@ -882,11 +883,6 @@ mod tests {
         // Recovery should succeed (even if no recovery needed)
         let result = collection.recover_from_wal().await;
         assert!(result.is_ok());
-
-        let recovery = result.unwrap();
-        // All operations should be accounted for
-        let total = recovery.recovered_operations + recovery.skipped_operations + recovery.failed_operations;
-        assert!(total >= 0); // Operations may or may not need recovery
     }
 
     #[tokio::test]
@@ -939,7 +935,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_checkpoint_all_collections() {
-        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+        let (_temp_dir, store, _collection_name) = create_test_store_with_collection().await;
 
         // Insert some data
         let collection = collection_with_config(&store, "test1", None).await.unwrap();
@@ -961,7 +957,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_all_wal_entries() {
-        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+        let (_temp_dir, store, _collection_name) = create_test_store_with_collection().await;
 
         // Insert some data in multiple collections
         let collection1 = collection_with_config(&store, "stream-collection-1", None)
@@ -996,7 +992,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_verify_all_collections() {
-        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+        let (_temp_dir, store, _collection_name) = create_test_store_with_collection().await;
 
         // Create multiple collections with data
         let collection1 = collection_with_config(&store, "verify-1", None)
@@ -1034,7 +1030,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_recover_all_collections() {
-        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+        let (_temp_dir, store, _collection_name) = create_test_store_with_collection().await;
 
         // Create collections with data
         let collection1 = collection_with_config(&store, "recover-1", None)
@@ -1222,12 +1218,11 @@ mod tests {
     #[tokio::test]
     async fn test_wal_ops_verify_all_with_mixed_collections() {
         // Test verify_all_collections with multiple collections
-        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+        let (_temp_dir, store, _collection_name) = create_test_store_with_collection().await;
 
         // Create collections with varying data
         for i in 0 .. 3 {
-            let collection = store
-                .collection(&format!("verify-multi-{}", i))
+            let collection = collection_with_config(&store, &format!("verify-multi-{}", i), None)
                 .await
                 .unwrap();
             collection
@@ -1334,7 +1329,7 @@ mod tests {
     #[tokio::test]
     async fn test_wal_ops_verify_all_with_no_issues() {
         // Test verify_all_collections when all collections pass verification
-        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+        let (_temp_dir, store, _collection_name) = create_test_store_with_collection().await;
 
         // Create a collection and insert data
         let collection = collection_with_config(&store, "verify-pass", None)
@@ -1357,7 +1352,7 @@ mod tests {
     #[tokio::test]
     async fn test_wal_ops_recover_all_with_partial_failures() {
         // Test recover_all_collections handles partial failures gracefully
-        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+        let (_temp_dir, store, _collection_name) = create_test_store_with_collection().await;
 
         // Create a collection with data
         let collection = collection_with_config(&store, "recover-test", None)
@@ -1374,8 +1369,8 @@ mod tests {
 
         let stats = result.unwrap();
         // Should have stats for our collection
-        if let Some(count) = stats.get("recover-test") {
-            assert!(*count >= 0);
+        if let Some(_count) = stats.get("recover-test") {
+            // Stats are present
         }
     }
 
@@ -1423,10 +1418,6 @@ mod tests {
         // Verify should pass for valid state
         let result = collection.verify_against_wal().await;
         assert!(result.is_ok());
-
-        let verification = result.unwrap();
-        // Verification should have processed entries
-        assert!(verification.entries_processed >= 0);
     }
 
     #[tokio::test]
@@ -1479,12 +1470,11 @@ mod tests {
     #[tokio::test]
     async fn test_wal_ops_stream_all_with_mixed_collections() {
         // Test stream_all_wal_entries with collections that have different WAL states
-        let (temp_dir, store, _collection_name) = create_test_store_with_collection().await;
+        let (_temp_dir, store, _collection_name) = create_test_store_with_collection().await;
 
         // Create collections with different amounts of data
         for i in 0 .. 3 {
-            let collection = store
-                .collection(&format!("stream-mixed-{}", i))
+            let collection = collection_with_config(&store, &format!("stream-mixed-{}", i), None)
                 .await
                 .unwrap();
 
