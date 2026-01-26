@@ -124,7 +124,8 @@ where
             failed_operations: failed,
             failures,
         })
-    }.await;
+    }
+    .await;
 
     // Disable recovery mode
     document_ops.set_recovery_mode(false);
