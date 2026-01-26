@@ -1,10 +1,8 @@
-use clap::Args;
-use sentinel_dbms::{
-    futures::StreamExt as _,
-    Filter, QueryBuilder, SortOrder, VerificationMode, VerificationOptions,
-};
-use serde_json::Value;
 use std::str::FromStr as _;
+
+use clap::Args;
+use sentinel_dbms::{futures::StreamExt as _, Filter, QueryBuilder, SortOrder, VerificationMode, VerificationOptions};
+use serde_json::Value;
 use tracing::{error, info};
 
 use crate::commands::WalArgs;
@@ -140,12 +138,16 @@ pub async fn run(
                     return Err(sentinel_dbms::SentinelError::Internal {
                         message: format!("Invalid sort order: {}. Use asc or desc", order),
                     });
-                }
+                },
             };
             query_builder = query_builder.sort(field, sort_order);
-        } else {
+        }
+        else {
             return Err(sentinel_dbms::SentinelError::Internal {
-                message: format!("Invalid sort format: {}. Use field:asc or field:desc", sort_str),
+                message: format!(
+                    "Invalid sort format: {}. Use field:asc or field:desc",
+                    sort_str
+                ),
             });
         }
     }
@@ -179,7 +181,7 @@ pub async fn run(
 
     // Use query instead of streaming all
     let result = coll.query(query).await?;
-    
+
     // Output documents from the stream
     let mut count = 0;
     let mut stream = result.documents;

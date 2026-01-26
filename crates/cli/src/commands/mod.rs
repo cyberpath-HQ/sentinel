@@ -137,10 +137,6 @@ pub struct Cli {
     /// - pbkdf2 (widely supported for constrained environments)
     #[arg(long, value_name = "ALGORITHM", default_value = "argon2id", value_parser = ["argon2id", "pbkdf2"], global = true)]
     pub key_derivation_algorithm: String,
-
-    /// WAL (Write-Ahead Log) configuration options for the store.
-    #[command(flatten)]
-    pub wal: WalArgs,
 }
 
 /// Enumeration of all available CLI commands.
@@ -385,7 +381,6 @@ mod tests {
             signature_algorithm: String::from("ed25519"),
             encryption_algorithm: String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
-            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -416,7 +411,6 @@ mod tests {
             signature_algorithm: String::from("ed25519"),
             encryption_algorithm: String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
-            wal: WalArgs::default(),
         };
         run_command(init_cli).await.unwrap();
 
@@ -434,7 +428,6 @@ mod tests {
             signature_algorithm: String::from("ed25519"),
             encryption_algorithm: String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
-            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -467,7 +460,6 @@ mod tests {
             signature_algorithm: String::from("ed25519"),
             encryption_algorithm: String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
-            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -497,7 +489,6 @@ mod tests {
             signature_algorithm: String::from("invalid"),
             encryption_algorithm: String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
-            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -527,7 +518,6 @@ mod tests {
             signature_algorithm: String::from("ed25519"),
             encryption_algorithm: String::from("invalid"),
             key_derivation_algorithm: String::from("argon2id"),
-            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -557,7 +547,6 @@ mod tests {
             signature_algorithm: String::from("ed25519"),
             encryption_algorithm: String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("invalid"),
-            wal: WalArgs::default(),
         };
 
         let result = run_command(cli).await;
@@ -592,7 +581,6 @@ mod tests {
             signature_algorithm: String::from("ed25519"),
             encryption_algorithm: String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
-            wal: WalArgs::default(),
         };
         let result1 = run_command(cli1).await;
         assert!(result1.is_ok(), "First init should succeed");
@@ -617,7 +605,6 @@ mod tests {
             signature_algorithm: String::from("ed25519"),
             encryption_algorithm: String::from("aes256gcmsiv"), // Different encryption algorithm
             key_derivation_algorithm: String::from("argon2id"),
-            wal: WalArgs::default(),
         };
 
         let result2 = run_command(cli2).await;
