@@ -52,12 +52,14 @@ where
     let mut issues = Vec::new();
     let mut wal_states = HashMap::new(); // document_id -> final_data
     let mut active_transactions = HashMap::new(); // txn_id -> operations
+    let mut entries_processed = 0;
 
     let stream = wal.stream_entries();
     let mut pinned_stream = std::pin::pin!(stream);
     while let Some(entry_result) = pinned_stream.next().await {
         match entry_result {
             Ok(entry) => {
+                entries_processed += 1;
                 if let Some(issue) =
                     verify_wal_entry_consistency(&entry, &mut wal_states, &mut active_transactions).await?
                 {
@@ -78,10 +80,18 @@ where
     // Check that final WAL states match disk states
     for doc_id in wal_states.keys() {
         match document_ops.get_document(doc_id).await {
-            Ok(Some(_)) => {
-                // For now, we don't compare data since we don't have the exact logic
-                // In the original, it compared data, but since we moved, perhaps simplify
-                // or assume it's ok if exists
+            Ok(Some(existing_doc)) => {
+                // Compare WAL state with disk state
+                if let Some(wal_doc) = wal_states.get(doc_id) {
+                    if existing_doc != *wal_doc {
+                        issues.push(WalVerificationIssue {
+                            transaction_id: "final_check".to_owned(),
+                            document_id:    doc_id.clone(),
+                            description:    format!("Document {} data mismatch between WAL and disk", doc_id),
+                            is_critical:    true,
+                        });
+                    }
+                }
             },
             Ok(None) => {
                 issues.push(WalVerificationIssue {
@@ -107,7 +117,7 @@ where
     Ok(WalVerificationResult {
         issues,
         passed,
-        entries_processed: wal_states.len() as u64,
+        entries_processed: entries_processed as u64,
         affected_documents: wal_states.len() as u64,
     })
 }
