@@ -374,12 +374,12 @@ mod tests {
             subcommand: super::store::StoreCommands::Init(init_args),
         };
         let cli = Cli {
-            command: Commands::Store(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: String::from("blake3"),
-            signature_algorithm: String::from("ed25519"),
-            encryption_algorithm: String::from("xchacha20poly1305"),
+            command:                  Commands::Store(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           String::from("blake3"),
+            signature_algorithm:      String::from("ed25519"),
+            encryption_algorithm:     String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
         };
 
@@ -404,12 +404,12 @@ mod tests {
             subcommand: super::store::StoreCommands::Init(init_args),
         };
         let init_cli = Cli {
-            command: Commands::Store(store_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: String::from("blake3"),
-            signature_algorithm: String::from("ed25519"),
-            encryption_algorithm: String::from("xchacha20poly1305"),
+            command:                  Commands::Store(store_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           String::from("blake3"),
+            signature_algorithm:      String::from("ed25519"),
+            encryption_algorithm:     String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
         };
         run_command(init_cli).await.unwrap();
@@ -421,12 +421,12 @@ mod tests {
             command:    super::collection::CollectionCommands::Create(super::collection::create::CreateArgs::default()),
         };
         let cli = Cli {
-            command: Commands::Collection(collection_args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: String::from("blake3"),
-            signature_algorithm: String::from("ed25519"),
-            encryption_algorithm: String::from("xchacha20poly1305"),
+            command:                  Commands::Collection(collection_args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           String::from("blake3"),
+            signature_algorithm:      String::from("ed25519"),
+            encryption_algorithm:     String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
         };
 
@@ -453,12 +453,12 @@ mod tests {
             subcommand: super::store::StoreCommands::Init(init_args),
         };
         let cli = Cli {
-            command: Commands::Store(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: String::from("invalid"),
-            signature_algorithm: String::from("ed25519"),
-            encryption_algorithm: String::from("xchacha20poly1305"),
+            command:                  Commands::Store(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           String::from("invalid"),
+            signature_algorithm:      String::from("ed25519"),
+            encryption_algorithm:     String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
         };
 
@@ -482,12 +482,12 @@ mod tests {
             subcommand: super::store::StoreCommands::Init(init_args),
         };
         let cli = Cli {
-            command: Commands::Store(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: String::from("blake3"),
-            signature_algorithm: String::from("invalid"),
-            encryption_algorithm: String::from("xchacha20poly1305"),
+            command:                  Commands::Store(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           String::from("blake3"),
+            signature_algorithm:      String::from("invalid"),
+            encryption_algorithm:     String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
         };
 
@@ -511,12 +511,12 @@ mod tests {
             subcommand: super::store::StoreCommands::Init(init_args),
         };
         let cli = Cli {
-            command: Commands::Store(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: String::from("blake3"),
-            signature_algorithm: String::from("ed25519"),
-            encryption_algorithm: String::from("invalid"),
+            command:                  Commands::Store(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           String::from("blake3"),
+            signature_algorithm:      String::from("ed25519"),
+            encryption_algorithm:     String::from("invalid"),
             key_derivation_algorithm: String::from("argon2id"),
         };
 
@@ -540,12 +540,12 @@ mod tests {
             subcommand: super::store::StoreCommands::Init(init_args),
         };
         let cli = Cli {
-            command: Commands::Store(args),
-            json: false,
-            verbose: 0,
-            hash_algorithm: String::from("blake3"),
-            signature_algorithm: String::from("ed25519"),
-            encryption_algorithm: String::from("xchacha20poly1305"),
+            command:                  Commands::Store(args),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           String::from("blake3"),
+            signature_algorithm:      String::from("ed25519"),
+            encryption_algorithm:     String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("invalid"),
         };
 
@@ -574,12 +574,12 @@ mod tests {
             subcommand: super::store::StoreCommands::Init(init_args1),
         };
         let cli1 = Cli {
-            command: Commands::Store(store_args1),
-            json: false,
-            verbose: 0,
-            hash_algorithm: String::from("blake3"),
-            signature_algorithm: String::from("ed25519"),
-            encryption_algorithm: String::from("xchacha20poly1305"),
+            command:                  Commands::Store(store_args1),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           String::from("blake3"),
+            signature_algorithm:      String::from("ed25519"),
+            encryption_algorithm:     String::from("xchacha20poly1305"),
             key_derivation_algorithm: String::from("argon2id"),
         };
         let result1 = run_command(cli1).await;
@@ -598,12 +598,12 @@ mod tests {
             subcommand: super::store::StoreCommands::Init(init_args2),
         };
         let cli2 = Cli {
-            command: Commands::Store(store_args2),
-            json: false,
-            verbose: 0,
-            hash_algorithm: String::from("blake3"),
-            signature_algorithm: String::from("ed25519"),
-            encryption_algorithm: String::from("aes256gcmsiv"), // Different encryption algorithm
+            command:                  Commands::Store(store_args2),
+            json:                     false,
+            verbose:                  0,
+            hash_algorithm:           String::from("blake3"),
+            signature_algorithm:      String::from("ed25519"),
+            encryption_algorithm:     String::from("aes256gcmsiv"), // Different encryption algorithm
             key_derivation_algorithm: String::from("argon2id"),
         };
 
