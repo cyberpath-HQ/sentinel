@@ -180,7 +180,9 @@ pub async fn run(
         .await?;
 
     // Use query instead of streaming all
-    let result = coll.query_with_verification(query, &verification_options).await?;
+    let result = coll
+        .query_with_verification(query, &verification_options)
+        .await?;
 
     // Output documents from the stream
     let mut count = 0;
