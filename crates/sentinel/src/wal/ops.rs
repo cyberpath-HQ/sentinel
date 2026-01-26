@@ -310,7 +310,9 @@ pub trait CollectionWalOps {
     /// # Ok(())
     /// # }
     /// ```
-    async fn stream_wal_entries(&self) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send>>>;
+    async fn stream_wal_entries(
+        &self,
+    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + '_>>>;
 
     /// Verify this collection against its WAL file.
     ///
@@ -612,16 +614,14 @@ impl CollectionWalOps for Collection {
         Ok(())
     }
 
-    async fn stream_wal_entries(&self) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send>>> {
+    async fn stream_wal_entries(
+        &self,
+    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + '_>>> {
         if let Some(wal) = &self.wal_manager {
-            debug!("Reading all WAL entries for collection {}", self.name());
-            let entries = wal.read_all_entries().await?;
-            debug!(
-                "Retrieved {} WAL entries for collection {}",
-                entries.len(),
-                self.name()
-            );
-            let stream = futures::stream::iter(entries.into_iter().map(Ok));
+            debug!("Streaming WAL entries for collection {}", self.name());
+            let stream = wal
+                .stream_entries()
+                .map(|result| result.map_err(Into::into));
             Ok(Box::pin(stream))
         }
         else {
@@ -629,7 +629,10 @@ impl CollectionWalOps for Collection {
                 "No WAL manager configured for collection {}, returning empty stream",
                 self.name()
             );
-            Ok(Box::pin(futures::stream::empty()))
+            Ok(Box::pin(
+                futures::stream::empty::<std::result::Result<LogEntry, sentinel_wal::WalError>>()
+                    .map(|r| r.map_err(Into::into)),
+            ) as _)
         }
     }
 
