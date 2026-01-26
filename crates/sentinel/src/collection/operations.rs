@@ -60,7 +60,10 @@ impl Collection {
 
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
-            if !self.recovery_mode.load(std::sync::atomic::Ordering::Relaxed) {
+            if !self
+                .recovery_mode
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
                 let entry = LogEntry::new(
                     EntryType::Insert,
                     self.name().to_string(),
@@ -296,7 +299,10 @@ impl Collection {
         // Generate transaction ID for WAL
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
-            if !self.recovery_mode.load(std::sync::atomic::Ordering::Relaxed) {
+            if !self
+                .recovery_mode
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
                 let entry = LogEntry::new(
                     EntryType::Delete,
                     self.name().to_string(),
@@ -548,7 +554,10 @@ impl Collection {
 
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
-            if !self.recovery_mode.load(std::sync::atomic::Ordering::Relaxed) {
+            if !self
+                .recovery_mode
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
                 let entry = LogEntry::new(
                     EntryType::Update,
                     self.name().to_string(),
