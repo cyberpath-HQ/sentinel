@@ -50,6 +50,10 @@ impl WalDocumentOps for Collection {
             _ => Ok(()), // Other operations not handled here
         }
     }
+
+    fn set_recovery_mode(&self, mode: bool) {
+        self.recovery_mode.store(mode, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 #[cfg(test)]
