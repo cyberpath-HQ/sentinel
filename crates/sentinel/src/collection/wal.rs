@@ -26,7 +26,7 @@ impl WalDocumentOps for Collection {
                 }
                 else {
                     Err(sentinel_wal::WalError::InvalidEntry(
-                        "Insert operation missing data".to_string(),
+                        "Insert operation missing data".to_owned(),
                     ))
                 }
             },
@@ -38,7 +38,7 @@ impl WalDocumentOps for Collection {
                 }
                 else {
                     Err(sentinel_wal::WalError::InvalidEntry(
-                        "Update operation missing data".to_string(),
+                        "Update operation missing data".to_owned(),
                     ))
                 }
             },
@@ -47,7 +47,9 @@ impl WalDocumentOps for Collection {
                     .await
                     .map_err(|e| sentinel_wal::WalError::Io(std::io::Error::other(format!("{}", e))))
             },
-            _ => Ok(()), // Other operations not handled here
+            sentinel_wal::EntryType::Begin | sentinel_wal::EntryType::Commit | sentinel_wal::EntryType::Rollback => {
+                Ok(())
+            }, // Other operations not handled here
         }
     }
 
