@@ -12,4 +12,10 @@ pub trait WalDocumentOps: Send + Sync {
 
     /// Apply a WAL operation to a document
     async fn apply_operation(&self, entry_type: &EntryType, id: &str, data: Option<Value>) -> Result<()>;
+
+    /// Set recovery mode (skip WAL logging during recovery)
+    fn set_recovery_mode(&self, mode: bool) {
+        // Default implementation does nothing
+        let _ = mode;
+    }
 }
