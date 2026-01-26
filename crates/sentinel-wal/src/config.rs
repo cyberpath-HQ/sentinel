@@ -67,6 +67,7 @@ pub struct CollectionWalConfig {
     /// Optional maximum number of records per WAL file
     pub max_records_per_file:  Option<usize>,
     /// WAL file format
+    #[serde(default)]
     pub format:                crate::manager::WalFormat,
 }
 
