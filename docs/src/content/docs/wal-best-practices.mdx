@@ -1,0 +1,603 @@
+---
+title: Best Practices
+description:
+  Best practices for using Write-Ahead Logging effectively, including monitoring, maintenance, and optimization
+  strategies.
+section: Advanced Topics
+subsection: Write-Ahead Logging
+order: 35
+keywords: ["wal", "best practices", "monitoring", "maintenance", "optimization", "performance"]
+related: ["wal", "wal-configuration", "wal-recovery", "wal-verification"]
+---
+
+This guide provides proven patterns and best practices for using Write-Ahead Logging in production environments.
+
+## Operational Best Practices
+
+### 1. Choose the Right Failure Mode
+
+Match your failure mode to your data's importance:
+
+```rust
+use sentinel_wal::WalFailureMode;
+
+// Critical audit logs - no data loss acceptable
+audit_logs_collection.update_wal_config(
+    CollectionWalConfigOverrides {
+        write_mode: Some(WalFailureMode::Strict),
+        ..Default::default()
+    },
+    true
+).await?;
+
+// Non-critical metrics - availability more important
+metrics_collection.update_wal_config(
+    CollectionWalConfigOverrides {
+        write_mode: Some(WalFailureMode::Warn),
+        ..Default::default()
+    },
+    true
+).await?;
+
+// Temporary cache - no durability needed
+cache_collection.update_wal_config(
+    CollectionWalConfigOverrides {
+        write_mode: Some(WalFailureMode::Disabled),
+        ..Default::default()
+    },
+    true
+).await?;
+```
+
+### 2. Configure File Rotation Appropriately
+
+Set rotation limits based on your workload:
+
+```rust
+use sentinel_wal::CollectionWalConfig;
+
+// High-throughput collection: larger files, frequent rotation
+let mut config = CollectionWalConfig::default();
+config.max_wal_size_bytes = Some(100 * 1024 * 1024);      // 100MB
+config.max_records_per_file = Some(10000);                 // 10k entries
+config.compression_algorithm = Some(CompressionAlgorithm::Zstd);
+
+// Low-throughput collection: smaller files, less overhead
+let mut config = CollectionWalConfig::default();
+config.max_wal_size_bytes = Some(5 * 1024 * 1024);        // 5MB
+config.max_records_per_file = Some(500);                  // 500 entries
+```
+
+### 3. Schedule Regular Checkpoints
+
+Checkpoints flush WAL entries and reclaim disk space:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+use std::time::Duration;
+use tokio::time::interval;
+
+async fn checkpoint_scheduler(collection: Collection) {
+    let mut ticker = interval(Duration::from_secs(3600)); // Hourly
+
+    loop {
+        ticker.tick().await;
+
+        match collection.checkpoint_wal().await {
+            Ok(_) => {
+                println!("✓ Checkpoint successful");
+            },
+            Err(e) => {
+                eprintln!("✗ Checkpoint failed: {}", e);
+                // Decide whether to alert or retry
+            }
+        }
+    }
+}
+```
+
+Or checkpoint based on WAL size:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+async fn conditional_checkpoint(collection: &Collection) -> Result<()> {
+    let wal_size = collection.wal_size().await?;
+
+    // Checkpoint if WAL exceeds 50MB
+    if wal_size > 50 * 1024 * 1024 {
+        collection.checkpoint_wal().await?;
+    }
+
+    Ok(())
+}
+```
+
+### 4. Batch Operations for Efficiency
+
+Group related operations to minimize WAL overhead:
+
+```rust
+// ❌ Inefficient: Many individual insertions
+for user in users {
+    collection.insert(&user.id, user.to_json()).await?;
+}
+
+// ✓ Efficient: Batch before checkpoint
+for user in users {
+    collection.insert(&user.id, user.to_json()).await?;
+}
+collection.checkpoint_wal().await?; // Single checkpoint
+```
+
+### 5. Monitor WAL Health
+
+Track key metrics:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+pub struct WalHealthMetrics {
+    pub size_bytes: u64,
+    pub entry_count: u64,
+    pub avg_entry_size: u64,
+    pub rotation_count: u64,
+}
+
+pub async fn collect_wal_metrics(collection: &Collection) -> Result<WalHealthMetrics> {
+    let size = collection.wal_size().await?;
+    let count = collection.wal_entries_count().await?;
+
+    Ok(WalHealthMetrics {
+        size_bytes: size,
+        entry_count: count,
+        avg_entry_size: if count > 0 { size / count } else { 0 },
+        rotation_count: collection.wal_rotation_count().await?,
+    })
+}
+```
+
+## Monitoring and Observability
+
+### 1. Set Up Metrics Collection
+
+Integrate with your monitoring system:
+
+```rust
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+pub struct WalMonitoring {
+    collection: Arc<Collection>,
+    metrics_client: Arc<MetricsClient>,
+}
+
+impl WalMonitoring {
+    pub async fn run(&self) {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+
+            if let Ok(size) = self.collection.wal_size().await {
+                self.metrics_client.gauge("wal.size_bytes", size as f64);
+            }
+
+            if let Ok(count) = self.collection.wal_entries_count().await {
+                self.metrics_client.gauge("wal.entry_count", count as f64);
+            }
+        }
+    }
+}
+```
+
+### 2. Implement Alerting Rules
+
+Create alerts for anomalies:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+pub async fn check_wal_alerts(collection: &Collection) -> Vec<Alert> {
+    let mut alerts = Vec::new();
+
+    match collection.wal_size().await {
+        Ok(size) => {
+            // Alert if WAL is growing too fast
+            if size > 200 * 1024 * 1024 {
+                alerts.push(Alert {
+                    severity: Severity::Critical,
+                    message: format!("WAL size {} exceeds 200MB", size),
+                });
+            }
+        },
+        Err(e) => {
+            alerts.push(Alert {
+                severity: Severity::Warning,
+                message: format!("Failed to check WAL size: {}", e),
+            });
+        }
+    }
+
+    // Check verification health
+    if let Ok(result) = collection.verify_wal().await {
+        if !result.passed {
+            alerts.push(Alert {
+                severity: Severity::High,
+                message: format!("WAL verification failed: {} issues", result.issues.len()),
+            });
+        }
+    }
+
+    alerts
+}
+```
+
+### 3. Log WAL Events
+
+Create an audit trail of WAL operations:
+
+```rust
+use tracing::{info, warn, error};
+
+pub async fn logged_checkpoint(collection: &Collection) -> Result<()> {
+    info!("Starting WAL checkpoint");
+
+    match collection.checkpoint_wal().await {
+        Ok(_) => {
+            info!("WAL checkpoint completed successfully");
+            Ok(())
+        },
+        Err(e) => {
+            error!("WAL checkpoint failed: {}", e);
+            Err(e)
+        }
+    }
+}
+```
+
+## Maintenance Best Practices
+
+### 1. Regular Verification Schedule
+
+Run verification during maintenance windows:
+
+```rust
+use sentinel_dbms::wal::ops::StoreWalOps;
+use chrono::prelude::*;
+
+pub async fn maintenance_verification(store: &Store) -> Result<MaintenanceReport> {
+    let timestamp = Utc::now();
+    let results = store.verify_all_collections().await?;
+
+    let mut report = MaintenanceReport {
+        timestamp,
+        passed: 0,
+        failed: 0,
+        issues: Vec::new(),
+    };
+
+    for (collection_name, issues) in results {
+        if issues.is_empty() {
+            report.passed += 1;
+        } else {
+            report.failed += 1;
+            report.issues.push(format!("{}: {} issues", collection_name, issues.len()));
+        }
+    }
+
+    Ok(report)
+}
+```
+
+### 2. Planned Recovery Testing
+
+Periodically test recovery without production impact:
+
+```rust
+use tempfile::tempdir;
+use std::path::PathBuf;
+
+pub async fn test_recovery_offline(store_path: &PathBuf) -> Result<()> {
+    // Create a temporary copy of the store
+    let test_dir = tempdir()?;
+    copy_tree(store_path, test_dir.path()).await?;
+
+    // Load from the copy and test recovery
+    let test_store = Store::new(test_dir.path(), None).await?;
+    test_store.recover_all_collections().await?;
+
+    println!("✓ Recovery test successful");
+    Ok(())
+}
+```
+
+### 3. WAL Archival Strategy
+
+Archive old WAL files for compliance:
+
+```rust
+use chrono::Duration;
+
+pub async fn archive_old_wal(
+    collection: &Collection,
+    archive_path: &Path,
+    days_old: i64,
+) -> Result<()> {
+    let cutoff = Utc::now() - Duration::days(days_old);
+
+    // Get list of rotated WAL files
+    let wal_dir = collection.wal_directory_path();
+    let mut entries = tokio::fs::read_dir(&wal_dir).await?;
+
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        let metadata = tokio::fs::metadata(&path).await?;
+        let modified: DateTime<Utc> = metadata.modified()?.into();
+
+        if modified < cutoff && path.extension().map_or(false, |ext| ext == "zst") {
+            // Archive compressed WAL file
+            let archive_name = path.file_name().unwrap();
+            let archive_dest = archive_path.join(archive_name);
+
+            tokio::fs::copy(&path, &archive_dest).await?;
+            tokio::fs::remove_file(&path).await?;
+        }
+    }
+
+    Ok(())
+}
+```
+
+## Performance Optimization
+
+### 1. Binary Format for Production
+
+Use binary format in production for better performance:
+
+```rust
+use sentinel_wal::{CollectionWalConfig, WalFormat};
+
+let mut config = CollectionWalConfig::default();
+config.format = WalFormat::Binary;  // Default, optimized
+```
+
+Reserve JSON Lines format for debugging:
+
+```rust
+let mut debug_config = CollectionWalConfig::default();
+debug_config.format = WalFormat::JsonLines;  // Human-readable, slower
+```
+
+### 2. Compression Strategy
+
+Match compression to your workload:
+
+```rust
+use sentinel_wal::CompressionAlgorithm;
+
+// For most production workloads (recommended)
+config.compression_algorithm = Some(CompressionAlgorithm::Zstd);
+
+// For archival with lower CPU overhead
+config.compression_algorithm = Some(CompressionAlgorithm::Gzip);
+
+// For real-time systems where space is less critical
+config.compression_algorithm = None;
+```
+
+### 3. Async-First Operations
+
+Always use async operations to avoid blocking:
+
+```rust
+// ✓ Correct: Async operation
+collection.checkpoint_wal().await?;
+
+// ❌ Wrong: Blocking in async context
+std::thread::sleep(Duration::from_secs(1)); // Never do this
+```
+
+### 4. Stream Processing for Large Collections
+
+Process WAL entries efficiently:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+use futures::StreamExt;
+
+// Process entries without loading entire WAL into memory
+let mut stream = collection.stream_wal_entries().await?;
+let mut entry_count = 0;
+
+while let Some(entry_result) = stream.next().await {
+    let entry = entry_result?;
+    process_entry(&entry).await?;
+    entry_count += 1;
+}
+
+println!("Processed {} entries", entry_count);
+```
+
+## Error Handling Patterns
+
+### 1. Graceful Degradation
+
+Handle WAL failures gracefully in Warn mode:
+
+```rust
+use sentinel_wal::WalFailureMode;
+
+let mut config = CollectionWalConfig::default();
+config.write_mode = WalFailureMode::Warn;
+
+// Operation continues even if WAL fails
+collection.insert("doc-id", data).await.ok(); // Best effort
+
+// But monitor for issues
+let result = collection.verify_wal().await?;
+if !result.passed {
+    eprintln!("⚠ WAL issues detected, investigate");
+}
+```
+
+### 2. Recovery Failure Handling
+
+Handle recovery failures appropriately:
+
+```rust
+match collection.recover_from_wal().await {
+    Ok(result) => {
+        if result.failed_operations > 0 {
+            eprintln!("⚠ {} operations failed recovery", result.failed_operations);
+
+            // Analyze failures to determine if they're acceptable
+            if all_failures_tolerable(&result.failures) {
+                println!("Continuing despite failures");
+            } else {
+                return Err(SentinelError::RecoveryFailed { .. }.into());
+            }
+        }
+    },
+    Err(e) => {
+        eprintln!("✗ Recovery failed: {}", e);
+        // Decide: retry, alert ops, restore from backup
+    }
+}
+```
+
+### 3. Verification-Based Decision Making
+
+Use verification results to guide operational decisions:
+
+```rust
+let verification = collection.verify_wal().await?;
+
+let critical_issue_count = verification.issues
+    .iter()
+    .filter(|issue| issue.is_critical)
+    .count();
+
+match critical_issue_count {
+    0 => println!("✓ All good"),
+    1..=5 => {
+        println!("⚠ Minor issues, investigating");
+        collection.recover_from_wal().await?;
+    },
+    _ => {
+        eprintln!("✗ Critical issues, escalating");
+        alert_ops_team(&verification.issues)?;
+    }
+}
+```
+
+## Testing Best Practices
+
+### 1. Test WAL Recovery
+
+Include recovery tests in your test suite:
+
+```rust
+#[tokio::test]
+async fn test_wal_recovery_after_crash() {
+    let temp_dir = tempdir().unwrap();
+
+    // Create collection and insert data
+    let store = Store::new(temp_dir.path(), None).await.unwrap();
+    let users = store.collection("users").await.unwrap();
+    users.insert("user-1", json!({"name": "Alice"})).await.unwrap();
+
+    // Simulate crash (without checkpoint)
+    drop(users);
+
+    // Recovery
+    let store2 = Store::new(temp_dir.path(), None).await.unwrap();
+    let users2 = store2.collection("users").await.unwrap();
+    let result = users2.recover_from_wal().await.unwrap();
+
+    assert!(result.recovered_operations > 0, "Should recover data");
+}
+```
+
+### 2. Verify WAL Health in Tests
+
+```rust
+#[tokio::test]
+async fn test_wal_consistency() {
+    let store = create_test_store().await;
+    let collection = store.collection("test").await.unwrap();
+
+    // Perform operations
+    collection.insert("doc-1", json!({"value": 1})).await.unwrap();
+    collection.insert("doc-2", json!({"value": 2})).await.unwrap();
+
+    // Verify consistency
+    let verification = collection.verify_wal().await.unwrap();
+    assert!(verification.passed, "WAL should be consistent");
+    assert_eq!(verification.entries_processed, 2);
+}
+```
+
+## Compliance and Auditing
+
+### 1. Audit Trail Maintenance
+
+Keep WAL for compliance requirements:
+
+```rust
+pub async fn ensure_wal_retention(
+    collection: &Collection,
+    retention_days: i64,
+) -> Result<()> {
+    // Don't archive or delete WAL within retention period
+    let cutoff = Utc::now() - Duration::days(retention_days);
+
+    // Configuration should preserve WAL files
+    let config = collection.wal_config();
+    assert!(config.enable_recovery, "Recovery must be enabled for compliance");
+
+    Ok(())
+}
+```
+
+### 2. Verification for Compliance
+
+Generate verification reports for auditors:
+
+```rust
+pub async fn generate_compliance_report(store: &Store) -> ComplianceReport {
+    let verifications = store.verify_all_collections().await.unwrap_or_default();
+
+    ComplianceReport {
+        timestamp: Utc::now(),
+        total_collections: verifications.len(),
+        passing: verifications.values().filter(|issues| issues.is_empty()).count(),
+        issues: verifications
+            .into_iter()
+            .flat_map(|(name, issues)| {
+                issues.into_iter().map(move |issue| {
+                    format!("{}: {}", name, issue.description)
+                })
+            })
+            .collect(),
+    }
+}
+```
+
+## Summary of Key Takeaways
+
+| Best Practice            | Impact                  | Effort |
+| ------------------------ | ----------------------- | ------ |
+| Right failure mode       | Data integrity          | Low    |
+| Regular checkpoints      | Disk space              | Low    |
+| Batch operations         | Performance             | Low    |
+| Monitor WAL health       | Early problem detection | Medium |
+| Scheduled verification   | Assurance               | Medium |
+| Regular recovery testing | Confidence              | Medium |
+| Appropriate compression  | Storage cost            | Low    |
+| Async operations         | Performance             | Low    |
+
+## Next Steps
+
+- Review [WAL Configuration](wal-configuration) options
+- Understand [WAL Recovery](wal-recovery) mechanisms
+- Learn [WAL Verification](wal-verification) techniques
+- Check [Troubleshooting Guide](troubleshooting) for common issues

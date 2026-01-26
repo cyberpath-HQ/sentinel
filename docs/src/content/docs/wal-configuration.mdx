@@ -1,0 +1,424 @@
+---
+title: Configuration
+description:
+  Configure Write-Ahead Logging for your collections and store, including failure modes, compression, and file
+  management.
+section: Advanced Topics
+subsection: Write-Ahead Logging
+order: 32
+keywords: ["wal", "configuration", "failure mode", "compression", "durability"]
+related: ["wal", "wal-recovery", "wal-best-practices"]
+---
+
+This guide explains how to configure Write-Ahead Logging in Sentinel for different use cases and performance
+requirements.
+
+## Configuration Overview
+
+WAL configuration operates at two levels:
+
+1. **Store-level**: Global defaults for all collections
+2. **Collection-level**: Per-collection overrides for specific needs
+
+## Store-Level Configuration
+
+Configure default WAL behavior for your entire store:
+
+```rust
+use sentinel_dbms::Store;
+use sentinel_wal::{StoreWalConfig, WalFailureMode, CollectionWalConfig};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", None).await?;
+
+    // Create a custom config
+    let mut wal_config = CollectionWalConfig::default();
+    wal_config.write_mode = WalFailureMode::Strict;
+    wal_config.verification_mode = WalFailureMode::Warn;
+    wal_config.enable_recovery = true;
+    wal_config.max_wal_size_bytes = Some(50 * 1024 * 1024); // 50MB
+
+    // Apply to a collection
+    let users = store.collection_with_config("users", Some(wal_config)).await?;
+
+    Ok(())
+}
+```
+
+## Configuration Options
+
+### Failure Modes
+
+Control how WAL-related failures are handled:
+
+#### Strict Mode (Default for write_mode)
+
+```rust
+wal_config.write_mode = WalFailureMode::Strict;
+```
+
+<ul class="list-none! pl-0!">
+  <li>**Behavior**: Any WAL failure immediately fails the operation</li>
+  <li>**Use when**: Data integrity and consistency are critical</li>
+  <li>**Examples**: Financial transactions, audit logs, compliance records</li>
+</ul>
+
+**Characteristics**:
+
+- Operations fail if WAL cannot be written
+- Guarantees that every operation is logged
+- May reject operations if WAL storage is unavailable
+- Best for data where consistency > availability
+
+#### Warn Mode (Default for verification_mode)
+
+```rust
+wal_config.verification_mode = WalFailureMode::Warn;
+```
+
+<ul class="list-none! pl-0!">
+  <li>**Behavior**: WAL failures are logged as warnings but operations continue</li>
+  <li>**Use when**: You want logging attempts but can tolerate occasional failures</li>
+  <li>**Examples**: Analytics data, non-critical metrics, cached content</li>
+</ul>
+
+**Characteristics**:
+
+- Operations continue even if WAL write fails
+- Failures are logged for monitoring
+- Best for data where availability > consistency
+- Useful as a fallback for degraded systems
+
+#### Disabled Mode
+
+```rust
+wal_config.write_mode = WalFailureMode::Disabled;
+```
+
+<ul class="list-none! pl-0!">
+  <li>**Behavior**: WAL is completely disabled</li>
+  <li>**Use when**: You don't need crash recovery for this collection</li>
+  <li>**Examples**: Temporary caches, computed/derived data, session storage</li>
+</ul>
+
+**Characteristics**:
+
+- No WAL entries are created
+- No overhead from logging
+- No crash recovery available
+- Use only when data can be recreated
+
+### Operational Modes
+
+#### Write Mode
+
+Controls behavior when logging write operations (Insert, Update, Delete):
+
+```rust
+// Critical data - fail if WAL unavailable
+wal_config.write_mode = WalFailureMode::Strict;
+
+// Less critical - warn on failure
+wal_config.write_mode = WalFailureMode::Warn;
+
+// Temporary data - don't log
+wal_config.write_mode = WalFailureMode::Disabled;
+```
+
+#### Verification Mode
+
+Controls behavior when verifying WAL consistency:
+
+```rust
+// Enforce strict verification
+wal_config.verification_mode = WalFailureMode::Strict;
+
+// Log issues but continue
+wal_config.verification_mode = WalFailureMode::Warn;
+
+// Skip verification
+wal_config.verification_mode = WalFailureMode::Disabled;
+```
+
+### Recovery and Verification
+
+#### Enable Recovery
+
+Allow recovery from WAL entries on startup or after crashes:
+
+```rust
+wal_config.enable_recovery = true;  // Default: true
+```
+
+When enabled, Sentinel can automatically replay WAL entries to restore consistency.
+
+#### Auto Verification
+
+Automatically verify documents against WAL on read:
+
+```rust
+wal_config.auto_verify = false;  // Default: false
+```
+
+When enabled, every document read is verified against WAL entries. This adds overhead but guarantees consistency.
+
+### File Management
+
+#### Maximum File Size
+
+Rotate to a new WAL file when it exceeds this size:
+
+```rust
+wal_config.max_wal_size_bytes = Some(10 * 1024 * 1024); // 10MB (default)
+wal_config.max_wal_size_bytes = Some(50 * 1024 * 1024); // 50MB
+wal_config.max_wal_size_bytes = None; // No limit
+```
+
+**Impact**:
+
+- Smaller size: More frequent rotations, less disk space per file, more files to manage
+- Larger size: Fewer rotations, larger files, slower recovery if needed
+- `None`: Single file grows indefinitely, not recommended for long-running systems
+
+#### Maximum Records Per File
+
+Rotate when this many entries are logged:
+
+```rust
+wal_config.max_records_per_file = Some(1000);  // Default
+wal_config.max_records_per_file = Some(10000); // For high-throughput
+wal_config.max_records_per_file = None;         // No limit
+```
+
+> **Consideration**
+>
+> Whichever limit is hit first (size or record count) triggers rotation.
+
+### Compression
+
+Configure compression for rotated WAL files:
+
+```rust
+use sentinel_wal::CompressionAlgorithm;
+
+// Zstandard (recommended, default)
+wal_config.compression_algorithm = Some(CompressionAlgorithm::Zstd);
+
+// Gzip (good compression, moderate speed)
+wal_config.compression_algorithm = Some(CompressionAlgorithm::Gzip);
+
+// No compression
+wal_config.compression_algorithm = None;
+```
+
+**Comparison**:
+
+| Algorithm | Compression | Speed     | Use Case             |
+| --------- | ----------- | --------- | -------------------- |
+| Zstd      | Excellent   | Fast      | Production (default) |
+| Brotli    | Very Good   | Moderate  | Json line format     |
+| Deflate   | Good        | Moderate  | General purpose      |
+| Lz4       | Moderate    | Very Fast | Real-time systems    |
+| Gzip      | Good        | Moderate  | Archival             |
+| None      | N/A         | Fastest   | Development, testing |
+
+### WAL Format
+
+Choose between binary and human-readable formats:
+
+```rust
+use sentinel_wal::WalFormat;
+
+// Binary (default, recommended)
+wal_config.format = WalFormat::Binary;
+
+// JSON Lines (human-readable)
+wal_config.format = WalFormat::JsonLines;
+```
+
+**Comparison**:
+
+| Format    | Size    | Human-Readable | Performance | Use Case                         |
+| --------- | ------- | -------------- | ----------- | -------------------------------- |
+| Binary    | Compact | No             | Best        | Production                       |
+| JsonLines | Larger  | Yes            | Good        | Development, auditing, debugging |
+
+> **Note on compression**:
+>
+> **JsonLines** benefit more from compression with algorithms like Brotli or Gzip due to their text nature.
+>
+> **Binary** format is already compact, so compression gains are less pronounced. But Zstd still provides good speed and
+> size reduction.
+
+## Configuration Patterns
+
+### High-Durability Configuration
+
+For critical data that must not be lost:
+
+```rust
+use sentinel_wal::{CollectionWalConfig, WalFailureMode, WalFormat};
+
+let mut config = CollectionWalConfig::default();
+config.write_mode = WalFailureMode::Strict;
+config.verification_mode = WalFailureMode::Strict;
+config.auto_verify = true;
+config.enable_recovery = true;
+config.format = WalFormat::Binary;
+config.max_wal_size_bytes = Some(10 * 1024 * 1024);
+
+let critical_data = store.collection_with_config(
+    "critical",
+    Some(config)
+).await?;
+```
+
+### High-Performance Configuration
+
+For less critical data where availability matters more:
+
+```rust
+use sentinel_wal::{CollectionWalConfig, WalFailureMode};
+
+let mut config = CollectionWalConfig::default();
+config.write_mode = WalFailureMode::Warn;
+config.verification_mode = WalFailureMode::Disabled;
+config.auto_verify = false;
+config.enable_recovery = false;
+config.max_wal_size_bytes = Some(100 * 1024 * 1024);
+config.max_records_per_file = Some(10000);
+
+let high_perf = store.collection_with_config(
+    "metrics",
+    Some(config)
+).await?;
+```
+
+### Development Configuration
+
+For testing and debugging:
+
+```rust
+use sentinel_wal::{CollectionWalConfig, WalFailureMode, WalFormat};
+
+let mut config = CollectionWalConfig::default();
+config.write_mode = WalFailureMode::Warn;
+config.format = WalFormat::JsonLines; // Human-readable
+config.enable_recovery = true;
+config.max_wal_size_bytes = Some(1 * 1024 * 1024); // 1MB for frequent rotation
+
+let dev = store.collection_with_config(
+    "dev_collection",
+    Some(config)
+).await?;
+```
+
+### Audit Log Configuration
+
+For compliance and audit requirements:
+
+```rust
+use sentinel_wal::{CollectionWalConfig, WalFailureMode, WalFormat};
+
+let mut config = CollectionWalConfig::default();
+config.write_mode = WalFailureMode::Strict;
+config.verification_mode = WalFailureMode::Strict;
+config.format = WalFormat::JsonLines; // Auditors appreciate readability
+config.enable_recovery = true;
+config.auto_verify = true;
+
+let audit_log = store.collection_with_config(
+    "audit_log",
+    Some(config)
+).await?;
+```
+
+## Programmatic Configuration
+
+### Reading Current Configuration
+
+```rust
+use sentinel_dbms::Collection;
+
+let wal_config = collection.wal_config();
+println!("Write mode: {:?}", wal_config.write_mode);
+println!("Format: {:?}", wal_config.format);
+println!("Recovery enabled: {}", wal_config.enable_recovery);
+```
+
+### Updating Configuration
+
+```rust
+use sentinel_wal::CollectionWalConfigOverrides;
+
+let mut overrides = CollectionWalConfigOverrides::default();
+overrides.write_mode = Some(WalFailureMode::Warn);
+overrides.enable_recovery = Some(true);
+
+collection.update_wal_config(overrides, true).await?;
+```
+
+## Configuration Persistence
+
+When you create a collection with custom WAL configuration, the settings are persisted in the collection's
+`.metadata.json` file. This ensures the same configuration is applied when the collection is reopened.
+
+```json
+{
+  "id": "users",
+  "wal_config": {
+    "write_mode": "strict",
+    "verification_mode": "warn",
+    "auto_verify": false,
+    "enable_recovery": true,
+    "max_wal_size_bytes": 10485760,
+    "compression_algorithm": "zstd",
+    "max_records_per_file": 1000,
+    "format": "binary"
+  }
+}
+```
+
+## Environment-Based Configuration
+
+Use environment variables to change configuration per environment:
+
+```rust
+use sentinel_wal::{CollectionWalConfig, WalFailureMode};
+
+let write_mode = match std::env::var("ENV").as_deref() {
+    Ok("production") => WalFailureMode::Strict,
+    Ok("staging") => WalFailureMode::Warn,
+    _ => WalFailureMode::Warn,
+};
+
+let mut config = CollectionWalConfig::default();
+config.write_mode = write_mode;
+```
+
+## Monitoring Configuration
+
+Keep track of WAL configuration impact:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let wal_size = collection.wal_size().await?;
+let entry_count = collection.wal_entries_count().await?;
+let avg_entry_size = if entry_count > 0 {
+    wal_size / entry_count
+} else {
+    0
+};
+
+println!("WAL size: {} bytes", wal_size);
+println!("Entries: {}", entry_count);
+println!("Avg entry size: {} bytes", avg_entry_size);
+```
+
+## Next Steps
+
+- Understand [WAL recovery](wal-recovery) mechanisms
+- Learn how to [verify WAL consistency](wal-verification)
+- Follow [WAL best practices](wal-best-practices)
