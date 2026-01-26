@@ -162,7 +162,7 @@ impl Collection {
         }
         else {
             // Create new metadata if file doesn't exist
-            CollectionMetadata::new(self.name().to_string())
+            CollectionMetadata::new(self.name().to_owned())
         };
 
         // Update the runtime statistics
@@ -243,14 +243,14 @@ impl Collection {
         // Check for path separators
         if id.contains('/') || id.contains('\\') {
             return Err(SentinelError::InvalidDocumentId {
-                id: id.to_string(),
+                id: id.to_owned(),
             });
         }
 
         // Check for control characters
         if id.chars().any(|c| c.is_control()) {
             return Err(SentinelError::InvalidDocumentId {
-                id: id.to_string(),
+                id: id.to_owned(),
             });
         }
 
@@ -271,7 +271,7 @@ impl Collection {
         for reserved in &reserved_names {
             if upper_id == *reserved || upper_id.starts_with(&format!("{}.", reserved)) {
                 return Err(SentinelError::InvalidDocumentId {
-                    id: id.to_string(),
+                    id: id.to_owned(),
                 });
             }
         }
@@ -279,7 +279,7 @@ impl Collection {
         // Check for other filesystem-unsafe characters
         if !is_valid_document_id_chars(id) {
             return Err(SentinelError::InvalidDocumentId {
-                id: id.to_string(),
+                id: id.to_owned(),
             });
         }
 
@@ -301,6 +301,10 @@ impl Collection {
     ///
     /// This method should only be called once during collection initialization.
     /// Multiple calls will replace the previous event task.
+    #[allow(
+        clippy::integer_division_remainder_used,
+        reason = "false positive in tokio select"
+    )]
     pub fn start_event_processor(&mut self) {
         let mut event_receiver = {
             let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -404,7 +408,7 @@ impl Collection {
                                 }
                             } else {
                                 tracing::warn!("Collection metadata file not found, creating new");
-                                crate::CollectionMetadata::new(path.file_name().unwrap().to_str().unwrap().to_string())
+                                crate::CollectionMetadata::new(path.file_name().unwrap().to_str().unwrap().to_owned())
                             };
 
                             // Update the runtime statistics
@@ -449,7 +453,7 @@ impl Collection {
     ///
     /// * `event` - The event to emit to the store.
     pub fn emit_event(&self, event: crate::events::StoreEvent) {
-        if let Some(sender) = &self.event_sender &&
+        if let Some(sender) = self.event_sender.as_ref() &&
             let Err(e) = sender.send(event)
         {
             warn!("Failed to emit collection event: {}", e);
