@@ -92,8 +92,8 @@ pub async fn run(
                     || String::from(""),
                     |doc| {
                         let data_str = serde_json::to_string(&doc.data()).unwrap();
-                        if data_str.len() > 40 {
-                            format!("{}...", &data_str[.. 37])
+                        if data_str.chars().count() > 40 {
+                            format!("{}...", data_str.chars().take(37).collect::<String>())
                         }
                         else {
                             data_str
