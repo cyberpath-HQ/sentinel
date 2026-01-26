@@ -98,6 +98,9 @@ impl Collection {
         })?;
         debug!("Document {} inserted successfully", id);
 
+        // Update collection's last updated timestamp
+        *self.updated_at.write().unwrap() = chrono::Utc::now();
+
         // Emit event - all metadata updates handled asynchronously by event processor
         self.emit_event(crate::events::StoreEvent::DocumentInserted {
             collection: self.name().to_string(),
@@ -322,6 +325,9 @@ impl Collection {
                         e
                     })?;
                 debug!("Document {} soft deleted successfully", id);
+
+                // Update collection's last updated timestamp
+                *self.updated_at.write().unwrap() = chrono::Utc::now();
 
                 // Emit event - all metadata updates handled asynchronously by event processor
                 if let Some(sender) = &self.event_sender {
@@ -574,6 +580,9 @@ impl Collection {
         })?;
 
         debug!("Document {} updated successfully", id);
+
+        // Update collection's last updated timestamp
+        *self.updated_at.write().unwrap() = chrono::Utc::now();
 
         // Emit event - all metadata updates handled asynchronously by event processor
         if let Some(sender) = &self.event_sender {
