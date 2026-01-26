@@ -54,13 +54,13 @@ impl CollectionMetadata {
             .as_secs();
 
         Self {
-            version:          META_SENTINEL_VERSION,
-            name:             name.clone(),
-            created_at:       now,
-            updated_at:       now,
-            document_count:   0,
+            version: META_SENTINEL_VERSION,
+            name,
+            created_at: now,
+            updated_at: now,
+            document_count: 0,
             total_size_bytes: 0,
-            wal_config:       None,
+            wal_config: None,
         }
     }
 
@@ -81,6 +81,7 @@ impl CollectionMetadata {
                     // when we add new fields in future versions
                     self.version = current_version;
                 },
+
                 // Add future version migrations here as needed
                 // 2 => { /* migration logic */ self.version = 3; }
                 _ => {
@@ -95,10 +96,6 @@ impl CollectionMetadata {
         Ok(())
     }
 
-    /// Check if metadata needs upgrading
-    pub fn needs_upgrade(&self) -> bool { self.version < META_SENTINEL_VERSION }
-
-    /// Update the modification timestamp
     pub fn touch(&mut self) {
         self.updated_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -151,6 +148,10 @@ pub struct StoreMetadata {
     pub wal_config:       StoreWalConfig,
 }
 
+#[allow(
+    clippy::arithmetic_side_effects,
+    reason = "counter increments in metadata"
+)]
 impl StoreMetadata {
     /// Create new metadata for a store
     pub fn new() -> Self {
@@ -175,6 +176,10 @@ impl Default for StoreMetadata {
     fn default() -> Self { Self::new() }
 }
 
+#[allow(
+    clippy::arithmetic_side_effects,
+    reason = "counter increments in metadata"
+)]
 impl StoreMetadata {
     /// Upgrade metadata to the current version if needed
     ///
@@ -207,7 +212,7 @@ impl StoreMetadata {
     }
 
     /// Check if metadata needs upgrading
-    pub fn needs_upgrade(&self) -> bool { self.version < META_SENTINEL_VERSION }
+    pub const fn needs_upgrade(&self) -> bool { self.version < META_SENTINEL_VERSION }
 
     /// Update the modification timestamp
     pub fn touch(&mut self) {
@@ -231,8 +236,8 @@ impl StoreMetadata {
 
     /// Update document statistics
     pub fn update_documents(&mut self, document_delta: i64, size_delta: i64) {
-        self.total_documents = ((self.total_documents as i128 + document_delta as i128).max(0) as u64).min(u64::MAX);
-        self.total_size_bytes = ((self.total_size_bytes as i128 + size_delta as i128).max(0) as u64).min(u64::MAX);
+        self.total_documents = (self.total_documents as i128 + document_delta as i128).max(0) as u64;
+        self.total_size_bytes = (self.total_size_bytes as i128 + size_delta as i128).max(0) as u64;
         self.touch();
     }
 }
