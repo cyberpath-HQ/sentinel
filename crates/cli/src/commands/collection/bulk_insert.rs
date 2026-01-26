@@ -1,5 +1,4 @@
-use std::fs;
-
+use tokio::fs;
 use clap::Args;
 use serde_json::Value;
 use tracing::info;
@@ -36,7 +35,7 @@ pub async fn run(
     args: BulkInsertArgs,
 ) -> sentinel_dbms::Result<()> {
     // Read and parse the JSON file
-    let content = fs::read_to_string(&args.file).map_err(|e| {
+    let content = fs::read_to_string(&args.file).await.map_err(|e| {
         sentinel_dbms::SentinelError::Io {
             source: e,
         }
