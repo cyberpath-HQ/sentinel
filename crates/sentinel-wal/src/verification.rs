@@ -45,6 +45,7 @@ pub struct WalVerificationResult {
 /// 1. Replays all WAL entries to compute final expected states
 /// 2. Compares final WAL states with actual disk states
 /// 3. Checks for WAL internal consistency
+#[allow(clippy::arithmetic_side_effects, reason = "counter increment in loop")]
 pub async fn verify_wal_consistency<D>(wal: &WalManager, document_ops: &D) -> Result<WalVerificationResult>
 where
     D: WalDocumentOps + Sync,
