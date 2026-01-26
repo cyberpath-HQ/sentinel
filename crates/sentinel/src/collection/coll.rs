@@ -99,6 +99,8 @@ pub struct Collection {
     pub(crate) event_sender:       Option<tokio::sync::mpsc::UnboundedSender<crate::events::StoreEvent>>,
     /// Background task handle for processing internal events.
     pub(crate) event_task:         Option<tokio::task::JoinHandle<()>>,
+    /// Whether the collection is currently in recovery mode (skip WAL logging).
+    pub(crate) recovery_mode:      std::sync::atomic::AtomicBool,
 }
 
 impl Collection {
