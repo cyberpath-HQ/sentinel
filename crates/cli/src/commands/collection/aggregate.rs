@@ -121,9 +121,9 @@ fn parse_filter(spec: &str) -> sentinel_dbms::Result<Filter> {
                     return Ok(Filter::Equals(field, value));
                 },
                 "!=" => {
-                    // For now, we'll implement != as NOT equals, but this might need extension
-                    let value = parse_value(value_str.trim())?;
-                    return Ok(Filter::Equals(field, value)); // This is a simplification
+                    return Err(sentinel_dbms::SentinelError::Internal {
+                        message: "Not equals operator (!=) is not supported".to_string(),
+                    });
                 },
                 ">=" => {
                     let value = parse_value(value_str.trim())?;
@@ -622,10 +622,8 @@ mod tests {
     #[test]
     fn test_parse_filter_not_equals() {
         let result = parse_filter("name!=John");
-        assert!(result.is_ok());
-        // Note: Currently implemented as equals due to simplification in code
-        let filter = result.unwrap();
-        assert!(matches!(&filter, Filter::Equals(field, value) if field == "name" && value == "John"));
+        assert!(result.is_err());
+        // Not equals operator is not supported
     }
 
     #[test]
