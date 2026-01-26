@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Events emitted by collections to notify the store of metadata changes.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StoreEvent {
     /// A new collection was created.
     CollectionCreated {
