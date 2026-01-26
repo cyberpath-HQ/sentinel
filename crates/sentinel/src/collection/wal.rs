@@ -52,7 +52,8 @@ impl WalDocumentOps for Collection {
     }
 
     fn set_recovery_mode(&self, mode: bool) {
-        self.recovery_mode.store(mode, std::sync::atomic::Ordering::Relaxed);
+        self.recovery_mode
+            .store(mode, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
