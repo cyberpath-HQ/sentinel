@@ -297,7 +297,6 @@ data/
 
 ### 🚧 In Progress
 
-- [ ] Write-Ahead Logging (WAL) for durability
 - [ ] File locking for concurrent writes
 - [ ] Lazy indexing for improved query performance
 - [ ] In-memory caching with LRU eviction
