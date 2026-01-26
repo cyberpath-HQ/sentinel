@@ -216,7 +216,8 @@ pub async fn run_command(cli: Cli) -> sentinel_dbms::Result<()> {
     };
 
     // Check if crypto config is already set with different values
-    if let Ok(current) = sentinel_dbms::get_global_crypto_config().await {
+    if sentinel_dbms::is_global_crypto_config_set().await {
+        let current = sentinel_dbms::get_global_crypto_config().await?;
         if current != config {
             return Err(sentinel_dbms::SentinelError::ConfigError {
                 message: format!(
