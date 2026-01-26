@@ -1,11 +1,10 @@
-use std::str::FromStr as _;
-
 use clap::Args;
 use sentinel_dbms::{
-    futures::{pin_mut, StreamExt as _},
-    VerificationMode,
-    VerificationOptions,
+    futures::StreamExt as _,
+    Filter, QueryBuilder, SortOrder, VerificationMode, VerificationOptions,
 };
+use serde_json::Value;
+use std::str::FromStr as _;
 use tracing::{error, info};
 
 use crate::commands::WalArgs;
@@ -120,8 +119,54 @@ pub async fn run(
         collection, store_path
     );
 
-    // For now, just list all documents (simplified implementation)
-    // In the full implementation, this would parse filters, sorting, etc.
+    // Validate verification options
+    let _verification_options = args.to_verification_options().map_err(|e| {
+        sentinel_dbms::SentinelError::ConfigError {
+            message: e,
+        }
+    })?;
+
+    // Parse filters
+    let parsed_filters = parse_filters(&args.filter)?;
+
+    // Parse sort
+    let mut query_builder = QueryBuilder::new();
+    if let Some(sort_str) = &args.sort {
+        if let Some((field, order)) = sort_str.split_once(':') {
+            let sort_order = match order.to_lowercase().as_str() {
+                "asc" => SortOrder::Ascending,
+                "desc" => SortOrder::Descending,
+                _ => {
+                    return Err(sentinel_dbms::SentinelError::Internal {
+                        message: format!("Invalid sort order: {}. Use asc or desc", order),
+                    });
+                }
+            };
+            query_builder = query_builder.sort(field, sort_order);
+        } else {
+            return Err(sentinel_dbms::SentinelError::Internal {
+                message: format!("Invalid sort format: {}. Use field:asc or field:desc", sort_str),
+            });
+        }
+    }
+
+    // Set limit and offset
+    if let Some(limit) = args.limit {
+        query_builder = query_builder.limit(limit);
+    }
+    if let Some(offset) = args.offset {
+        query_builder = query_builder.offset(offset);
+    }
+
+    // Parse projection
+    if let Some(project_str) = &args.project {
+        let fields: Vec<&str> = project_str.split(',').map(|s| s.trim()).collect();
+        query_builder = query_builder.projection(fields);
+    }
+
+    let mut query = query_builder.build();
+    query.filters = parsed_filters;
+
     let store = sentinel_dbms::Store::new_with_config(
         &store_path,
         passphrase.as_deref(),
@@ -132,17 +177,12 @@ pub async fn run(
         .collection_with_config(&collection, Some(args.wal.to_overrides()))
         .await?;
 
-    let verification_options = args.to_verification_options().map_err(|e| {
-        sentinel_dbms::SentinelError::ConfigError {
-            message: e,
-        }
-    })?;
-
-    let stream = coll.all_with_verification(&verification_options);
-    pin_mut!(stream);
-
-    let mut count: usize = 0;
-    // Process stream item by item to avoid loading all documents into memory
+    // Use query instead of streaming all
+    let result = coll.query(query).await?;
+    
+    // Output documents from the stream
+    let mut count = 0;
+    let mut stream = result.documents;
     while let Some(item) = stream.next().await {
         match item {
             Ok(doc) => {
@@ -153,18 +193,11 @@ pub async fn run(
                         serde_json::to_string_pretty(doc.data()).unwrap_or_else(|_| "{}".to_owned())
                     );
                 }
-                count = count.saturating_add(1);
-
-                // Apply limit if specified
-                if let Some(limit) = args.limit &&
-                    count >= limit
-                {
-                    break;
-                }
+                count += 1;
             },
             Err(e) => {
                 error!(
-                    "Failed to query documents in collection '{}' in store {}: {}",
+                    "Failed to read document in collection '{}' in store {}: {}",
                     collection, store_path, e
                 );
                 return Err(e);
@@ -174,6 +207,125 @@ pub async fn run(
 
     info!("Found {} documents in collection '{}'", count, collection);
     Ok(())
+}
+
+/// Parse filter specifications from strings.
+fn parse_filters(filter_specs: &[String]) -> sentinel_dbms::Result<Vec<Filter>> {
+    let mut filters = Vec::new();
+
+    for spec in filter_specs {
+        let filter = parse_filter(spec)?;
+        filters.push(filter);
+    }
+
+    Ok(filters)
+}
+
+/// Parse a single filter specification.
+fn parse_filter(spec: &str) -> sentinel_dbms::Result<Filter> {
+    // Split on first occurrence of operator
+    let operators = [
+        "==", "!=", ">=", "<=", ">", "<", "~", "^", "$", " in:", " exists:",
+    ];
+
+    for op in &operators {
+        if let Some((field, value_str)) = spec.split_once(op) {
+            let field = field.trim().to_owned();
+
+            match *op {
+                "==" => {
+                    let value = parse_value(value_str.trim())?;
+                    return Ok(Filter::Equals(field, value));
+                },
+                "!=" => {
+                    return Err(sentinel_dbms::SentinelError::Internal {
+                        message: "Not equals operator (!=) is not supported".to_string(),
+                    });
+                },
+                ">=" => {
+                    let value = parse_value(value_str.trim())?;
+                    return Ok(Filter::GreaterOrEqual(field, value));
+                },
+                "<=" => {
+                    let value = parse_value(value_str.trim())?;
+                    return Ok(Filter::LessOrEqual(field, value));
+                },
+                ">" => {
+                    let value = parse_value(value_str.trim())?;
+                    return Ok(Filter::GreaterThan(field, value));
+                },
+                "<" => {
+                    let value = parse_value(value_str.trim())?;
+                    return Ok(Filter::LessThan(field, value));
+                },
+                "~" => {
+                    return Ok(Filter::Contains(field, value_str.trim().to_owned()));
+                },
+                "^" => {
+                    return Ok(Filter::StartsWith(field, value_str.trim().to_owned()));
+                },
+                "$" => {
+                    return Ok(Filter::EndsWith(field, value_str.trim().to_owned()));
+                },
+                " in:" => {
+                    let values = parse_value_list(value_str.trim())?;
+                    return Ok(Filter::In(field, values));
+                },
+                " exists:" => {
+                    let exists = parse_bool(value_str.trim())?;
+                    return Ok(Filter::Exists(field, exists));
+                },
+                _ => {},
+            }
+        }
+    }
+
+    // Default to equals if no operator found
+    if let Some((field, value_str)) = spec.split_once('=') {
+        let value = parse_value(value_str.trim())?;
+        return Ok(Filter::Equals(field.trim().to_owned(), value));
+    }
+
+    Err(sentinel_dbms::SentinelError::Internal {
+        message: format!(
+            "Invalid filter: {}. Use field=value, field>value, etc.",
+            spec
+        ),
+    })
+}
+
+/// Parse a JSON value from string.
+fn parse_value(s: &str) -> sentinel_dbms::Result<Value> {
+    // Try to parse as JSON first
+    if let Ok(value) = serde_json::from_str(s) {
+        return Ok(value);
+    }
+
+    // If not valid JSON, treat as string
+    Ok(Value::String(s.to_owned()))
+}
+
+/// Parse a list of values from comma-separated string.
+fn parse_value_list(s: &str) -> sentinel_dbms::Result<Vec<Value>> {
+    let mut values = Vec::new();
+    for item in s.split(',') {
+        let value = parse_value(item.trim())?;
+        values.push(value);
+    }
+    Ok(values)
+}
+
+/// Parse boolean from string.
+fn parse_bool(s: &str) -> sentinel_dbms::Result<bool> {
+    match s.to_lowercase().as_str() {
+        "true" | "1" | "yes" => Ok(true),
+        "false" | "0" | "no" => Ok(false),
+        _ => {
+            Err(sentinel_dbms::SentinelError::Internal {
+                message: format!("Invalid boolean: {}. Use true or false", s),
+            })
+        },
+    }
 }
 
 #[cfg(test)]
