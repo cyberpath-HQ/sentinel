@@ -738,7 +738,7 @@ impl WalManager {
                                         // At EOF and no valid entry in remaining buffer, stop
                                         break;
                                     }
-                                    min_read_size = min_read_size.saturating_mul(2).min(65536);
+                                    min_read_size = min_read_size.saturating_mul(2).min(0x0001_0000);
                                 }
                             }
                         },
