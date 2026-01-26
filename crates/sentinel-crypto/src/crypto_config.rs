@@ -1,6 +1,7 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tokio::sync::RwLock as TokioRwLock;
 use tracing::{debug, trace, warn};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::error::CryptoError;
 
@@ -109,9 +110,7 @@ pub async fn get_global_crypto_config() -> Result<CryptoConfig, CryptoError> {
 
 /// Checks if the global cryptographic configuration has been explicitly set.
 /// Returns true if set, false if still using the default lazy-initialized config.
-pub async fn is_global_crypto_config_set() -> bool {
-    GLOBAL_CONFIG_SET.load(Ordering::Relaxed)
-}
+pub async fn is_global_crypto_config_set() -> bool { GLOBAL_CONFIG_SET.load(Ordering::Relaxed) }
 
 /// Resets the global cryptographic configuration for testing purposes.
 /// This allows tests to set different configurations.
