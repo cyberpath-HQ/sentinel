@@ -510,7 +510,15 @@ impl Collection {
             (Value::Object(existing_map), Value::Object(new_map)) => {
                 let mut merged = existing_map.clone();
                 for (key, value) in new_map {
-                    merged.insert(key.clone(), value.clone());
+                    if let Some(existing_val) = merged.get(key) {
+                        merged.insert(
+                            key.clone(),
+                            Self::merge_json_values(existing_val, value.clone()),
+                        );
+                    }
+                    else {
+                        merged.insert(key.clone(), value.clone());
+                    }
                 }
                 Value::Object(merged)
             },
