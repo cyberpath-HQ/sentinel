@@ -616,7 +616,7 @@ impl CollectionWalOps for Collection {
             let stream = wal
                 .stream_entries()
                 .map(|result| result.map_err(|e| crate::error::SentinelError::from(e)));
-            let wal = wal.clone();
+            let _wal = wal.clone();
             // let stream = wal.stream_entries().map(|result| result.map_err(|e|
             // crate::error::SentinelError::from(e)));
             let stream = Box::pin(stream) as Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + 'static>>;
