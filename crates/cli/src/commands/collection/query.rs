@@ -117,8 +117,8 @@ pub async fn run(
         collection, store_path
     );
 
-    // Validate verification options
-    let _verification_options = args.to_verification_options().map_err(|e| {
+    // Parse verification options
+    let verification_options = args.to_verification_options().map_err(|e| {
         sentinel_dbms::SentinelError::ConfigError {
             message: e,
         }
@@ -180,7 +180,7 @@ pub async fn run(
         .await?;
 
     // Use query instead of streaming all
-    let result = coll.query(query).await?;
+    let result = coll.query_with_verification(query, &verification_options).await?;
 
     // Output documents from the stream
     let mut count = 0;
