@@ -658,53 +658,73 @@ impl WalManager {
                     match format {
                         WalFormat::Binary => {
                             trace!("Streaming binary format entries");
-                            // For binary format, read the entire file and parse using checksums
+                            // Read and parse entries incrementally to avoid loading large files into memory
                             let mut buffer = Vec::new();
-                            match reader.read_to_end(&mut buffer).await {
-                                Ok(_) => {
-                                    let mut offset = 0;
-                                    while offset < buffer.len() {
-                                        // Find the next entry by checking checksums
-                                        let mut entry_end = offset;
-                                        while entry_end + 4 <= buffer.len() {
-                                            let data = &buffer[offset .. entry_end];
-                                            let checksum_start = entry_end;
-                                            if checksum_start + 4 > buffer.len() {
-                                                break;
-                                            }
+                            let mut entry_start = 0;
+                            let mut min_read_size = 1024; // Start with reasonable chunk size
 
-                                            let checksum_bytes = &buffer[checksum_start .. checksum_start + 4];
-                                            let expected_checksum = u32::from_le_bytes(checksum_bytes.try_into().unwrap());
-
-                                            let mut hasher = Crc32Hasher::new();
-                                            hasher.update(data);
-                                            let actual_checksum = hasher.finalize();
-
-                                            if actual_checksum == expected_checksum {
-                                                // Found a valid entry
-                                                match LogEntry::from_bytes(&buffer[offset .. entry_end + 4]) {
-                                                    Ok(entry) => {
-                                                        trace!("Streamed binary entry: {:?}", entry.entry_type);
-                                                        yield Ok(entry);
-                                                    },
-                                                    Err(e) => {
-                                                        warn!("Skipping invalid WAL entry: {}", e);
-                                                    },
-                                                }
-                                                offset = entry_end + 4;
-                                                break;
-                                            }
-                                            else {
-                                                entry_end += 1;
-                                            }
-                                        }
-
-                                        if entry_end >= buffer.len() {
-                                            break;
+                            loop {
+                                // Ensure we have enough data to potentially find an entry
+                                while buffer.len() - entry_start < min_read_size {
+                                    let mut chunk = vec![0u8; 4096];
+                                    match reader.read(&mut chunk).await {
+                                        Ok(0) => break, // EOF
+                                        Ok(n) => {
+                                            buffer.extend_from_slice(&chunk[..n]);
+                                        },
+                                        Err(e) => {
+                                            yield Err(e.into());
+                                            return;
                                         }
                                     }
-                                },
-                                Err(e) => yield Err(e.into()),
+                                }
+
+                                if buffer.len() - entry_start < 4 {
+                                    // Not enough data for even a checksum, we're done
+                                    break;
+                                }
+
+                                // Look for the next valid entry from current position
+                                let mut found_entry = false;
+                                let mut entry_end = entry_start;
+
+                                while entry_end + 4 <= buffer.len() {
+                                    let data = &buffer[entry_start..entry_end];
+                                    let checksum_bytes = &buffer[entry_end..entry_end + 4];
+                                    let expected_checksum = u32::from_le_bytes(checksum_bytes.try_into().unwrap());
+
+                                    let mut hasher = Crc32Hasher::new();
+                                    hasher.update(data);
+                                    let actual_checksum = hasher.finalize();
+
+                                    if actual_checksum == expected_checksum {
+                                        // Found a valid entry
+                                        match LogEntry::from_bytes(&buffer[entry_start..entry_end + 4]) {
+                                            Ok(entry) => {
+                                                trace!("Streamed binary entry: {:?}", entry.entry_type);
+                                                yield Ok(entry);
+                                            },
+                                            Err(e) => {
+                                                warn!("Skipping invalid WAL entry: {}", e);
+                                            },
+                                        }
+                                        entry_start = entry_end + 4;
+                                        found_entry = true;
+                                        break;
+                                    } else {
+                                        entry_end += 1;
+                                    }
+                                }
+
+                                if !found_entry {
+                                    if entry_end >= buffer.len() {
+                                        // No valid entry found in remaining buffer, we're done
+                                        break;
+                                    }
+                                    // If we scanned too far without finding an entry, increase min_read_size
+                                    // to avoid excessive scanning of corrupted data
+                                    min_read_size = min_read_size.saturating_mul(2).min(65536);
+                                }
                             }
                         },
                         WalFormat::JsonLines => {
