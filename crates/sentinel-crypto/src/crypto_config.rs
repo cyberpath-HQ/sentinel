@@ -104,6 +104,13 @@ pub async fn get_global_crypto_config() -> Result<CryptoConfig, CryptoError> {
     Ok(config.clone())
 }
 
+/// Checks if the global cryptographic configuration has been explicitly set.
+/// Returns true if set, false if still using the default lazy-initialized config.
+pub async fn is_global_crypto_config_set() -> bool {
+    let global = GLOBAL_CONFIG.read().await;
+    global.is_some()
+}
+
 /// Resets the global cryptographic configuration for testing purposes.
 /// This allows tests to set different configurations.
 #[cfg(test)]
