@@ -481,7 +481,11 @@ impl StoreWalOps for Store {
                 for entry in entries {
                     all_entries.push(entry.map(|e| (collection_name.clone(), e)));
                 }
-                debug!("Collected {} WAL entries for collection: {}", all_entries.len(), collection_name);
+                debug!(
+                    "Collected {} WAL entries for collection: {}",
+                    all_entries.len(),
+                    collection_name
+                );
             }
             else {
                 warn!(
