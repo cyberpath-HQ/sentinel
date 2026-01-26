@@ -128,6 +128,7 @@ pub async fn collection_with_config(
         total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.total_size_bytes)),
         event_sender: Some(store.event_sender()),
         event_task: None,
+        recovery_mode: std::sync::atomic::AtomicBool::new(false),
     };
     collection.start_event_processor();
     Ok(collection)
