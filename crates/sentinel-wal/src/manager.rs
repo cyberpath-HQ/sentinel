@@ -1,6 +1,6 @@
 //! WAL manager for handling log operations
 
-use std::{fs, path::PathBuf, pin::Pin, sync::Arc};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use crc32fast::Hasher as Crc32Hasher;
 use futures::Stream;
@@ -649,7 +649,7 @@ impl WalManager {
         reason = "safe operations in streaming binary parsing"
     )]
     pub fn stream_entries(&self) -> impl Stream<Item = Result<LogEntry>> + Send + 'static {
-        let wal = WalManager {
+        let wal = Self {
             path:          self.path.clone(),
             config:        self.config.clone(),
             file:          self.file.clone(),
