@@ -60,14 +60,16 @@ impl Collection {
 
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
-            let entry = LogEntry::new(
-                EntryType::Insert,
-                self.name().to_string(),
-                id.to_string(),
-                Some(data.clone()),
-            );
-            wal.write_entry(entry).await?;
-            debug!("WAL entry written for insert operation on document {}", id);
+            if !self.recovery_mode.load(std::sync::atomic::Ordering::Relaxed) {
+                let entry = LogEntry::new(
+                    EntryType::Insert,
+                    self.name().to_string(),
+                    id.to_string(),
+                    Some(data.clone()),
+                );
+                wal.write_entry(entry).await?;
+                debug!("WAL entry written for insert operation on document {}", id);
+            }
         }
 
         #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
@@ -294,14 +296,16 @@ impl Collection {
         // Generate transaction ID for WAL
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
-            let entry = LogEntry::new(
-                EntryType::Delete,
-                self.name().to_string(),
-                id.to_string(),
-                None,
-            );
-            wal.write_entry(entry).await?;
-            debug!("WAL entry written for delete operation on document {}", id);
+            if !self.recovery_mode.load(std::sync::atomic::Ordering::Relaxed) {
+                let entry = LogEntry::new(
+                    EntryType::Delete,
+                    self.name().to_string(),
+                    id.to_string(),
+                    None,
+                );
+                wal.write_entry(entry).await?;
+                debug!("WAL entry written for delete operation on document {}", id);
+            }
         }
 
         // Check if source exists
@@ -544,14 +548,16 @@ impl Collection {
 
         // Write to WAL before filesystem operation
         if let Some(wal) = &self.wal_manager {
-            let entry = LogEntry::new(
-                EntryType::Update,
-                self.name().to_string(),
-                id.to_string(),
-                Some(merged_data.clone()),
-            );
-            wal.write_entry(entry).await?;
-            debug!("WAL entry written for update operation on document {}", id);
+            if !self.recovery_mode.load(std::sync::atomic::Ordering::Relaxed) {
+                let entry = LogEntry::new(
+                    EntryType::Update,
+                    self.name().to_string(),
+                    id.to_string(),
+                    Some(merged_data.clone()),
+                );
+                wal.write_entry(entry).await?;
+                debug!("WAL entry written for update operation on document {}", id);
+            }
         }
 
         // Update the document data and metadata
