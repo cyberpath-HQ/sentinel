@@ -366,7 +366,8 @@ mod tests {
         let mut active_transactions = std::collections::HashMap::new();
 
         // First insert
-        let insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        let mut insert_entry = create_test_entry(EntryType::Insert, "doc1", "txn1");
+        insert_entry.data = Some(r#"{"name": "test"}"#.to_string());
         verify_wal_entry_consistency(&insert_entry, &mut wal_states, &mut active_transactions)
             .await
             .unwrap();
