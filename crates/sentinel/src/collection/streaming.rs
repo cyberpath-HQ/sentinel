@@ -216,6 +216,7 @@ impl Collection {
                                                 wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 event_sender: None,
                                                 event_task: None,
+                                                recovery_mode: std::sync::atomic::AtomicBool::new(false),
                                             };
 
                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
@@ -371,6 +372,7 @@ impl Collection {
                                                 wal_config: sentinel_wal::CollectionWalConfig::default(),
                                                 event_sender: None,
                                                 event_task: None,
+                                                recovery_mode: std::sync::atomic::AtomicBool::new(false),
                                             };
 
                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
