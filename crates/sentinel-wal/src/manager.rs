@@ -1,8 +1,9 @@
 //! WAL manager for handling log operations
 
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{fs, path::PathBuf, pin::Pin, sync::Arc};
 
 use crc32fast::Hasher as Crc32Hasher;
+use futures::Stream;
 use tokio::{
     fs::{File, OpenOptions},
     io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader, BufWriter},
@@ -647,10 +648,16 @@ impl WalManager {
         clippy::indexing_slicing,
         reason = "safe operations in streaming binary parsing"
     )]
-    pub fn stream_entries(&self) -> impl futures::Stream<Item = Result<LogEntry>> + '_ {
-        let path = self.path.clone();
-        let format = self.config.format;
+    pub fn stream_entries(&self) -> impl Stream<Item = Result<LogEntry>> + Send + 'static {
+        let wal = WalManager {
+            path:          self.path.clone(),
+            config:        self.config.clone(),
+            file:          self.file.clone(),
+            entries_count: self.entries_count.clone(),
+        };
         stream! {
+            let path = wal.path.clone();
+            let format = wal.config.format;
             debug!("Streaming WAL entries from {:?} in format {:?}", path, format);
             match File::open(&path).await {
                 Ok(file) => {
