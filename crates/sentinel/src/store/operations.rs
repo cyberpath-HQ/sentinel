@@ -82,7 +82,7 @@ pub async fn collection_with_config(
         let event = StoreEvent::CollectionCreated {
             name: name.to_string(),
         };
-        let _ = store.event_sender.send(event);
+        let _ = store.event_sender.send(event).ok();
     }
 
     // Get collection WAL config: use metadata's config, or provided config, or fall back to
@@ -126,7 +126,7 @@ pub async fn collection_with_config(
         last_checkpoint_at: std::sync::RwLock::new(None),
         total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.document_count)),
         total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.total_size_bytes)),
-        event_sender: Some(store.event_sender()),
+        event_sender: Some(store.event_sender.clone()),
         event_task: None,
         recovery_mode: std::sync::atomic::AtomicBool::new(false),
     };
