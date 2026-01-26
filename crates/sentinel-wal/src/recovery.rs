@@ -53,73 +53,83 @@ pub async fn recover_from_wal_safe<D>(wal: &WalManager, document_ops: &D) -> Res
 where
     D: WalDocumentOps,
 {
-    let mut recovered = 0;
-    let mut skipped = 0;
-    let mut failed = 0;
-    let mut failures = Vec::new();
+    // Enable recovery mode to skip WAL logging during replay
+    document_ops.set_recovery_mode(true);
 
-    // Track applied operations to avoid duplicates
-    let mut applied_operations = HashMap::new(); // (doc_id, txn_id) -> applied
+    let result = async {
+        let mut recovered = 0;
+        let mut skipped = 0;
+        let mut failed = 0;
+        let mut failures = Vec::new();
 
-    let stream = wal.stream_entries();
-    let mut pinned_stream = std::pin::pin!(stream);
-    while let Some(entry_result) = pinned_stream.next().await {
-        match entry_result {
-            Ok(entry) => {
-                let key = (
-                    entry.document_id_str().to_owned(),
-                    entry.transaction_id_str().to_owned(),
-                );
+        // Track applied operations to avoid duplicates
+        let mut applied_operations = HashMap::new(); // (doc_id, txn_id) -> applied
 
-                // Skip if this operation was already applied
-                if applied_operations.contains_key(&key) {
-                    skipped += 1;
-                    continue;
-                }
+        let stream = wal.stream_entries();
+        let mut pinned_stream = std::pin::pin!(stream);
+        while let Some(entry_result) = pinned_stream.next().await {
+            match entry_result {
+                Ok(entry) => {
+                    let key = (
+                        entry.document_id_str().to_owned(),
+                        entry.transaction_id_str().to_owned(),
+                    );
 
-                match replay_wal_entry_safe(&entry, document_ops).await {
-                    Ok(true) => {
-                        recovered += 1;
-                        applied_operations.insert(key, true);
-                    },
-                    Ok(false) => {
+                    // Skip if this operation was already applied
+                    if applied_operations.contains_key(&key) {
                         skipped += 1;
-                        applied_operations.insert(key, true);
-                    },
-                    Err(e) => {
-                        failed += 1;
-                        failures.push(WalRecoveryFailure {
-                            transaction_id: entry.transaction_id_str().to_owned(),
-                            document_id:    entry.document_id_str().to_owned(),
-                            operation_type: format!("{:?}", entry.entry_type),
-                            reason:         format!("{}", e),
-                        });
-                    },
-                }
-            },
-            Err(e) => {
-                failed += 1;
-                failures.push(WalRecoveryFailure {
-                    transaction_id: "unknown".to_owned(),
-                    document_id:    "unknown".to_owned(),
-                    operation_type: "read".to_owned(),
-                    reason:         format!("Failed to read WAL entry: {}", e),
-                });
-            },
+                        continue;
+                    }
+
+                    match replay_wal_entry_safe(&entry, document_ops).await {
+                        Ok(true) => {
+                            recovered += 1;
+                            applied_operations.insert(key, true);
+                        },
+                        Ok(false) => {
+                            skipped += 1;
+                            applied_operations.insert(key, true);
+                        },
+                        Err(e) => {
+                            failed += 1;
+                            failures.push(WalRecoveryFailure {
+                                transaction_id: entry.transaction_id_str().to_owned(),
+                                document_id:    entry.document_id_str().to_owned(),
+                                operation_type: format!("{:?}", entry.entry_type),
+                                reason:         format!("{}", e),
+                            });
+                        },
+                    }
+                },
+                Err(e) => {
+                    failed += 1;
+                    failures.push(WalRecoveryFailure {
+                        transaction_id: "unknown".to_owned(),
+                        document_id:    "unknown".to_owned(),
+                        operation_type: "read".to_owned(),
+                        reason:         format!("Failed to read WAL entry: {}", e),
+                    });
+                },
+            }
         }
-    }
 
-    debug!(
-        "WAL recovery completed: {} recovered, {} skipped, {} failed",
-        recovered, skipped, failed
-    );
+        debug!(
+            "WAL recovery completed: {} recovered, {} skipped, {} failed",
+            recovered, skipped, failed
+        );
 
-    Ok(WalRecoveryResult {
-        recovered_operations: recovered,
-        skipped_operations: skipped,
-        failed_operations: failed,
-        failures,
-    })
+        Ok(WalRecoveryResult {
+            recovered_operations: recovered,
+            skipped_operations: skipped,
+            failed_operations: failed,
+            failures,
+        })
+    }.await;
+
+    // Disable recovery mode
+    document_ops.set_recovery_mode(false);
+
+    result
 }
 
 /// Safely replay a single WAL entry
