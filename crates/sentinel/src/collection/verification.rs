@@ -151,7 +151,25 @@ impl Collection {
             self.verify_hash(doc, *options).await?;
         }
 
-        if options.verify_signature {
+        // Check for empty signature regardless of verify_signature option
+        if doc.signature().is_empty() {
+            let reason = "Document has no signature".to_owned();
+
+            match options.empty_signature_mode {
+                crate::VerificationMode::Strict => {
+                    error!("Document {} has no signature: {}", doc.id(), reason);
+                    return Err(SentinelError::SignatureVerificationFailed {
+                        id: doc.id().to_owned(),
+                        reason,
+                    });
+                },
+                crate::VerificationMode::Warn => {
+                    warn!("Document {} has no signature: {}", doc.id(), reason);
+                },
+                crate::VerificationMode::Silent => {},
+            }
+        }
+        else if options.verify_signature {
             self.verify_signature(doc, *options).await?;
         }
 
