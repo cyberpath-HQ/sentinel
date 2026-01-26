@@ -82,15 +82,16 @@ where
         match document_ops.get_document(doc_id).await {
             Ok(Some(existing_doc)) => {
                 // Compare WAL state with disk state
-                if let Some(wal_doc) = wal_states.get(doc_id)
-                    && existing_doc != *wal_doc {
-                        issues.push(WalVerificationIssue {
-                            transaction_id: "final_check".to_owned(),
-                            document_id:    doc_id.clone(),
-                            description:    format!("Document {} data mismatch between WAL and disk", doc_id),
-                            is_critical:    true,
-                        });
-                    }
+                if let Some(wal_doc) = wal_states.get(doc_id) &&
+                    existing_doc != *wal_doc
+                {
+                    issues.push(WalVerificationIssue {
+                        transaction_id: "final_check".to_owned(),
+                        document_id:    doc_id.clone(),
+                        description:    format!("Document {} data mismatch between WAL and disk", doc_id),
+                        is_critical:    true,
+                    });
+                }
             },
             Ok(None) => {
                 issues.push(WalVerificationIssue {
