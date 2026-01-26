@@ -231,8 +231,8 @@ impl StoreMetadata {
 
     /// Update document statistics
     pub fn update_documents(&mut self, document_delta: i64, size_delta: i64) {
-        self.total_documents = (self.total_documents as i64 + document_delta).max(0) as u64;
-        self.total_size_bytes = (self.total_size_bytes as i64 + size_delta).max(0) as u64;
+        self.total_documents = ((self.total_documents as i128 + document_delta as i128).max(0) as u64).min(u64::MAX);
+        self.total_size_bytes = ((self.total_size_bytes as i128 + size_delta as i128).max(0) as u64).min(u64::MAX);
         self.touch();
     }
 }
