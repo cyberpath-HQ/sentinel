@@ -6,6 +6,7 @@ use tracing::{debug, trace};
 use crate::{streaming::stream_document_ids, Document, Result, SentinelError};
 use super::coll::Collection;
 
+#[allow(clippy::multiple_inherent_impl, reason = "multiple impl blocks for Collection are intentional for organization")]
 impl Collection {
     /// Lists all document IDs in the collection.
     ///
