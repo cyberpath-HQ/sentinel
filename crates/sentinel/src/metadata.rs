@@ -97,7 +97,7 @@ impl CollectionMetadata {
     }
 
     /// Check if metadata needs upgrade to current version
-    pub fn needs_upgrade(&self) -> bool { self.version < META_SENTINEL_VERSION }
+    pub const fn needs_upgrade(&self) -> bool { self.version < META_SENTINEL_VERSION }
 
     pub fn touch(&mut self) {
         self.updated_at = std::time::SystemTime::now()
@@ -108,8 +108,14 @@ impl CollectionMetadata {
 
     /// Increment document count and size
     pub fn add_document(&mut self, size_bytes: u64) {
-        self.document_count += 1;
-        self.total_size_bytes += size_bytes;
+        self.document_count = self
+            .document_count
+            .checked_add(1)
+            .unwrap_or(self.document_count);
+        self.total_size_bytes = self
+            .total_size_bytes
+            .checked_add(size_bytes)
+            .unwrap_or(self.total_size_bytes);
         self.touch();
     }
 
@@ -122,7 +128,11 @@ impl CollectionMetadata {
 
     /// Update document size (for modifications)
     pub fn update_document_size(&mut self, old_size: u64, new_size: u64) {
-        self.total_size_bytes = self.total_size_bytes.saturating_sub(old_size) + new_size;
+        self.total_size_bytes = self
+            .total_size_bytes
+            .saturating_sub(old_size)
+            .checked_add(new_size)
+            .unwrap_or(self.total_size_bytes);
         self.touch();
     }
 }
@@ -182,6 +192,10 @@ impl Default for StoreMetadata {
 #[allow(
     clippy::arithmetic_side_effects,
     reason = "counter increments in metadata"
+)]
+#[allow(
+    clippy::multiple_inherent_impl,
+    reason = "multiple impl blocks for StoreMetadata are intentional for organization"
 )]
 impl StoreMetadata {
     /// Upgrade metadata to the current version if needed
