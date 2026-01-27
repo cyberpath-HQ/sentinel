@@ -96,6 +96,9 @@ impl CollectionMetadata {
         Ok(())
     }
 
+    /// Check if metadata needs upgrade to current version
+    pub fn needs_upgrade(&self) -> bool { self.version < META_SENTINEL_VERSION }
+
     pub fn touch(&mut self) {
         self.updated_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
