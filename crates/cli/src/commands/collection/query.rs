@@ -129,7 +129,7 @@ pub async fn run(
 
     // Parse sort
     let mut query_builder = QueryBuilder::new();
-    if let Some(sort_str) = &args.sort {
+    if let Some(sort_str) = args.sort.as_deref() {
         if let Some((field, order)) = sort_str.split_once(':') {
             let sort_order = match order.to_lowercase().as_str() {
                 "asc" => SortOrder::Ascending,
@@ -161,7 +161,7 @@ pub async fn run(
     }
 
     // Parse projection
-    if let Some(project_str) = &args.project {
+    if let Some(project_str) = args.project.as_deref() {
         let fields: Vec<&str> = project_str.split(',').map(|s| s.trim()).collect();
         query_builder = query_builder.projection(fields);
     }
@@ -185,7 +185,7 @@ pub async fn run(
         .await?;
 
     // Output documents from the stream
-    let mut count = 0;
+    let mut count = 0usize;
     let mut stream = result.documents;
     while let Some(item) = stream.next().await {
         match item {
@@ -197,7 +197,7 @@ pub async fn run(
                         serde_json::to_string_pretty(doc.data()).unwrap_or_else(|_| "{}".to_owned())
                     );
                 }
-                count += 1;
+                count = count.checked_add(1).unwrap_or(count);
             },
             Err(e) => {
                 error!(
