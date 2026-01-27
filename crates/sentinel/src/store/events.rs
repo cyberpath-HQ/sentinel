@@ -4,7 +4,10 @@ use crate::{events::StoreEvent, StoreMetadata, META_SENTINEL_VERSION, STORE_META
 use super::stor::Store;
 
 /// Starts the background event processing task.
-#[allow(clippy::integer_division_remainder_used, reason = "integer division used in event processing timing")]
+#[allow(
+    clippy::integer_division_remainder_used,
+    reason = "integer division used in event processing timing"
+)]
 pub fn start_event_processor(store: &mut Store) {
     if store.event_task.is_some() {
         return; // Already started

@@ -482,7 +482,12 @@ impl StoreWalOps for Store {
         let stream_of_streams = futures::stream::iter(collections).filter_map(|collection| {
             async move {
                 let name = collection.name().to_owned();
-                CollectionWalOps::stream_wal_entries(collection).await.map_or_else(|_| None, |stream| Some(stream.map(move |entry| entry.map(|e| (name.clone(), e)))))
+                CollectionWalOps::stream_wal_entries(collection)
+                    .await
+                    .map_or_else(
+                        |_| None,
+                        |stream| Some(stream.map(move |entry| entry.map(|e| (name.clone(), e)))),
+                    )
             }
         });
 
@@ -507,7 +512,9 @@ impl StoreWalOps for Store {
                 Ok(verification_result) => {
                     if !verification_result.issues.is_empty() {
                         let issue_count = verification_result.issues.len();
-                        total_issues = total_issues.checked_add(issue_count).unwrap_or(total_issues);
+                        total_issues = total_issues
+                            .checked_add(issue_count)
+                            .unwrap_or(total_issues);
                         results.insert(collection_name.clone(), verification_result.issues);
                         warn!(
                             "Collection {} has {} verification issues",
@@ -565,7 +572,9 @@ impl StoreWalOps for Store {
                 Ok(recovery_result) => {
                     let operations = recovery_result.recovered_operations;
                     results.insert(collection_name.clone(), operations);
-                    total_operations = total_operations.checked_add(operations).unwrap_or(total_operations);
+                    total_operations = total_operations
+                        .checked_add(operations)
+                        .unwrap_or(total_operations);
                     if operations > 0 {
                         info!(
                             "Recovered {} operations for collection {}",
@@ -607,27 +616,33 @@ impl CollectionWalOps for Collection {
     }
 
     async fn stream_wal_entries(self) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send>>> {
-        self.wal_manager.as_ref().map_or_else(|| {
-            debug!(
-                "No WAL manager configured for collection {}, returning empty stream",
-                self.name()
-            );
-            Ok(Box::pin(
-                futures::stream::empty::<std::result::Result<LogEntry, sentinel_wal::WalError>>()
-                    .map(|r| r.map_err(Into::into)),
-            ) as Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send>>)
-        }, |wal| {
-            let name = self.name().to_owned();
-            debug!("Streaming WAL entries for collection {}", name);
-            let stream = wal
-                .stream_entries()
-                .map(|result| result.map_err(crate::error::SentinelError::from));
-            let _wal = wal.clone();
-            // let stream = wal.stream_entries().map(|result| result.map_err(|e|
-            // crate::error::SentinelError::from(e)));
-            let stream = Box::pin(stream) as Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + 'static>>;
-            Ok(stream)
-        })
+        self.wal_manager.as_ref().map_or_else(
+            || {
+                debug!(
+                    "No WAL manager configured for collection {}, returning empty stream",
+                    self.name()
+                );
+                Ok(Box::pin(
+                    futures::stream::empty::<std::result::Result<LogEntry, sentinel_wal::WalError>>()
+                        .map(|r| r.map_err(Into::into)),
+                )
+                    as Pin<
+                        Box<dyn Stream<Item = crate::Result<LogEntry>> + Send>,
+                    >)
+            },
+            |wal| {
+                let name = self.name().to_owned();
+                debug!("Streaming WAL entries for collection {}", name);
+                let stream = wal
+                    .stream_entries()
+                    .map(|result| result.map_err(crate::error::SentinelError::from));
+                let _wal = wal.clone();
+                // let stream = wal.stream_entries().map(|result| result.map_err(|e|
+                // crate::error::SentinelError::from(e)));
+                let stream = Box::pin(stream) as Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + 'static>>;
+                Ok(stream)
+            },
+        )
     }
 
     async fn verify_against_wal(&self) -> crate::Result<WalVerificationResult> {

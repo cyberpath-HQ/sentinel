@@ -3,7 +3,10 @@ use tracing::{error, trace, warn};
 use crate::{Result, SentinelError};
 use super::coll::Collection;
 
-#[allow(clippy::multiple_inherent_impl, reason = "multiple impl blocks for Collection are intentional for organization")]
+#[allow(
+    clippy::multiple_inherent_impl,
+    reason = "multiple impl blocks for Collection are intentional for organization"
+)]
 impl Collection {
     /// Verifies document hash according to the specified verification options.
     ///

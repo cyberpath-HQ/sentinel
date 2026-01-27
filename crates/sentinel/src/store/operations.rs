@@ -16,7 +16,8 @@ use crate::{
 };
 use super::{stor::Store, validation::validate_collection_name};
 
-/// Retrieves or creates a collection with the specified name and custom WAL configuration overrides.
+/// Retrieves or creates a collection with the specified name and custom WAL configuration
+/// overrides.
 ///
 /// This is an internal function used by the Store impl. Use Store::collection_with_config instead.
 pub async fn collection_with_config(
@@ -137,7 +138,10 @@ pub async fn collection_with_config(
     Ok(collection)
 }
 
-#[allow(clippy::multiple_inherent_impl, reason = "multiple impl blocks for Store are intentional for organization")]
+#[allow(
+    clippy::multiple_inherent_impl,
+    reason = "multiple impl blocks for Store are intentional for organization"
+)]
 impl Store {
     /// Retrieves or creates a collection with the specified name.
     ///
