@@ -5,6 +5,10 @@ use tracing::{debug, trace};
 use crate::{filtering::matches_filters, Document, Result};
 use super::coll::Collection;
 
+#[allow(
+    clippy::multiple_inherent_impl,
+    reason = "multiple impl blocks for Collection are intentional for organization"
+)]
 impl Collection {
     /// Performs aggregation operations on documents matching the given filters.
     ///
@@ -81,7 +85,7 @@ impl Collection {
                 sum += value;
                 min = min.min(value);
                 max = max.max(value);
-                numeric_count += 1;
+                numeric_count = numeric_count.checked_add(1).unwrap_or(numeric_count);
             }
         }
 
