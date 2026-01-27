@@ -368,17 +368,23 @@ data/
 
 ## Performance Characteristics
 
-### Best Case Scenarios
+### Operation Complexity
 
-| Operation | Time Complexity | Notes                             |
-| --------- | --------------- | --------------------------------- |
-| Insert    | O(1)            | Single file write                 |
-| Get       | O(1)            | Direct filename lookup            |
-| Delete    | O(1)            | Rename to .deleted/               |
-| Update    | O(1)            | Atomic file rename                |
-| List      | O(n)            | Scan directory for filenames      |
-| Filter    | O(n)            | Scan all files in collection      |
-| Index     | O(n)            | Build lazy indices on first query |
+| Operation   | Time Complexity | Notes                                    |
+| ----------- | --------------- | ---------------------------------------- |
+| Insert      | O(1)            | Single file write with metadata          |
+| Get         | O(1)            | Direct filename lookup                   |
+| Get Many    | O(m)            | m = number of IDs requested (parallel)   |
+| Delete      | O(1)            | Move to .deleted/ directory              |
+| Update      | O(m)            | m = data size (includes JSON deep merge) |
+| Upsert      | O(1) or O(m)    | O(1) for insert, O(m) for update         |
+| Count       | O(1)            | Uses atomic counter, no scanning         |
+| Bulk Insert | O(n)            | n = number of documents                  |
+| List        | O(n)            | Scan directory for filenames             |
+| Filter      | O(n)            | Scan and load all documents              |
+| Aggregate   | O(n)            | Count/Sum/Avg/Min/Max require full scan  |
+| Query       | O(n)            | Full scan unless lazy indices available  |
+| Index       | O(n)            | Build lazy indices on first query        |
 
 ### Optimization Strategies
 
