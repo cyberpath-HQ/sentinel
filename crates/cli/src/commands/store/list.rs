@@ -20,6 +20,7 @@ pub async fn run(args: ListCollectionsArgs) -> sentinel_dbms::Result<()> {
     )
     .await?;
     let collections = store.list_collections().await?;
+    #[allow(clippy::print_stdout, reason = "CLI output")]
     for collection in collections {
         println!("{}", collection);
     }
