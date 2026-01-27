@@ -16,6 +16,7 @@ use crate::{
 };
 use super::coll::Collection;
 
+#[allow(clippy::multiple_inherent_impl, reason = "multiple impl blocks for Collection are intentional for organization")]
 impl Collection {
     /// Executes a structured query against the collection.
     ///
