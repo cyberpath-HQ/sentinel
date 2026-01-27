@@ -44,7 +44,10 @@ use super::{events::start_event_processor, operations::collection_with_config};
 ///
 /// `Store` is safe to share across threads. Multiple collections can be accessed
 /// concurrently, with each collection managing its own locking internally.
-#[allow(clippy::field_scoped_visibility_modifiers)]
+#[allow(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "fields need to be accessible for operations but should not be public API"
+)]
 #[derive(Debug)]
 pub struct Store {
     /// The root path of the store.
@@ -73,6 +76,10 @@ pub struct Store {
     pub(crate) event_task:        Option<tokio::task::JoinHandle<()>>,
 }
 
+#[allow(
+    clippy::multiple_inherent_impl,
+    reason = "multiple impl blocks for Store are intentional for organization"
+)]
 impl Store {
     /// Creates a new `Store` instance at the specified root path.
     ///
@@ -466,6 +473,10 @@ impl Store {
     pub const fn root_path(&self) -> &PathBuf { &self.root_path }
 
     /// Returns a clone of the event sender for collections to emit events.
+    #[allow(
+        dead_code,
+        reason = "method may be used by external crates or future features"
+    )]
     pub(crate) fn event_sender(&self) -> mpsc::UnboundedSender<StoreEvent> { self.event_sender.clone() }
 }
 
