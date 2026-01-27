@@ -6,6 +6,10 @@ use sentinel_wal::{EntryType, LogEntry};
 use crate::{events::StoreEvent, Document, Result, SentinelError};
 use super::coll::Collection;
 
+#[allow(
+    clippy::multiple_inherent_impl,
+    reason = "multiple impl blocks for Collection are intentional for organization"
+)]
 impl Collection {
     /// Inserts a new document into the collection or overwrites an existing one.
     ///
@@ -107,7 +111,7 @@ impl Collection {
 
         // Emit event - all metadata updates handled asynchronously by event processor
         self.emit_event(crate::events::StoreEvent::DocumentInserted {
-            collection: self.name().to_string(),
+            collection: self.name().to_owned(),
             size_bytes: json.len() as u64,
         });
 
@@ -551,20 +555,19 @@ impl Collection {
         let merged_data = Self::merge_json_values(existing_doc.data(), data);
 
         // Write to WAL before filesystem operation
-        if let Some(wal) = &self.wal_manager {
-            if !self
+        if let Some(wal) = self.wal_manager.as_ref() &&
+            !self
                 .recovery_mode
                 .load(std::sync::atomic::Ordering::Relaxed)
-            {
-                let entry = LogEntry::new(
-                    EntryType::Update,
-                    self.name().to_string(),
-                    id.to_string(),
-                    Some(merged_data.clone()),
-                );
-                wal.write_entry(entry).await?;
-                debug!("WAL entry written for update operation on document {}", id);
-            }
+        {
+            let entry = LogEntry::new(
+                EntryType::Update,
+                self.name().to_owned(),
+                id.to_owned(),
+                Some(merged_data.clone()),
+            );
+            wal.write_entry(entry).await?;
+            debug!("WAL entry written for update operation on document {}", id);
         }
 
         // Update the document data and metadata
@@ -606,9 +609,9 @@ impl Collection {
         *self.updated_at.write().unwrap() = chrono::Utc::now();
 
         // Emit event - all metadata updates handled asynchronously by event processor
-        if let Some(sender) = &self.event_sender {
+        if let Some(sender) = self.event_sender.as_ref() {
             let event = StoreEvent::DocumentUpdated {
-                collection:     self.name().to_string(),
+                collection:     self.name().to_owned(),
                 old_size_bytes: old_size,
                 new_size_bytes: new_size,
             };
