@@ -24,7 +24,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-          cache: 'npm'
       - run: npm ci
       - id: generate-token
         uses: actions/create-github-app-token@v2
