@@ -284,7 +284,7 @@ impl Store {
     /// # Ok(())
     /// # }
     /// ```
-#[allow(clippy::cognitive_complexity, reason = "complex initialization logic")]
+    #[allow(clippy::cognitive_complexity, reason = "complex initialization logic")]
     pub async fn new_with_config<P>(
         root_path: P,
         passphrase: Option<&str>,
