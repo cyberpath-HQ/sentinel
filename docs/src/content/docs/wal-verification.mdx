@@ -1,0 +1,437 @@
+---
+title: Verification
+description: Verify Write-Ahead Logging consistency and integrity to ensure data durability and detect potential issues.
+section: Advanced Topics
+subsection: Write-Ahead Logging
+order: 34
+keywords: ["verification", "wal", "consistency", "integrity", "validation"]
+related: ["wal", "wal-recovery", "wal-configuration", "wal-best-practices"]
+---
+
+WAL verification ensures that your write-ahead log is consistent, integral, and properly synchronized with your main
+data storage. This guide explains verification mechanisms and how to use them.
+
+## Verification Overview
+
+WAL verification checks for:
+
+1. **Internal Consistency**: WAL entries form valid operation sequences
+2. **Data Integrity**: No corrupted or invalid entries exist
+3. **Disk Synchronization**: WAL state matches actual disk state
+4. **Transaction Completeness**: Transactions are properly terminated
+
+### Why Verification Matters
+
+While Sentinel's WAL implementation is designed to prevent corruption, verification provides:
+
+- Early detection of potential issues
+- Assurance that recovery will work correctly
+- Monitoring of system health
+- Compliance evidence for audits
+
+## Automatic Verification
+
+Enable automatic verification with configuration:
+
+```rust
+use sentinel_wal::CollectionWalConfig;
+
+let mut config = CollectionWalConfig::default();
+config.auto_verify = true;  // Verify on document reads
+config.verification_mode = WalFailureMode::Warn; // Log issues but continue
+
+let users = store.collection_with_config("users", Some(config)).await?;
+```
+
+When `auto_verify` is enabled, documents are automatically verified against WAL entries on every read operation.
+
+## Manual Verification
+
+Explicitly verify a collection's WAL:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let result = collection.verify_against_wal().await?;
+
+if result.passed {
+    println!("✓ WAL verification passed");
+} else {
+    println!("✗ {} issues found", result.issues.len());
+    for issue in &result.issues {
+        println!("  - {}", issue.description);
+    }
+}
+```
+
+## Verification Results
+
+The `WalVerificationResult` provides detailed information:
+
+```rust
+pub struct WalVerificationResult {
+    /// Issues found during verification
+    pub issues: Vec<WalVerificationIssue>,
+    /// Whether verification passed (no critical issues)
+    pub passed: bool,
+    /// Number of WAL entries processed
+    pub entries_processed: u64,
+    /// Number of documents affected by WAL
+    pub affected_documents: u64,
+}
+
+pub struct WalVerificationIssue {
+    /// Transaction ID where the issue occurred
+    pub transaction_id: String,
+    /// Document ID affected
+    pub document_id: String,
+    /// Description of the issue
+    pub description: String,
+    /// Whether this is a critical issue
+    pub is_critical: bool,
+}
+```
+
+### Example Verification
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let result = collection.verify_against_wal().await?;
+
+println!("Verification Report");
+println!("  Passed: {}", result.passed);
+println!("  Entries: {}", result.entries_processed);
+println!("  Documents affected: {}", result.affected_documents);
+
+let critical_issues = result.issues.iter().filter(|i| i.is_critical);
+let warnings = result.issues.iter().filter(|i| !i.is_critical);
+
+println!("  Critical issues: {}", critical_issues.count());
+println!("  Warnings: {}", warnings.count());
+
+for issue in &result.issues {
+    let severity = if issue.is_critical { "ERROR" } else { "WARN" };
+    println!("  [{}] {}: {}", severity, issue.document_id, issue.description);
+}
+```
+
+## Issue Categories
+
+### Structural Issues (Critical)
+
+Issues that indicate WAL corruption or invalid structure:
+
+| Issue                | Meaning                 | Resolution               |
+| -------------------- | ----------------------- | ------------------------ |
+| Invalid entry format | WAL file corrupted      | Restore from backup      |
+| Malformed JSON data  | Document data corrupted | Manual inspection needed |
+| Invalid checksum     | Data integrity failure  | Restore from backup      |
+
+### Synchronization Issues (Critical)
+
+Issues where WAL and disk state disagree:
+
+| Issue                           | Meaning            | Resolution            |
+| ------------------------------- | ------------------ | --------------------- |
+| Document in WAL but not on disk | Insert not applied | Run recovery          |
+| Document on disk but not in WAL | Orphaned document  | Investigate source    |
+| Version mismatch                | Different versions | Check update sequence |
+
+### Consistency Issues (Warning)
+
+Issues that may indicate problems but aren't necessarily critical:
+
+| Issue                      | Meaning                | Resolution          |
+| -------------------------- | ---------------------- | ------------------- |
+| Transaction without commit | Incomplete transaction | Check for crashes   |
+| Orphaned delete operations | Delete without insert  | Inspect manually    |
+| Duplicate operations       | Operation repeated     | Check recovery logs |
+
+## Store-Level Verification
+
+Verify all collections in a store:
+
+```rust
+use sentinel_dbms::wal::ops::StoreWalOps;
+
+let verification_results = store.verify_all_collections().await?;
+
+for (collection_name, issues) in verification_results {
+    if issues.is_empty() {
+        println!("✓ {}: OK", collection_name);
+    } else {
+        println!("✗ {}: {} issues", collection_name, issues.len());
+        for issue in issues {
+            println!("  - {}", issue.description);
+        }
+    }
+}
+```
+
+## Verification Patterns
+
+### Pre-Operation Verification
+
+Verify before critical operations:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+pub async fn safe_bulk_delete(
+    collection: &Collection,
+    ids: &[String],
+) -> Result<usize> {
+    // Verify WAL first
+    let verification = collection.verify_against_wal().await?;
+
+    if !verification.passed {
+        return Err(SentinelError::VerificationFailed {
+            reason: format!("{} issues found", verification.issues.len()),
+        }.into());
+    }
+
+    // Safe to proceed
+    let mut deleted = 0;
+    for id in ids {
+        collection.delete(id).await?;
+        deleted += 1;
+    }
+
+    Ok(deleted)
+}
+```
+
+### Scheduled Verification
+
+Run verification periodically:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+use std::time::Duration;
+use tokio::time::interval;
+
+async fn verification_loop(collection: Collection) {
+    let mut ticker = interval(Duration::from_secs(3600)); // Every hour
+
+    loop {
+        ticker.tick().await;
+
+        match collection.verify_against_wal().await {
+            Ok(result) => {
+                if result.passed {
+                    println!("✓ Hourly verification passed");
+                } else {
+                    eprintln!("✗ Verification issues: {}", result.issues.len());
+                    for issue in result.issues {
+                        eprintln!("  - {}: {}", issue.document_id, issue.description);
+                    }
+                }
+            },
+            Err(e) => eprintln!("Verification failed: {}", e),
+        }
+    }
+}
+```
+
+### Verification with Recovery
+
+Verify then recover:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+pub async fn safe_recovery(collection: &Collection) -> Result<()> {
+    println!("Verifying WAL...");
+    let verification = collection.verify_against_wal().await?;
+
+    if !verification.passed {
+        eprintln!("⚠ Verification found {} issues", verification.issues.len());
+        for issue in &verification.issues {
+            if issue.is_critical {
+                eprintln!("  CRITICAL: {}", issue.description);
+            }
+        }
+    }
+
+    println!("Recovering from WAL...");
+    let recovery = collection.recover_from_wal().await?;
+
+    println!("✓ Recovered: {}", recovery.recovered_operations);
+    println!("⊘ Skipped: {}", recovery.skipped_operations);
+
+    if recovery.failed_operations > 0 {
+        eprintln!("✗ Failed: {}", recovery.failed_operations);
+    }
+
+    println!("Re-verifying after recovery...");
+    let re_verification = collection.verify_against_wal().await?;
+
+    if re_verification.passed {
+        println!("✓ Post-recovery verification passed");
+    } else {
+        eprintln!("✗ Issues remain after recovery");
+    }
+
+    Ok(())
+}
+```
+
+## Verification Configuration
+
+### Verification Modes
+
+Control how verification behaves:
+
+```rust
+use sentinel_wal::WalFailureMode;
+
+// Strict: Fail on any issue
+config.verification_mode = WalFailureMode::Strict;
+
+// Warn: Log issues but continue (recommended)
+config.verification_mode = WalFailureMode::Warn;
+
+// Disabled: Skip verification entirely
+config.verification_mode = WalFailureMode::Disabled;
+```
+
+### Auto-Verification Settings
+
+```rust
+use sentinel_wal::CollectionWalConfig;
+
+let mut config = CollectionWalConfig::default();
+
+// Verify every read operation
+config.auto_verify = true;  // Performance impact: moderate
+
+// Or manual verification only
+config.auto_verify = false; // Better performance
+```
+
+## Monitoring Verification
+
+Track verification metrics over time:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+pub async fn check_wal_health(collection: &Collection) -> WalHealthReport {
+    let result = collection.verify_against_wal().await.ok();
+
+    WalHealthReport {
+        passed: result.as_ref().map(|r| r.passed).unwrap_or(false),
+        entries_processed: result.as_ref().map(|r| r.entries_processed).unwrap_or(0),
+        affected_documents: result.as_ref().map(|r| r.affected_documents).unwrap_or(0),
+        critical_issue_count: result
+            .as_ref()
+            .map(|r| r.issues.iter().filter(|i| i.is_critical).count())
+            .unwrap_or(0),
+        warning_count: result
+            .as_ref()
+            .map(|r| r.issues.iter().filter(|i| !i.is_critical).count())
+            .unwrap_or(0),
+    }
+}
+```
+
+## Handling Verification Failures
+
+### When Verification Fails
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+match collection.verify_against_wal().await {
+    Ok(result) if !result.passed => {
+        // Verification failed - analyze issues
+        for issue in &result.issues {
+            match issue.description.as_str() {
+                s if s.contains("not on disk") => {
+                    // Run recovery to apply missing operations
+                    collection.recover_from_wal().await?;
+                },
+                s if s.contains("corrupted") => {
+                    // Corruption detected - need backup restoration
+                    eprintln!("Critical corruption - restore from backup");
+                },
+                _ => {
+                    // Log for monitoring
+                    eprintln!("Issue: {}", issue.description);
+                }
+            }
+        }
+    },
+    Ok(_) => {
+        // All good
+    },
+    Err(e) => {
+        // Verification itself failed
+        eprintln!("Verification error: {}", e);
+    }
+}
+```
+
+## Verification Performance
+
+### Performance Considerations
+
+| Factor              | Impact             | Mitigation                  |
+| ------------------- | ------------------ | --------------------------- |
+| WAL size            | Larger = slower    | Checkpoint regularly        |
+| Document count      | More docs = slower | Keep reasonable count       |
+| Auto-verify enabled | Per-read overhead  | Disable for high-throughput |
+| Verification mode   | Strict is slower   | Use Warn for production     |
+
+### Optimization Strategy
+
+```rust
+use sentinel_wal::{CollectionWalConfig, WalFailureMode};
+
+let mut config = CollectionWalConfig::default();
+
+// For read-heavy operations
+config.auto_verify = false;           // Skip per-read verification
+config.verification_mode = WalFailureMode::Warn; // Non-blocking checks
+
+// But verify periodically offline
+tokio::spawn({
+    let collection = collection.clone();
+    async move {
+        let _ = collection.verify_against_wal().await;
+    }
+});
+```
+
+## Compliance and Auditing
+
+Use verification for compliance requirements:
+
+```rust
+use sentinel_dbms::wal::ops::StoreWalOps;
+
+pub async fn audit_report(store: &Store) -> AuditReport {
+    let verifications = store.verify_all_collections().await.ok();
+
+    AuditReport {
+        timestamp: chrono::Utc::now(),
+        collections_verified: verifications.as_ref().map(|v| v.len()).unwrap_or(0),
+        all_passed: verifications
+            .as_ref()
+            .map(|v| v.values().all(|issues| issues.is_empty()))
+            .unwrap_or(false),
+        issues: verifications
+            .unwrap_or_default()
+            .into_iter()
+            .flat_map(|(_, issues)| issues)
+            .collect(),
+    }
+}
+```
+
+## Next Steps
+
+- Learn about [WAL recovery](wal-recovery)
+- Set up [WAL configuration](wal-configuration) for verification
+- Follow [WAL best practices](wal-best-practices)

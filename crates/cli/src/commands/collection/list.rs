@@ -1,0 +1,330 @@
+use std::str::FromStr as _;
+
+use clap::Args;
+use sentinel_dbms::{
+    futures::{pin_mut, StreamExt as _},
+    VerificationMode,
+    VerificationOptions,
+};
+use tracing::{error, info};
+
+use crate::commands::WalArgs;
+
+/// Arguments for collection list command.
+#[derive(Args, Clone, Default)]
+pub struct ListArgs {
+    /// Verify document signature (default: true)
+    #[arg(long, default_value = "true")]
+    pub verify_signature: bool,
+    /// Verify document hash (default: true)
+    #[arg(long, default_value = "true")]
+    pub verify_hash:      bool,
+    /// Signature verification mode: strict, warn, or silent (default: strict)
+    #[arg(long, default_value = "strict")]
+    pub signature_mode:   String,
+    /// How to handle documents with no signature: strict, warn, or silent (default: warn)
+    #[arg(long, default_value = "warn")]
+    pub empty_sig_mode:   String,
+    /// Hash verification mode: strict, warn, or silent (default: strict)
+    #[arg(long, default_value = "strict")]
+    pub hash_mode:        String,
+    /// WAL configuration options for this collection
+    #[command(flatten)]
+    pub wal:              WalArgs,
+}
+
+impl ListArgs {
+    /// Convert CLI arguments to verification options.
+    fn to_verification_options(&self) -> Result<VerificationOptions, String> {
+        let signature_verification_mode = VerificationMode::from_str(&self.signature_mode).map_err(|_e| {
+            format!(
+                "Invalid signature verification mode: {}",
+                self.signature_mode
+            )
+        })?;
+
+        let empty_signature_mode = VerificationMode::from_str(&self.empty_sig_mode)
+            .map_err(|_e| format!("Invalid empty signature mode: {}", self.empty_sig_mode))?;
+
+        let hash_verification_mode = VerificationMode::from_str(&self.hash_mode)
+            .map_err(|_e| format!("Invalid hash verification mode: {}", self.hash_mode))?;
+
+        Ok(VerificationOptions {
+            verify_signature: self.verify_signature,
+            verify_hash: self.verify_hash,
+            signature_verification_mode,
+            empty_signature_mode,
+            hash_verification_mode,
+        })
+    }
+}
+
+/// List all document IDs in a Sentinel collection.
+///
+/// This function streams all document IDs from the specified collection.
+/// IDs are printed to stdout, one per line.
+///
+/// # Arguments
+/// * `store_path` - Path to the Sentinel store
+/// * `collection` - Collection name
+/// * `passphrase` - Optional passphrase for decrypting the signing key
+/// * `args` - The parsed command-line arguments for collection list.
+///
+/// # Returns
+/// Returns `Ok(())` on success, or a `SentinelError` on failure.
+///
+/// # Examples
+/// ```rust,no_run
+/// use sentinel_cli::commands::collection::list::{run, ListArgs};
+///
+/// let args = ListArgs::default();
+/// run(
+///     String::from("/tmp/my_store"),
+///     String::from("users"),
+///     None,
+///     args,
+/// )
+/// .await?;
+/// ```
+#[allow(clippy::print_stdout, reason = "CLI command output")]
+pub async fn run(
+    store_path: String,
+    collection: String,
+    passphrase: Option<String>,
+    args: ListArgs,
+) -> sentinel_dbms::Result<()> {
+    info!(
+        "Listing documents in collection '{}' in store {}",
+        collection, store_path
+    );
+    let store = sentinel_dbms::Store::new_with_config(
+        &store_path,
+        passphrase.as_deref(),
+        sentinel_dbms::StoreWalConfig::default(),
+    )
+    .await?;
+    let coll = store
+        .collection_with_config(&collection, Some(args.wal.to_overrides()))
+        .await?;
+
+    let verification_options = args.to_verification_options().map_err(|e| {
+        sentinel_dbms::SentinelError::ConfigError {
+            message: e,
+        }
+    })?;
+
+    let stream = coll.all_with_verification(&verification_options);
+    pin_mut!(stream);
+
+    let mut count: usize = 0;
+    // Process stream item by item to avoid loading all IDs into memory
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(doc) => {
+                #[allow(clippy::print_stdout, reason = "CLI output")]
+                {
+                    println!("{}", doc.id());
+                }
+                count = count.saturating_add(1);
+            },
+            Err(e) => {
+                error!(
+                    "Failed to list documents in collection '{}' in store {}: {}",
+                    collection, store_path, e
+                );
+                return Err(e);
+            },
+        }
+    }
+
+    info!("Found {} documents in collection '{}'", count, collection);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_list_empty_collection() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Run list command with explicit args
+        let args = ListArgs {
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            wal:              WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        if let Err(e) = &result {
+            panic!("List command failed: {:?}", e);
+        }
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_list_populated_collection() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert some documents
+        collection
+            .insert("doc1", serde_json::json!({"name": "Alice"}))
+            .await
+            .unwrap();
+        collection
+            .insert("doc2", serde_json::json!({"name": "Bob"}))
+            .await
+            .unwrap();
+
+        // Allow event processing
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Run list command with explicit args
+        let args = ListArgs {
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "warn".to_string(),
+            hash_mode:        "strict".to_string(),
+            wal:              WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        if let Err(e) = &result {
+            panic!("List command failed: {:?}", e);
+        }
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_list_invalid_verification_mode() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let _collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Run list command with invalid verification mode
+        let args = ListArgs {
+            signature_mode: "invalid".to_string(),
+            ..Default::default()
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_list_with_corrupted_documents_strict_verification() {
+        let temp_dir = tempdir().unwrap();
+        let store_path = temp_dir.path().join("store");
+        let collection_name = "test_collection";
+
+        // Create store and collection
+        let store = sentinel_dbms::Store::new_with_config(&store_path, None, sentinel_dbms::StoreWalConfig::default())
+            .await
+            .unwrap();
+        let collection = store
+            .collection_with_config(collection_name, None)
+            .await
+            .unwrap();
+
+        // Insert a document with signing key
+        let data = serde_json::json!({"name": "test", "value": 123});
+        collection.insert("doc1", data).await.unwrap();
+
+        // Manually corrupt the document file to cause verification failure
+        let doc_path = store_path
+            .join("data")
+            .join(collection_name)
+            .join("doc1.json");
+        let mut corrupted_content = tokio::fs::read_to_string(&doc_path).await.unwrap();
+
+        // Corrupt the signature by changing a character
+        if let Some(sig_pos) = corrupted_content.find("\"signature\":") {
+            if let Some(quote_start) = corrupted_content[sig_pos ..].find('"') {
+                let sig_start = sig_pos + quote_start + 1;
+                if sig_start < corrupted_content.len() {
+                    corrupted_content.replace_range(sig_start .. sig_start + 1, "X");
+                }
+            }
+        }
+
+        tokio::fs::write(&doc_path, corrupted_content)
+            .await
+            .unwrap();
+
+        // Run list command with strict verification - should fail during streaming
+        let args = ListArgs {
+            verify_signature: true,
+            verify_hash:      true,
+            signature_mode:   "strict".to_string(),
+            empty_sig_mode:   "strict".to_string(),
+            hash_mode:        "strict".to_string(),
+            wal:              WalArgs::default(),
+        };
+        let result = run(
+            store_path.to_string_lossy().to_string(),
+            collection_name.to_string(),
+            None,
+            args,
+        )
+        .await;
+
+        // Should fail due to corrupted document during streaming
+        assert!(result.is_err());
+    }
+}

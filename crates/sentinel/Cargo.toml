@@ -22,11 +22,13 @@ async-trait = "0.1.89"
 thiserror = "2.0.17"
 chrono = { version = "0.4.43", features = ["serde"] }
 sentinel-crypto = { version = "2.0.1", path = "../sentinel-crypto" }
+sentinel-wal = { version = "2.0.1", path = "../sentinel-wal" }
 hex = "0.4.3"
 tracing = "0.1.44"
 tokio-stream = "0.1.18"
 futures = "0.3.31"
 async-stream = "0.3.6"
+cuid2 = "0.1.4"
 
 [dev-dependencies]
 tempfile = "3.24.0"

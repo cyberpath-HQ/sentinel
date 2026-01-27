@@ -390,6 +390,86 @@ set_global_crypto_config(config)?;
 
 This ensures consistency across all operations and allows easy algorithm switching.
 
+## Write-Ahead Logging (WAL)
+
+Sentinel's Write-Ahead Logging system ensures data durability and consistency by recording all changes before they are
+applied to the filesystem.
+
+### WAL Architecture
+
+```text
+Collection
+├── data/                          # Main collection documents
+│   ├── user-123.json
+│   └── user-456.json
+├── .metadata.json                 # Collection metadata + WAL config
+├── .wal/                          # Write-Ahead Log directory
+│   ├── 0000001.wal               # Current WAL file (binary)
+│   └── 0000000.wal.zst           # Rotated and compressed
+└── .deleted/                      # Soft-deleted documents
+```
+
+### How WAL Works
+
+1. **Pre-logging**: Every operation (insert, update, delete) is logged to WAL first
+2. **Main Storage**: Operation is then applied to main files
+3. **Checkpoint**: Accumulated WAL entries are flushed and file is rotated
+
+This ensures that even if a crash occurs, the WAL can be replayed to restore the database to a consistent state.
+
+### Key Features
+
+- **Entry Types**: Begin, Insert, Update, Delete, Commit, Rollback
+- **Serialization**: Binary (compact, default) or JSON Lines (human-readable)
+- **Integrity**: CRC32 checksums for corruption detection
+- **Compression**: Automatic compression of rotated files (Zstd, Lz4, Brotli, Deflate, Gzip, or none)
+- **Rotation**: Based on file size or entry count limits
+- **Recovery**: Safe, idempotent replay of WAL entries
+- **Verification**: Consistency checks between WAL and disk state
+
+### Configuration Per Collection
+
+Each collection can have its own WAL configuration:
+
+```rust
+pub struct CollectionWalConfig {
+    pub write_mode: WalFailureMode,              // How to handle write failures
+    pub verification_mode: WalFailureMode,       // How to handle verification failures
+    pub auto_verify: bool,                       // Verify on every read?
+    pub enable_recovery: bool,                   // Allow recovery on startup?
+    pub max_wal_size_bytes: Option<u64>,        // When to rotate file
+    pub compression_algorithm: Option<...>,      // Compression for rotated files
+    pub max_records_per_file: Option<usize>,    // Max entries before rotation
+    pub format: WalFormat,                       // Binary or JSON Lines
+}
+```
+
+Failure modes control recovery behavior:
+
+- **Strict**: Fail operation if WAL fails (data integrity priority)
+- **Warn**: Log failure but continue (availability priority)
+- **Disabled**: Don't use WAL for this operation
+
+### WAL Integration Points
+
+```text
+Application Code
+        │
+        ├─→ collection.insert(id, data)
+        │
+        ▼
+Collection::insert
+        │
+        ├─→ WalManager::append (log operation)  ✓ Durable
+        │
+        ├─→ Save to disk                        ○ May fail
+        │
+        └─→ Success/Error
+```
+
+If a crash occurs after the WAL write but before the disk write, recovery replays the WAL entry to complete the
+operation.
+
 ## File System Organization
 
 ### Directory Structure
@@ -537,8 +617,10 @@ Collection
 ```text
 Collection
 ├── Documents
-├── Write-Ahead Log (.wal/transactions.log)
-└── Lock Manager (.locks/document_id.lock)
+├── .wal/ (Write-Ahead Log)
+│   ├── Current WAL entries
+│   └── Rotated & compressed files
+└── .metadata.json (Transaction config)
 ```
 
 **Caching Layer:**

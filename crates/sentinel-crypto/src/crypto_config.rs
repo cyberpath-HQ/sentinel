@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tokio::sync::RwLock as TokioRwLock;
 use tracing::{debug, trace, warn};
 
@@ -67,6 +69,7 @@ impl Default for CryptoConfig {
 
 // Global configuration storage
 static GLOBAL_CONFIG: TokioRwLock<Option<CryptoConfig>> = TokioRwLock::const_new(None);
+static GLOBAL_CONFIG_SET: AtomicBool = AtomicBool::new(false);
 
 /// Sets the global cryptographic configuration.
 /// This affects all default cryptographic operations.
@@ -78,6 +81,7 @@ pub async fn set_global_crypto_config(config: CryptoConfig) -> Result<(), Crypto
         warn!("Global crypto config is being changed. This may affect ongoing operations.");
     }
     *global = Some(config);
+    GLOBAL_CONFIG_SET.store(true, Ordering::Relaxed);
     debug!("Global crypto config set successfully");
     Ok(())
 }
@@ -104,10 +108,15 @@ pub async fn get_global_crypto_config() -> Result<CryptoConfig, CryptoError> {
     Ok(config.clone())
 }
 
+/// Checks if the global cryptographic configuration has been explicitly set.
+/// Returns true if set, false if still using the default lazy-initialized config.
+pub async fn is_global_crypto_config_set() -> bool { GLOBAL_CONFIG_SET.load(Ordering::Relaxed) }
+
 /// Resets the global cryptographic configuration for testing purposes.
 /// This allows tests to set different configurations.
 #[cfg(test)]
 pub async fn reset_global_crypto_config_for_tests() {
     let mut global = GLOBAL_CONFIG.write().await;
     *global = None;
+    GLOBAL_CONFIG_SET.store(false, Ordering::Relaxed);
 }

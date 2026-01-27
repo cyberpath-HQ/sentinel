@@ -1,0 +1,274 @@
+---
+title: Introduction
+description: Understanding Write-Ahead Logging in Sentinel, how it ensures durability, and how to use it effectively.
+section: Advanced Topics
+subsection: Write-Ahead Logging
+order: 31
+keywords: ["wal", "write-ahead logging", "durability", "crash recovery", "transactions"]
+related: ["wal-configuration", "wal-recovery", "wal-verification", "wal-best-practices"]
+---
+
+Write-Ahead Logging (WAL) is a critical durability mechanism in Sentinel that ensures all database changes are recorded
+before being applied to the filesystem. This document explains what WAL is, why it matters, and how to work with it in
+your applications.
+
+## What is Write-Ahead Logging?
+
+Write-Ahead Logging is a technique that guarantees data durability and consistency even in the face of system failures.
+The principle is simple: before any change is written to the main database files, it's first recorded in a sequential
+log file. If a crash occurs, the log can be replayed to restore the database to its last consistent state.
+
+### The Basic Principle
+
+```
+Operation arrives
+       ↓
+Write to WAL (durable)
+       ↓
+Write to main storage (may fail)
+       ↓
+Checkpoint/flush WAL
+       ↓
+Operation complete
+```
+
+If a crash occurs at any point after the WAL entry is written, that operation can be recovered from the log even if the
+main storage write failed.
+
+## Why WAL Matters in Sentinel
+
+While Sentinel's filesystem backend provides excellent auditability, WAL adds a critical layer of protection:
+
+- **Crash Recovery**: If your process crashes mid-operation, WAL entries ensure you don't lose data that was supposedly
+  written
+- **Consistency Guarantees**: WAL ensures that operations complete atomically, either fully applied or not at all
+- **Audit Trail Integrity**: WAL provides an immutable record of operations in the exact order they occurred
+- **Transaction Support**: WAL enables multi-operation transactions with rollback capabilities
+
+## WAL Architecture
+
+### Entry Structure
+
+Each WAL entry contains:
+
+| Field           | Size                                           | Purpose                                                             |
+| --------------- | ---------------------------------------------- | ------------------------------------------------------------------- |
+| Entry Type      | 1 byte                                         | Type of operation (Begin, Insert, Update, Delete, Commit, Rollback) |
+| Transaction ID  | 32 bytes                                       | Unique ID for the transaction (CUID2)                               |
+| Collection Name | Variable (padded to 16-byte multiple, max 256) | Name of the collection                                              |
+| Document ID     | Variable (padded to 16-byte multiple, max 256) | Document identifier                                                 |
+| Timestamp       | 8 bytes                                        | When the operation occurred (u64 Unix timestamp)                    |
+| Data Length     | 8 bytes                                        | Size of the following JSON data                                     |
+| Data            | Variable                                       | JSON payload of the operation                                       |
+| CRC32 Checksum  | 4 bytes                                        | Integrity verification                                              |
+
+### Entry Types
+
+Sentinel supports the following WAL entry types:
+
+| Type       | Purpose                                    | Contains Data?      |
+| ---------- | ------------------------------------------ | ------------------- |
+| `Begin`    | Marks the start of a transaction           | No                  |
+| `Insert`   | Insert or overwrite a document             | Yes (JSON document) |
+| `Update`   | Update a document (deprecated, use Insert) | Yes (JSON document) |
+| `Delete`   | Mark a document as deleted                 | No                  |
+| `Commit`   | Transaction completed successfully         | No                  |
+| `Rollback` | Transaction aborted                        | No                  |
+
+### File Format
+
+Sentinel supports two WAL file formats:
+
+**Binary Format (Default)**
+
+- Compact, efficient storage using Postcard serialization
+- Suitable for production use with high throughput
+- Not human-readable without specialized tools
+- Recommended for most use cases
+
+**JSON Lines Format**
+
+- Human-readable, one entry per line in JSON format
+- Larger file sizes but easier to inspect and debug
+- Suitable for development and troubleshooting
+- Format specified per collection or store
+
+## How WAL Integrates with Sentinel
+
+### Automatic WAL Logging
+
+When you perform operations on a collection, WAL automatically logs them:
+
+```rust
+use sentinel_dbms::Store;
+use serde_json::json;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", None).await?;
+    let users = store.collection("users").await?;
+
+    // This automatically creates a WAL entry
+    users.insert("user-123", json!({
+        "name": "Alice",
+        "email": "alice@example.com"
+    })).await?;
+
+    Ok(())
+}
+```
+
+### Configurable Behavior
+
+You can configure how WAL behaves through the `CollectionWalConfig`:
+
+```rust
+use sentinel_dbms::Store;
+use sentinel_wal::{CollectionWalConfig, WalFailureMode};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = Store::new("./data", None).await?;
+
+    let mut wal_config = CollectionWalConfig::default();
+    wal_config.write_mode = WalFailureMode::Strict; // Fail on WAL errors
+    wal_config.enable_recovery = true; // Allow recovery
+
+    let users = store.collection_with_config("users", Some(wal_config)).await?;
+
+    Ok(())
+}
+```
+
+## WAL Operations
+
+### Checkpointing
+
+A checkpoint flushes all accumulated WAL entries to the main data store and truncates the log file. This reclaims disk
+space and marks a point of consistency.
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+// Checkpoint a single collection
+collection.checkpoint_wal().await?;
+
+// Or checkpoint all collections in the store
+use sentinel_dbms::wal::ops::StoreWalOps;
+store.checkpoint_all_collections().await?;
+```
+
+### Monitoring WAL Size
+
+Track the size and entry count of WAL files:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let wal_size = collection.wal_size().await?;
+let entry_count = collection.wal_entries_count().await?;
+
+println!("WAL size: {} bytes, entries: {}", wal_size, entry_count);
+
+// Checkpoint when WAL exceeds a threshold
+if wal_size > 100 * 1024 * 1024 { // 100MB
+    collection.checkpoint_wal().await?;
+}
+```
+
+### Streaming WAL Entries
+
+For monitoring, auditing, or replication, you can stream WAL entries:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+use futures::StreamExt;
+
+let mut stream = collection.stream_wal_entries().await?;
+while let Some(entry_result) = stream.next().await {
+    let entry = entry_result?;
+    println!("Operation: {:?}", entry.entry_type);
+    println!("Document: {}", entry.document_id_str());
+    println!("Timestamp: {}", entry.timestamp);
+}
+```
+
+## Failure Modes
+
+WAL operations support three failure modes that control how errors are handled:
+
+### Strict Mode (Default)
+
+```rust
+wal_config.write_mode = WalFailureMode::Strict;
+```
+
+Any WAL failure immediately fails the operation. This ensures data consistency but may reject operations if WAL is
+unavailable. Use this for critical data.
+
+### Warn Mode
+
+```rust
+wal_config.write_mode = WalFailureMode::Warn;
+```
+
+WAL failures are logged as warnings but operations continue. Useful for non-critical data where availability is more
+important than crash recovery.
+
+### Disabled Mode
+
+```rust
+wal_config.write_mode = WalFailureMode::Disabled;
+```
+
+WAL is completely disabled for the operation. No log entries are created. Use this only for data that doesn't need
+durability guarantees.
+
+## Performance Considerations
+
+### File Size Management
+
+Large WAL files impact performance. Sentinel provides automatic management:
+
+- **max_file_size**: Rotate to a new file when this size is reached (default: 10MB)
+- **max_records_per_file**: Rotate when this many entries are logged (default: 1000)
+- **compression_algorithm**: Compress rotated files (default: Zstd)
+
+```rust
+use sentinel_wal::CollectionWalConfig;
+
+let mut config = CollectionWalConfig::default();
+config.max_wal_size_bytes = Some(50 * 1024 * 1024); // 50MB
+config.max_records_per_file = Some(5000);
+```
+
+### Compression
+
+Rotated WAL files are automatically compressed using Zstandard (Zstd) by default, which reduces storage requirements
+while maintaining fast access when needed for recovery.
+
+### Batching Operations
+
+For bulk inserts, batch operations before checkpointing:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+// Insert many documents
+for i in 0..10000 {
+    collection.insert(
+        &format!("doc-{}", i),
+        serde_json::json!({"index": i})
+    ).await?;
+}
+
+// Checkpoint once after all inserts
+collection.checkpoint_wal().await?;
+```
+
+## Next Steps
+
+- Learn how to [configure WAL](wal-configuration) for your use case
+- Understand [WAL recovery](wal-recovery) mechanisms
+- Set up [WAL verification](wal-verification) checks
+- Follow [WAL best practices](wal-best-practices)

@@ -15,16 +15,17 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src,llvm-tools-preview
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
+      - name: Install grcov
+        run: cargo install grcov
 
       - name: Generate coverage reports
-        run: |
-          cargo tarpaulin
+        run: bash ./scripts/run_coverage.sh
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -34,4 +35,4 @@ jobs:
           flags: rust
           name: codecov-umbrella
           fail_ci_if_error: true
-          directory: ./target/tarpaulin
+          files: ./target/coverage/lcov.info

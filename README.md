@@ -294,10 +294,10 @@ data/
 - **Global Crypto Config** - Flexible configuration for algorithm selection
 - **Comprehensive Testing** - Extensive unit and integration tests
 - **Benchmarking** - Performance benchmarks with Criterion
+- **WAL (Write-Ahead Logging)** - Durable transaction logging for crash recovery
 
 ### 🚧 In Progress
 
-- [ ] Write-Ahead Logging (WAL) for durability
 - [ ] File locking for concurrent writes
 - [ ] Lazy indexing for improved query performance
 - [ ] In-memory caching with LRU eviction

@@ -1,10 +1,10 @@
 ---
 title: Troubleshooting & FAQ
-description: Common issues, solutions, and frequently asked questions about Sentinel.
+description: Common issues, solutions, and frequently asked questions about Sentinel, including WAL troubleshooting.
 section: References
 order: 51
-keywords: ["troubleshooting", "faq", "problems", "solutions", "debugging"]
-related: ["architecture", "examples", "api-reference"]
+keywords: ["troubleshooting", "faq", "problems", "solutions", "debugging", "wal"]
+related: ["architecture", "examples", "api-reference", "wal"]
 ---
 
 This guide helps you troubleshoot common issues and answers frequently asked questions about Sentinel.
@@ -221,7 +221,220 @@ async fn main() {
 }
 ```
 
-## Frequently Asked Questions
+## Write-Ahead Logging (WAL) Issues
+
+### WAL Operations Failing
+
+**Problem:** Operations fail with "WAL write failed" error.
+
+**Causes:**
+
+- Disk full or out of space
+- Permission issues in `.wal/` directory
+- WAL configured in Strict mode
+- Filesystem corruption
+
+**Solutions:**
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+use sentinel_wal::{WalFailureMode, CollectionWalConfig};
+
+// Check available disk space
+let available = check_disk_space("./data")?;
+if available < 100 * 1024 * 1024 {  // 100MB
+    eprintln!("Warning: Less than 100MB disk space");
+}
+
+// Note: WAL configuration cannot be changed at runtime.
+// To use Warn mode, recreate the collection with different config:
+let mut new_config = CollectionWalConfig::default();
+new_config.write_mode = WalFailureMode::Warn;
+let new_collection = store.collection_with_config("collection_name", Some(new_config)).await?;
+
+// Monitor WAL size
+let wal_size = collection.wal_size().await?;
+println!("WAL size: {} bytes", wal_size);
+
+// Checkpoint to reclaim space
+if wal_size > 100 * 1024 * 1024 {
+    collection.checkpoint_wal().await?;
+}
+```
+
+### WAL File Grows Too Large
+
+**Problem:** WAL file continuously grows, consuming disk space.
+
+**Causes:**
+
+- Checkpoints not being called
+- No rotation configured
+- High write volume without maintenance
+
+**Solutions:**
+
+```rust
+use sentinel_wal::CollectionWalConfig;
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+// 1. Set reasonable rotation limits
+let mut config = CollectionWalConfig::default();
+config.max_wal_size_bytes = Some(50 * 1024 * 1024);  // 50MB
+config.max_records_per_file = Some(5000);
+
+// 2. Schedule regular checkpoints
+use std::time::Duration;
+use tokio::time::interval;
+
+tokio::spawn({
+    let collection = collection.clone();
+    async move {
+        let mut ticker = interval(Duration::from_secs(3600));
+        loop {
+            ticker.tick().await;
+            match collection.checkpoint_wal().await {
+                Ok(_) => println!("Checkpoint completed"),
+                Err(e) => eprintln!("Checkpoint failed: {}", e),
+            }
+        }
+    }
+});
+
+// 3. Monitor WAL size
+let wal_size = collection.wal_size().await?;
+if wal_size > 100 * 1024 * 1024 {
+    eprintln!("WAL exceeds 100MB, consider checkpointing");
+}
+```
+
+### Verification Fails
+
+**Problem:** `verify_wal()` returns issues or fails completely.
+
+**Causes:**
+
+- WAL corruption
+- Incomplete operations (crash during write)
+- Mismatch between WAL and disk state
+- Filesystem inconsistency
+
+**Solutions:**
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+// 1. Check verification result
+let result = collection.verify_wal().await?;
+
+if !result.passed {
+    println!("Verification found {} issues", result.issues.len());
+
+    for issue in &result.issues {
+        if issue.is_critical {
+            eprintln!("CRITICAL: {}", issue.description);
+        } else {
+            println!("WARNING: {}", issue.description);
+        }
+    }
+}
+
+// 2. Recover from WAL
+println!("Attempting recovery...");
+let recovery = collection.recover_from_wal().await?;
+println!("Recovered: {}", recovery.recovered_operations);
+
+// 3. Verify again after recovery
+let re_verify = collection.verify_wal().await?;
+if re_verify.passed {
+    println!("✓ Collection is consistent");
+} else {
+    eprintln!("✗ Issues persist after recovery");
+    // Consider restore from backup
+}
+```
+
+### Recovery Loses Data
+
+**Problem:** After recovery, some documents are missing.
+
+**Causes:**
+
+- WAL was not synced before crash
+- Checkpoint deleted WAL but documents weren't written to disk
+- Soft deletes being treated as hard deletes
+- Configuration issue with recovery mode
+
+**Solutions:**
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+use sentinel_wal::{CollectionWalConfig, WalFailureMode};
+
+// Ensure recovery is enabled with Strict mode
+let mut config = CollectionWalConfig::default();
+config.enable_recovery = true;
+config.write_mode = WalFailureMode::Strict;
+
+// Monitor recovery results
+let result = collection.recover_from_wal().await?;
+println!("Recovered: {}", result.recovered_operations);
+println!("Skipped: {} (already applied)", result.skipped_operations);
+
+if result.failed_operations > 0 {
+    eprintln!("Failed: {} operations", result.failed_operations);
+    for failure in &result.failures {
+        eprintln!("  {} - {}", failure.document_id, failure.reason);
+    }
+}
+```
+
+### WAL Format Issues
+
+**Problem:** WAL file is corrupted or unreadable.
+
+**Causes:**
+
+- Wrong format configured
+- File truncation
+- Filesystem corruption
+- Version mismatch
+
+**Solutions:**
+
+```rust
+use sentinel_wal::{CollectionWalConfig, WalFormat};
+use sentinel_dbms::wal::ops::CollectionWalOps;
+use futures::StreamExt;
+
+// 1. Check current format
+let config = collection.wal_config();
+println!("WAL format: {:?}", config.format);
+
+// 2. Try to read WAL entries
+match collection.stream_wal_entries().await {
+    Ok(mut stream) => {
+        let mut entry_count = 0;
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(_entry) => entry_count += 1,
+                Err(e) => {
+                    eprintln!("Error reading entry {}: {}", entry_count, e);
+                    break;
+                }
+            }
+        }
+        println!("Successfully read {} entries", entry_count);
+    },
+    Err(e) => eprintln!("Failed to read WAL: {}", e),
+}
+
+// 3. Note: WAL format cannot be changed at runtime.
+// To use JSON format, recreate the collection with different config:
+let mut new_config = CollectionWalConfig::default();
+new_config.format = WalFormat::JsonLines;
+let new_collection = store.collection_with_config("collection_name", Some(new_config)).await?;
+```
 
 ### General Questions
 
@@ -263,6 +476,7 @@ A: Good fit if you need:
 - ✓ Simple deployment
 - ✓ Git versioning
 - ✓ Filesystem-level security
+- ✓ Crash recovery (with WAL)
 
 Not a good fit if you need:
 
@@ -270,6 +484,88 @@ Not a good fit if you need:
 - ✗ High-frequency writes
 - ✗ Real-time analytics
 - ✗ Distributed transactions
+
+### Write-Ahead Logging (WAL)
+
+**Q: Do I need to use WAL?**
+
+A: WAL is optional but recommended for:
+
+- **Critical data** (audit logs, financial records)
+- **Compliance** (GDPR, SOC 2, HIPAA)
+- **Crash recovery** (systems that may crash)
+
+You can disable WAL for:
+
+- **Temporary data** (caches, sessions)
+- **Non-critical data** (metrics, analytics)
+- **High-throughput systems** (where performance > durability)
+
+**Q: How much disk space does WAL use?**
+
+A: WAL adds overhead:
+
+- **Binary format**: ~5-20% of document size per entry
+- **JSON format**: ~30-50% of document size per entry
+- **Compressed**: 50-80% reduction for rotated files
+
+You control this with rotation:
+
+```rust
+config.max_wal_size_bytes = Some(50 * 1024 * 1024);  // 50MB max
+config.max_records_per_file = Some(5000);
+collection.checkpoint_wal().await?;  // Reclaim space
+```
+
+**Q: Will WAL slow down my application?**
+
+A: Performance impact depends on configuration:
+
+- **Strict mode**: 5-10% slower (ensures durability)
+- **Warn mode**: 1-2% slower (best effort)
+- **Disabled**: No overhead (no crash recovery)
+
+For high-throughput, use Warn mode or batch operations before checkpointing.
+
+**Q: What happens if a crash occurs?**
+
+A: WAL prevents data loss:
+
+```
+Before crash: Insert operation logged to WAL ✓
+             Insert operation to disk: In progress...
+             CRASH! ✗
+
+After restart: Load collection
+              Detect incomplete operation in WAL
+              Replay operation to disk
+              ✓ Data recovered
+```
+
+**Q: How do I test that recovery works?**
+
+A: Use temporary directories and verify:
+
+```rust
+#[tokio::test]
+async fn test_wal_recovery() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::new(temp.path(), None).await.unwrap();
+    let col = store.collection("test").await.unwrap();
+
+    col.insert("doc-1", json!({"value": 1})).await.unwrap();
+    // Intentionally not checkpointing
+
+    // Simulate restart
+    drop(col);
+
+    let store2 = Store::new(temp.path(), None).await.unwrap();
+    let col2 = store2.collection("test").await.unwrap();
+    let result = col2.recover_from_wal().await.unwrap();
+
+    assert!(result.recovered_operations > 0);
+}
+```
 
 ### Data & Storage
 

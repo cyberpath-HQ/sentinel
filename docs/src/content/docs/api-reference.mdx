@@ -4,11 +4,11 @@ description: Complete Rust API reference for Sentinel library functions and type
 section: References
 order: 50
 keywords: ["api", "reference", "rust", "library", "functions", "types"]
-related: ["store", "collection", "document", "querying"]
+related: ["store", "collection", "document", "querying", "wal"]
 ---
 
 This page provides a complete API reference for the Sentinel library. For usage examples, see the [Examples](examples)
-page.
+page. For WAL-specific operations, see the [WAL Documentation](wal).
 
 ## Store API
 
@@ -758,6 +758,410 @@ pub use sentinel_crypto::{
     SignatureAlgorithmChoice,
     EncryptionAlgorithmChoice,
     KeyDerivationAlgorithmChoice,
+};
+pub use sentinel_wal::{
+    WalManager,
+    WalConfig,
+    WalFormat,
+    WalRecoveryResult,
+    WalVerificationResult,
+};
+```
+
+## WAL Trait Operations
+
+### StoreWalOps
+
+Extension trait for Store-level WAL operations.
+
+```rust
+#[async_trait]
+pub trait StoreWalOps {
+    async fn checkpoint_all_collections(&self) -> Result<()>;
+    async fn stream_wal_entries(&self) -> Result<Pin<Box<dyn Stream<...>>>>;
+    async fn verify_all_collections(&self) -> Result<HashMap<String, Vec<...>>>;
+    async fn recover_all_collections(&self) -> Result<HashMap<String, usize>>;
+}
+```
+
+#### `checkpoint_all_collections`
+
+Checkpoints the WAL for all collections in the store.
+
+```rust
+use sentinel_dbms::wal::ops::StoreWalOps;
+
+store.checkpoint_all_collections().await?;
+```
+
+**Returns:** `Result<()>`
+
+**Use case:** Periodic maintenance, before backups, or during low-traffic periods.
+
+#### `stream_wal_entries`
+
+Streams WAL entries from all collections.
+
+```rust
+use sentinel_dbms::wal::ops::StoreWalOps;
+use futures::StreamExt;
+
+let mut stream = store.stream_wal_entries().await?;
+while let Some(result) = stream.next().await {
+    let (collection_name, entry) = result?;
+    println!("Collection: {}, Entry: {:?}", collection_name, entry);
+}
+```
+
+**Returns:** `Result<Stream<(String, LogEntry)>>`
+
+**Use case:** Monitoring, auditing, replication across collections.
+
+#### `verify_all_collections`
+
+Verifies WAL consistency for all collections.
+
+```rust
+use sentinel_dbms::wal::ops::StoreWalOps;
+
+let issues = store.verify_all_collections().await?;
+for (collection_name, collection_issues) in issues {
+    if !collection_issues.is_empty() {
+        println!("{}: {} issues found", collection_name, collection_issues.len());
+    }
+}
+```
+
+**Returns:** `Result<HashMap<String, Vec<WalVerificationIssue>>>`
+
+#### `recover_all_collections`
+
+Recovers all collections from their WAL entries.
+
+```rust
+use sentinel_dbms::wal::ops::StoreWalOps;
+
+let results = store.recover_all_collections().await?;
+for (collection_name, recovered_count) in results {
+    println!("Recovered {} operations in {}", recovered_count, collection_name);
+}
+```
+
+**Returns:** `Result<HashMap<String, usize>>` (recovered operation counts)
+
+### CollectionWalOps
+
+Extension trait for Collection-level WAL operations.
+
+```rust
+#[async_trait]
+pub trait CollectionWalOps {
+    async fn checkpoint_wal(&self) -> Result<()>;
+    async fn wal_size(&self) -> Result<u64>;
+    async fn wal_entries_count(&self) -> Result<u64>;
+    async fn stream_wal_entries(&self) -> Result<Pin<Box<dyn Stream<...>>>>;
+    async fn verify_wal(&self) -> Result<WalVerificationResult>;
+    async fn recover_from_wal(&self) -> Result<WalRecoveryResult>;
+}
+```
+
+#### `checkpoint_wal`
+
+Flushes accumulated WAL entries and truncates the log.
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+collection.checkpoint_wal().await?;
+```
+
+**Returns:** `Result<()`
+
+**Use case:** Reclaim disk space, mark point of consistency.
+
+#### `wal_size`
+
+Returns the current WAL file size in bytes.
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let size = collection.wal_size().await?;
+println!("WAL size: {} bytes", size);
+
+// Checkpoint if exceeds threshold
+if size > 50 * 1024 * 1024 {
+    collection.checkpoint_wal().await?;
+}
+```
+
+**Returns:** `Result<u64>`
+
+#### `wal_entries_count`
+
+Returns the number of entries in the WAL.
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let count = collection.wal_entries_count().await?;
+println!("WAL entries: {}", count);
+```
+
+**Returns:** `Result<u64>`
+
+#### `stream_wal_entries`
+
+Streams WAL entries from the collection.
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+use futures::StreamExt;
+
+let mut stream = collection.stream_wal_entries().await?;
+while let Some(result) = stream.next().await {
+    let entry = result?;
+    println!("Operation: {:?}", entry.entry_type);
+    println!("Document: {}", entry.document_id_str());
+    println!("Timestamp: {}", entry.timestamp);
+}
+```
+
+**Returns:** `Result<Stream<Result<LogEntry>>>`
+
+**Use case:** Monitoring, auditing, compliance reporting.
+
+#### `verify_wal`
+
+Verifies WAL consistency and integrity.
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let result = collection.verify_wal().await?;
+
+if result.passed {
+    println!("✓ WAL verification passed");
+} else {
+    for issue in &result.issues {
+        println!("Issue: {}", issue.description);
+    }
+}
+```
+
+**Returns:** `Result<WalVerificationResult>`
+
+**Returned fields:**
+
+- `passed: bool` - Verification passed (no critical issues)
+- `issues: Vec<WalVerificationIssue>` - Issues found
+- `entries_processed: u64` - Number of entries checked
+- `affected_documents: u64` - Number of documents in WAL
+
+#### `recover_from_wal`
+
+Recovers the collection from WAL entries.
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let result = collection.recover_from_wal().await?;
+
+println!("Recovered: {} operations", result.recovered_operations);
+println!("Skipped: {} (already applied)", result.skipped_operations);
+println!("Failed: {}", result.failed_operations);
+
+if result.failed_operations > 0 {
+    for failure in &result.failures {
+        eprintln!("Failed: {} - {}", failure.document_id, failure.reason);
+    }
+}
+```
+
+**Returns:** `Result<WalRecoveryResult>`
+
+**Returned fields:**
+
+- `recovered_operations: usize` - Operations that were recovered
+- `skipped_operations: usize` - Operations already applied
+- `failed_operations: usize` - Operations that failed
+- `failures: Vec<WalRecoveryFailure>` - Detailed failure information
+
+### Configuration Methods
+
+#### `collection_with_config`
+
+Creates or opens a collection with custom WAL configuration.
+
+```rust
+use sentinel_wal::{CollectionWalConfig, WalFailureMode};
+
+let mut wal_config = CollectionWalConfig::default();
+wal_config.write_mode = WalFailureMode::Strict;
+wal_config.enable_recovery = true;
+
+let users = store.collection_with_config("users", Some(wal_config)).await?;
+```
+
+**Parameters:**
+
+- `name: &str` - Collection name
+- `config: Option<CollectionWalConfig>` - WAL configuration (uses defaults if None)
+
+**Returns:** `Result<Collection>`
+
+#### `wal_config`
+
+Gets the current WAL configuration for a collection.
+
+```rust
+use sentinel_dbms::Collection;
+
+let config = collection.wal_config();
+println!("Write mode: {:?}", config.write_mode);
+println!("Recovery enabled: {}", config.enable_recovery);
+```
+
+**Returns:** `&CollectionWalConfig`
+
+## WAL Types
+
+### WalConfig
+
+Configuration for WAL manager.
+
+```rust
+pub struct WalConfig {
+    pub max_file_size: Option<u64>,
+    pub compression_algorithm: Option<CompressionAlgorithm>,
+    pub max_records_per_file: Option<usize>,
+    pub format: WalFormat,
+}
+```
+
+### WalFormat
+
+```rust
+pub enum WalFormat {
+    Binary,      // Compact, efficient (default)
+    JsonLines,   // Human-readable
+}
+```
+
+### CollectionWalConfig
+
+Configuration for WAL operations at collection level.
+
+```rust
+pub struct CollectionWalConfig {
+    pub write_mode: WalFailureMode,
+    pub verification_mode: WalFailureMode,
+    pub auto_verify: bool,
+    pub enable_recovery: bool,
+    pub max_wal_size_bytes: Option<u64>,
+    pub compression_algorithm: Option<CompressionAlgorithm>,
+    pub max_records_per_file: Option<usize>,
+    pub format: WalFormat,
+}
+```
+
+### WalFailureMode
+
+```rust
+pub enum WalFailureMode {
+    Strict,     // Fail operation if WAL fails
+    Warn,       // Log warning but continue
+    Disabled,   // Don't use WAL
+}
+```
+
+### LogEntry
+
+Individual WAL entry.
+
+```rust
+pub struct LogEntry {
+    pub entry_type: EntryType,
+    pub transaction_id: FixedBytes32,
+    pub collection: FixedBytes256,
+    pub document_id: FixedBytes256,
+    pub timestamp: u64,
+    pub data: Option<String>,
+    // ... internal fields
+}
+
+pub enum EntryType {
+    Begin,
+    Insert,
+    Update,
+    Delete,
+    Commit,
+    Rollback,
+}
+```
+
+### WalVerificationResult
+
+Result of WAL verification.
+
+```rust
+pub struct WalVerificationResult {
+    pub passed: bool,
+    pub issues: Vec<WalVerificationIssue>,
+    pub entries_processed: u64,
+    pub affected_documents: u64,
+}
+
+pub struct WalVerificationIssue {
+    pub transaction_id: String,
+    pub document_id: String,
+    pub description: String,
+    pub is_critical: bool,
+}
+```
+
+### WalRecoveryResult
+
+Result of WAL recovery.
+
+```rust
+pub struct WalRecoveryResult {
+    pub recovered_operations: usize,
+    pub skipped_operations: usize,
+    pub failed_operations: usize,
+    pub failures: Vec<WalRecoveryFailure>,
+}
+
+pub struct WalRecoveryFailure {
+    pub transaction_id: String,
+    pub document_id: String,
+    pub operation_type: String,
+    pub reason: String,
+}
+```
+
+## Re-exports
+
+Sentinel re-exports commonly used types for convenience:
+
+```rust
+pub use async_stream;
+pub use futures;
+pub use sentinel_crypto::{
+    SigningKey,
+    VerifyingKey,
+    CryptoConfig,
+    HashAlgorithmChoice,
+    SignatureAlgorithmChoice,
+    EncryptionAlgorithmChoice,
+    KeyDerivationAlgorithmChoice,
+};
+pub use sentinel_wal::{
+    WalManager,
+    WalConfig,
+    WalFormat,
+    WalRecoveryResult,
+    WalVerificationResult,
 };
 ```
 

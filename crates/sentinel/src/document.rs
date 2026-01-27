@@ -39,7 +39,7 @@ impl Document {
         debug!("Document {} created with hash: {}", id, hash);
         Ok(Self {
             id,
-            version: crate::META_SENTINEL_VERSION,
+            version: crate::DOCUMENT_SENTINEL_VERSION,
             created_at: now,
             updated_at: now,
             hash,
@@ -57,7 +57,7 @@ impl Document {
         debug!("Document {} created without signature, hash: {}", id, hash);
         Ok(Self {
             id,
-            version: crate::META_SENTINEL_VERSION,
+            version: crate::DOCUMENT_SENTINEL_VERSION,
             created_at: now,
             updated_at: now,
             hash,
@@ -119,7 +119,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(doc.id(), "test-id");
-        assert_eq!(doc.version(), crate::META_SENTINEL_VERSION);
+        assert_eq!(doc.version(), crate::DOCUMENT_SENTINEL_VERSION);
         assert_eq!(doc.data(), &data);
         assert!(!doc.hash().is_empty());
         assert!(!doc.signature().is_empty());
@@ -138,7 +138,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(doc.id(), "empty");
-        assert_eq!(doc.version(), crate::META_SENTINEL_VERSION);
+        assert_eq!(doc.version(), crate::DOCUMENT_SENTINEL_VERSION);
         assert!(doc.data().as_object().unwrap().is_empty());
     }
 
@@ -215,5 +215,31 @@ mod tests {
         assert_ne!(doc.hash(), initial_hash);
         assert_ne!(doc.signature(), initial_signature);
         assert!(doc.updated_at() > initial_updated_at);
+    }
+
+    #[tokio::test]
+    async fn test_document_getters() {
+        let mut rng = OsRng;
+        let mut key_bytes = [0u8; 32];
+        rng.fill_bytes(&mut key_bytes);
+        let private_key = SigningKey::from_bytes(&key_bytes);
+        let data = serde_json::json!({"test": "data"});
+        let mut doc = Document::new("test_id".to_string(), data.clone(), &private_key)
+            .await
+            .unwrap();
+
+        // Test all getter methods
+        assert_eq!(doc.id(), "test_id");
+        assert_eq!(doc.version(), crate::DOCUMENT_SENTINEL_VERSION);
+        assert!(doc.created_at() <= Utc::now());
+        assert!(doc.updated_at() <= Utc::now());
+        assert!(!doc.hash().is_empty());
+        assert!(!doc.signature().is_empty());
+        assert_eq!(doc.data(), &data);
+
+        // Test set_data to cover the closure inside it
+        let new_data = serde_json::json!({"updated": "data"});
+        doc.set_data(new_data.clone(), &private_key).await.unwrap();
+        assert_eq!(doc.data(), &new_data);
     }
 }

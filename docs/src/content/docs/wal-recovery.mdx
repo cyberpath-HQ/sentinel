@@ -1,0 +1,404 @@
+---
+title: Recovery
+description: Understanding and using Write-Ahead Logging recovery mechanisms to restore data consistency after crashes.
+section: Advanced Topics
+subsection: Write-Ahead Logging
+order: 33
+keywords: ["recovery", "wal", "crash", "consistency", "idempotent"]
+related: ["wal", "wal-configuration", "wal-verification", "troubleshooting"]
+---
+
+This guide explains how WAL recovery works in Sentinel, how to trigger recovery, and how to handle recovery failures.
+
+## Recovery Overview
+
+Recovery is the process of replaying WAL entries to restore a collection to a consistent state after a crash or
+unexpected shutdown. Sentinel's recovery mechanism is designed to be safe, idempotent, and resilient to common failure
+scenarios.
+
+## How Recovery Works
+
+### Recovery Pipeline
+
+```
+Crash occurs
+    ↓
+Application restarts
+    ↓
+Load collection (WAL detected)
+    ↓
+Identify unapplied operations
+    ↓
+Replay WAL entries in order
+    ↓
+Handle conflicts gracefully
+    ↓
+Collection restored to consistent state
+    ↓
+Operations resume
+```
+
+### Key Principles
+
+**Idempotent**: Recovery can be run multiple times safely without duplication or data corruption.
+
+```rust
+// Running recovery twice produces the same result
+collection.recover_from_wal().await?;
+collection.recover_from_wal().await?; // Safe to call again
+```
+
+**Conflict-Aware**: Recovery handles conflicts gracefully, such as:
+
+- Document already exists (insert on existing)
+- Document doesn't exist (delete on missing)
+- Version mismatches
+
+**Order-Preserving**: Operations are replayed in the exact order they were logged, maintaining causal relationships.
+
+## Automatic Recovery
+
+By default, Sentinel can automatically recover collections when enabled in configuration:
+
+```rust
+use sentinel_wal::CollectionWalConfig;
+
+let mut config = CollectionWalConfig::default();
+config.enable_recovery = true; // Default
+
+let users = store.collection_with_config("users", Some(config)).await?;
+// Recovery happens automatically on next access if needed
+```
+
+## Manual Recovery
+
+Explicitly trigger recovery when needed:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+// Recover a single collection
+let result = collection.recover_from_wal().await?;
+println!("Recovered: {} operations", result.recovered_operations);
+println!("Skipped: {} (already applied)", result.skipped_operations);
+println!("Failed: {}", result.failed_operations);
+```
+
+## Recovery Results
+
+The `WalRecoveryResult` provides detailed information about the recovery process:
+
+```rust
+pub struct WalRecoveryResult {
+    /// Number of operations successfully recovered
+    pub recovered_operations: usize,
+    /// Operations that were skipped (already applied)
+    pub skipped_operations: usize,
+    /// Operations that failed to recover
+    pub failed_operations: usize,
+    /// Detailed failure reasons
+    pub failures: Vec<WalRecoveryFailure>,
+}
+
+pub struct WalRecoveryFailure {
+    pub transaction_id: String,
+    pub document_id: String,
+    pub operation_type: String,
+    pub reason: String,
+}
+```
+
+### Interpreting Results
+
+**Recovered Operations**: Operations that were in WAL but not yet applied to disk. These are the ones recovery actually
+restored.
+
+**Skipped Operations**: Operations that were already applied to disk (found in WAL and already present on disk).
+Recovery skips these to avoid duplication.
+
+**Failed Operations**: Operations that couldn't be recovered due to errors. These need investigation.
+
+### Example Recovery Session
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let result = collection.recover_from_wal().await?;
+
+if result.recovered_operations > 0 {
+    println!("✓ Recovered {} operations from WAL", result.recovered_operations);
+}
+
+if result.skipped_operations > 0 {
+    println!("⊘ {} operations already applied", result.skipped_operations);
+}
+
+if result.failed_operations > 0 {
+    println!("✗ Failed to recover {} operations", result.failed_operations);
+    for failure in &result.failures {
+        eprintln!(
+            "  Document {}: {} ({})",
+            failure.document_id,
+            failure.reason,
+            failure.operation_type
+        );
+    }
+}
+```
+
+## Store-Level Recovery
+
+Recover all collections in a store at once:
+
+```rust
+use sentinel_dbms::wal::ops::StoreWalOps;
+
+let recovery_stats = store.recover_all_collections().await?;
+
+for (collection_name, recovered_count) in recovery_stats {
+    if recovered_count > 0 {
+        println!("Recovered {} operations in {}", recovered_count, collection_name);
+    }
+}
+```
+
+## Recovery Scenarios
+
+### Scenario 1: Clean Crash
+
+Process crashes between WAL write and main file write:
+
+```
+Operation 1: Insert user-123
+  WAL: ✓ Written
+  File: ✗ Not written
+  Crash!
+
+Recovery:
+  Detects unwritten insert
+  Applies insert to file
+  ✓ Data recovered
+```
+
+### Scenario 2: Already Applied
+
+Process crashes after both WAL and file write:
+
+```
+Operation 1: Insert user-456
+  WAL: ✓ Written
+  File: ✓ Written
+  Crash!
+
+Recovery:
+  Detects operation in WAL
+  Checks if already applied (file exists)
+  ⊘ Skips duplicate
+  ✓ No corruption
+```
+
+### Scenario 3: Partial Transaction
+
+Process crashes mid-transaction:
+
+```
+Transaction T1:
+  Begin: ✓ Written to WAL
+  Insert user-789: ✓ Written to WAL
+  Update user-123: ✓ Written to WAL
+  Commit: ✗ Not written
+  Crash!
+
+Recovery:
+  Detects incomplete transaction
+  Replays all operations (treating as committed)
+  Or rolls back based on failure mode
+  ✓ Consistent state
+```
+
+## Handling Recovery Failures
+
+### Common Failure Reasons
+
+| Failure                 | Cause                   | Resolution               |
+| ----------------------- | ----------------------- | ------------------------ |
+| Document already exists | Insert on duplicate     | Use update instead       |
+| Document not found      | Delete on missing       | Check if already deleted |
+| Invalid JSON            | Corrupted data in WAL   | Inspect WAL entry        |
+| Permission denied       | Filesystem access issue | Check file permissions   |
+| Disk full               | Not enough space        | Free up disk space       |
+
+### Dealing with Failure Recovery
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let result = collection.recover_from_wal().await?;
+
+if result.failed_operations > 0 {
+    eprintln!("⚠ Recovery had {} failures", result.failed_operations);
+
+    for failure in &result.failures {
+        match failure.operation_type.as_str() {
+            "Insert" => {
+                // Manually handle insert failure
+                eprintln!("Failed to insert {} - may already exist", failure.document_id);
+            },
+            "Delete" => {
+                // Manually handle delete failure
+                eprintln!("Failed to delete {} - may not exist", failure.document_id);
+            },
+            _ => eprintln!("Unknown operation failed: {}", failure.reason),
+        }
+    }
+
+    // Decide whether to continue or fail
+    if all_failures_acceptable(&result.failures) {
+        println!("Recovered with acceptable failures");
+    } else {
+        return Err(SentinelError::RecoveryFailed {
+            reason: format!("{} operations failed", result.failed_operations),
+        }.into());
+    }
+}
+```
+
+## Recovery Performance
+
+### Recovery Speed Factors
+
+| Factor        | Impact                         | Mitigation                          |
+| ------------- | ------------------------------ | ----------------------------------- |
+| WAL file size | Larger files = slower recovery | Keep WAL size limited with rotation |
+| Entry count   | More entries = more time       | Checkpoint regularly                |
+| Document size | Larger documents = more I/O    | Keep documents reasonably sized     |
+| Disk speed    | Slow disks = slow recovery     | Use faster storage                  |
+
+### Optimizing Recovery
+
+```rust
+use sentinel_wal::CollectionWalConfig;
+
+let mut config = CollectionWalConfig::default();
+
+// Smaller files recover faster
+config.max_wal_size_bytes = Some(10 * 1024 * 1024);
+
+// Fewer entries per file
+config.max_records_per_file = Some(1000);
+
+let optimized = store.collection_with_config("users", Some(config)).await?;
+```
+
+## Safe Recovery with WalDocumentOps
+
+The recovery mechanism uses the `WalDocumentOps` trait to safely apply operations:
+
+```rust
+use sentinel_wal::WalDocumentOps;
+
+#[async_trait::async_trait]
+pub trait WalDocumentOps: Send + Sync {
+    /// Get a document by ID
+    async fn get_document(&self, id: &str) -> Result<Option<Value>>;
+
+    /// Apply a WAL operation to a document
+    async fn apply_operation(
+        &self,
+        entry_type: &EntryType,
+        id: &str,
+        data: Option<Value>,
+    ) -> Result<()>;
+}
+```
+
+This allows recovery to:
+
+1. Check if documents already exist (preventing duplicates)
+2. Apply operations in a controlled manner
+3. Handle errors gracefully per-operation
+
+## Recovery and Transactions
+
+Sentinel's recovery supports multi-document transactions:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+// A transaction in WAL:
+// Begin transaction T1
+// Insert order-123
+// Insert invoice-456
+// Commit T1
+
+// After crash, recovery replays all three entries
+// Either all succeed or all fail (atomic)
+let result = collection.recover_from_wal().await?;
+```
+
+## Monitoring Recovery
+
+Track recovery statistics:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+let result = collection.recover_from_wal().await?;
+
+let total_operations = result.recovered_operations
+    + result.skipped_operations
+    + result.failed_operations;
+
+let success_rate = if total_operations > 0 {
+    ((result.recovered_operations + result.skipped_operations) as f64 / total_operations as f64) * 100.0
+} else {
+    100.0
+};
+
+println!("Recovery success rate: {:.1}%", success_rate);
+```
+
+## Disabling Recovery
+
+If you want to prevent automatic recovery:
+
+```rust
+use sentinel_wal::CollectionWalConfig;
+
+let mut config = CollectionWalConfig::default();
+config.enable_recovery = false;
+
+let no_recovery = store.collection_with_config(
+    "temporary",
+    Some(config)
+).await?;
+```
+
+## Recovery Verification
+
+After recovery, verify consistency to ensure success:
+
+```rust
+use sentinel_dbms::wal::ops::CollectionWalOps;
+
+// Recover from WAL
+let recovery_result = collection.recover_from_wal().await?;
+println!("Recovered: {}", recovery_result.recovered_operations);
+
+// Verify consistency
+let verification = collection.verify_wal().await?;
+if verification.passed {
+    println!("✓ Verification passed - recovery successful");
+} else {
+    println!("✗ Verification failed - check issues:");
+    for issue in verification.issues {
+        eprintln!("  - {}", issue.description);
+    }
+}
+```
+
+## Next Steps
+
+- Learn how to [verify WAL consistency](wal-verification)
+- Set up [WAL monitoring](wal-best-practices#monitoring)
+- Understand [WAL configuration](wal-configuration) options
