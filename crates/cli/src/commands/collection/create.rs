@@ -107,7 +107,7 @@ pub async fn run(
     );
     // For create_collection, we need to open the store with its existing config
     // and then create the collection with the specified WAL config
-    let store = sentinel_dbms::Store::new(&store_path, passphrase.as_deref()).await?;
+    let store = sentinel_dbms::Store::new_with_config(&store_path, passphrase.as_deref(), sentinel_dbms::StoreWalConfig::default()).await?;
     match store
         .collection_with_config(&collection, wal_overrides)
         .await
