@@ -16,6 +16,9 @@ use crate::{
 };
 use super::{stor::Store, validation::validate_collection_name};
 
+/// Retrieves or creates a collection with the specified name and custom WAL configuration overrides.
+///
+/// This is an internal function used by the Store impl. Use Store::collection_with_config instead.
 pub async fn collection_with_config(
     store: &Store,
     name: &str,
@@ -35,10 +38,10 @@ pub async fn collection_with_config(
     let is_new_collection = !tokio_fs::try_exists(&metadata_path).await.unwrap_or(false);
     let metadata = if is_new_collection {
         debug!("Creating new collection metadata for {}", name);
-        let mut metadata = CollectionMetadata::new(name.to_string());
+        let mut metadata = CollectionMetadata::new(name.to_owned());
         // For new collections, if overrides are provided, create a config with overrides applied to
         // defaults
-        if let Some(overrides) = &wal_overrides {
+        if let Some(overrides) = wal_overrides.as_ref() {
             let base_config = store
                 .wal_config
                 .collection_configs
@@ -57,7 +60,7 @@ pub async fn collection_with_config(
         let content = tokio_fs::read_to_string(&metadata_path).await?;
         let mut metadata: CollectionMetadata = serde_json::from_str(&content)?;
         // For existing collections, conditionally update metadata if persist_overrides is true
-        if let Some(overrides) = &wal_overrides &&
+        if let Some(overrides) = wal_overrides.as_ref() &&
             overrides.persist_overrides
         {
             let base_config = metadata.wal_config.unwrap_or_else(|| {
@@ -80,7 +83,7 @@ pub async fn collection_with_config(
     if is_new_collection {
         // Emit collection created event
         let event = StoreEvent::CollectionCreated {
-            name: name.to_string(),
+            name: name.to_owned(),
         };
         let _ = store.event_sender.send(event).ok();
     }
@@ -134,6 +137,7 @@ pub async fn collection_with_config(
     Ok(collection)
 }
 
+#[allow(clippy::multiple_inherent_impl, reason = "multiple impl blocks for Store are intentional for organization")]
 impl Store {
     /// Retrieves or creates a collection with the specified name.
     ///
@@ -321,11 +325,11 @@ impl Store {
         if let Some(metadata) = collection_metadata {
             // Emit collection deleted event (metadata will be saved by event handler)
             let event = StoreEvent::CollectionDeleted {
-                name:             name.to_string(),
+                name:             name.to_owned(),
                 document_count:   metadata.document_count,
                 total_size_bytes: metadata.total_size_bytes,
             };
-            let _ = self.event_sender.send(event);
+            drop(self.event_sender.send(event));
         }
 
         Ok(())
