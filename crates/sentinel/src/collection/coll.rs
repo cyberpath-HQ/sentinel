@@ -103,12 +103,16 @@ pub struct Collection {
     pub(crate) recovery_mode:      std::sync::atomic::AtomicBool,
 }
 
+#[allow(
+    clippy::multiple_inherent_impl,
+    reason = "multiple impl blocks for Collection are intentional for organization"
+)]
 impl Collection {
     /// Returns the name of the collection.
     pub fn name(&self) -> &str { self.path.file_name().unwrap().to_str().unwrap() }
 
     /// Returns the creation timestamp of the collection.
-    pub fn created_at(&self) -> chrono::DateTime<chrono::Utc> { self.created_at }
+    pub const fn created_at(&self) -> chrono::DateTime<chrono::Utc> { self.created_at }
 
     /// Returns the last update timestamp of the collection.
     pub fn updated_at(&self) -> chrono::DateTime<chrono::Utc> { *self.updated_at.read().unwrap() }
@@ -134,13 +138,13 @@ impl Collection {
     ///
     /// This is the WAL configuration as persisted in the collection metadata,
     /// without any temporary overrides that may be applied at runtime.
-    pub fn stored_wal_config(&self) -> &sentinel_wal::CollectionWalConfig { &self.stored_wal_config }
+    pub const fn stored_wal_config(&self) -> &sentinel_wal::CollectionWalConfig { &self.stored_wal_config }
 
     /// Returns the effective WAL configuration for this collection.
     ///
     /// This includes the stored configuration plus any runtime overrides that
     /// may have been applied when the collection was accessed.
-    pub fn wal_config(&self) -> &sentinel_wal::CollectionWalConfig { &self.wal_config }
+    pub const fn wal_config(&self) -> &sentinel_wal::CollectionWalConfig { &self.wal_config }
 
     /// Saves the current collection metadata to disk.
     ///
@@ -236,7 +240,7 @@ impl Collection {
     pub fn validate_document_id(id: &str) -> Result<()> {
         if id.is_empty() {
             return Err(SentinelError::InvalidDocumentId {
-                id: id.to_string(),
+                id: id.to_owned(),
             });
         }
 
@@ -258,7 +262,7 @@ impl Collection {
         let reserved_chars = ['<', '>', ':', '"', '|', '?', '*'];
         if id.chars().any(|c| reserved_chars.contains(&c)) {
             return Err(SentinelError::InvalidDocumentId {
-                id: id.to_string(),
+                id: id.to_owned(),
             });
         }
 
