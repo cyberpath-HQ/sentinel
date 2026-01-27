@@ -1,3 +1,10 @@
+## [2.1.1](https://github.com/cyberpath-HQ/sentinel/compare/v2.1.0...v2.1.1) (2026-01-27)
+
+
+### Bug Fixes
+
+* update publish command to include sentinel-wal crate ([a9c48c9](https://github.com/cyberpath-HQ/sentinel/commit/a9c48c9f4117cbbe6c1a370e3085d5d9887e7811))
+
 # [2.1.0](https://github.com/cyberpath-HQ/sentinel/compare/v2.0.1...v2.1.0) (2026-01-27)
 
 
