@@ -87,7 +87,7 @@
 use std::{collections::HashMap, pin::Pin};
 
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt as _};
 use tracing::{debug, error, info, warn};
 use sentinel_wal::{
     recover_from_wal_safe,
@@ -481,11 +481,8 @@ impl StoreWalOps for Store {
 
         let stream_of_streams = futures::stream::iter(collections).filter_map(|collection| {
             async move {
-                let name = collection.name().to_string();
-                match CollectionWalOps::stream_wal_entries(collection).await {
-                    Ok(stream) => Some(stream.map(move |entry| entry.map(|e| (name.clone(), e)))),
-                    Err(_) => None,
-                }
+                let name = collection.name().to_owned();
+                CollectionWalOps::stream_wal_entries(collection).await.map_or_else(|_| None, |stream| Some(stream.map(move |entry| entry.map(|e| (name.clone(), e)))))
             }
         });
 
@@ -501,7 +498,7 @@ impl StoreWalOps for Store {
         );
 
         let mut results = HashMap::new();
-        let mut total_issues = 0;
+        let mut total_issues: usize = 0;
 
         for collection_name in collections {
             debug!("Verifying collection: {}", collection_name);
@@ -510,7 +507,7 @@ impl StoreWalOps for Store {
                 Ok(verification_result) => {
                     if !verification_result.issues.is_empty() {
                         let issue_count = verification_result.issues.len();
-                        total_issues += issue_count;
+                        total_issues = total_issues.checked_add(issue_count).unwrap_or(total_issues);
                         results.insert(collection_name.clone(), verification_result.issues);
                         warn!(
                             "Collection {} has {} verification issues",
@@ -526,13 +523,13 @@ impl StoreWalOps for Store {
                     results.insert(
                         collection_name.clone(),
                         vec![WalVerificationIssue {
-                            transaction_id: "unknown".to_string(),
-                            document_id:    "unknown".to_string(),
+                            transaction_id: "unknown".to_owned(),
+                            document_id:    "unknown".to_owned(),
                             description:    format!("Verification failed: {}", e),
                             is_critical:    true,
                         }],
                     );
-                    total_issues += 1;
+                    total_issues = total_issues.checked_add(1).unwrap_or(total_issues);
                 },
             }
         }
@@ -559,7 +556,7 @@ impl StoreWalOps for Store {
         );
 
         let mut results = HashMap::new();
-        let mut total_operations = 0;
+        let mut total_operations: usize = 0;
 
         for collection_name in collections {
             debug!("Recovering collection: {}", collection_name);
@@ -568,7 +565,7 @@ impl StoreWalOps for Store {
                 Ok(recovery_result) => {
                     let operations = recovery_result.recovered_operations;
                     results.insert(collection_name.clone(), operations);
-                    total_operations += operations;
+                    total_operations = total_operations.checked_add(operations).unwrap_or(total_operations);
                     if operations > 0 {
                         info!(
                             "Recovered {} operations for collection {}",
@@ -598,7 +595,7 @@ impl StoreWalOps for Store {
 #[async_trait]
 impl CollectionWalOps for Collection {
     async fn checkpoint_wal(&self) -> crate::Result<()> {
-        if let Some(wal) = &self.wal_manager {
+        if let Some(wal) = self.wal_manager.as_ref() {
             debug!("Starting WAL checkpoint for collection {}", self.name());
             wal.checkpoint().await?;
             info!("WAL checkpoint completed for collection {}", self.name());
@@ -610,19 +607,7 @@ impl CollectionWalOps for Collection {
     }
 
     async fn stream_wal_entries(self) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send>>> {
-        if let Some(wal) = &self.wal_manager {
-            let name = self.name().to_string();
-            debug!("Streaming WAL entries for collection {}", name);
-            let stream = wal
-                .stream_entries()
-                .map(|result| result.map_err(|e| crate::error::SentinelError::from(e)));
-            let _wal = wal.clone();
-            // let stream = wal.stream_entries().map(|result| result.map_err(|e|
-            // crate::error::SentinelError::from(e)));
-            let stream = Box::pin(stream) as Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + 'static>>;
-            Ok(stream)
-        }
-        else {
+        self.wal_manager.as_ref().map_or_else(|| {
             debug!(
                 "No WAL manager configured for collection {}, returning empty stream",
                 self.name()
@@ -630,12 +615,23 @@ impl CollectionWalOps for Collection {
             Ok(Box::pin(
                 futures::stream::empty::<std::result::Result<LogEntry, sentinel_wal::WalError>>()
                     .map(|r| r.map_err(Into::into)),
-            ) as _)
-        }
+            ) as Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send>>)
+        }, |wal| {
+            let name = self.name().to_owned();
+            debug!("Streaming WAL entries for collection {}", name);
+            let stream = wal
+                .stream_entries()
+                .map(|result| result.map_err(crate::error::SentinelError::from));
+            let _wal = wal.clone();
+            // let stream = wal.stream_entries().map(|result| result.map_err(|e|
+            // crate::error::SentinelError::from(e)));
+            let stream = Box::pin(stream) as Pin<Box<dyn Stream<Item = crate::Result<LogEntry>> + Send + 'static>>;
+            Ok(stream)
+        })
     }
 
     async fn verify_against_wal(&self) -> crate::Result<WalVerificationResult> {
-        if let Some(wal) = &self.wal_manager {
+        if let Some(wal) = self.wal_manager.as_ref() {
             debug!("Starting WAL verification for collection {}", self.name());
             let result = verify_wal_consistency(wal, self).await?;
             if result.passed {
@@ -672,7 +668,7 @@ impl CollectionWalOps for Collection {
     }
 
     async fn recover_from_wal(&self) -> crate::Result<WalRecoveryResult> {
-        if let Some(wal) = &self.wal_manager {
+        if let Some(wal) = self.wal_manager.as_ref() {
             info!("Starting WAL recovery for collection {}", self.name());
             let result = recover_from_wal_safe(wal, self).await?;
             info!(
@@ -706,7 +702,7 @@ impl CollectionWalOps for Collection {
     }
 
     async fn wal_size(&self) -> crate::Result<u64> {
-        if let Some(wal) = &self.wal_manager {
+        if let Some(wal) = self.wal_manager.as_ref() {
             let size = wal.size().await?;
             debug!("WAL size for collection {}: {} bytes", self.name(), size);
             Ok(size)
@@ -718,7 +714,7 @@ impl CollectionWalOps for Collection {
     }
 
     async fn wal_entries_count(&self) -> crate::Result<usize> {
-        if let Some(wal) = &self.wal_manager {
+        if let Some(wal) = self.wal_manager.as_ref() {
             let count = wal.entries_count().await?;
             debug!(
                 "WAL entries count for collection {}: {}",
