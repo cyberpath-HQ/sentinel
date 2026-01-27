@@ -9,6 +9,7 @@ cargo install grcov || echo "grcov already installed"
 
 echo "Creating profile directory..."
 mkdir -p target/profraw
+mkdir -p target/coverage
 
 echo "Running tests with coverage instrumentation..."
 RUSTFLAGS="-Cinstrument-coverage" LLVM_PROFILE_FILE="target/profraw/cyberpath-%p-%m.profraw" cargo test
