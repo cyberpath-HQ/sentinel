@@ -54,6 +54,8 @@ pub struct Store {
     pub(crate) root_path:         PathBuf,
     /// The signing key for the store.
     pub(crate) signing_key:       Option<Arc<sentinel_crypto::SigningKey>>,
+    /// The file lock manager for cross-process concurrency control.
+    pub(crate) lock_manager:      Arc<crate::locking::FileLockManager>,
     /// When the store was created.
     pub(crate) created_at:        chrono::DateTime<chrono::Utc>,
     /// When the store was last accessed.
@@ -169,6 +171,7 @@ impl Store {
         let mut store = Self {
             root_path,
             signing_key: None,
+            lock_manager: Arc::new(crate::locking::FileLockManager::new()),
             created_at: now,
             last_accessed_at: std::sync::RwLock::new(now),
             total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
@@ -348,6 +351,7 @@ impl Store {
         let mut store = Self {
             root_path,
             signing_key: None,
+            lock_manager: Arc::new(crate::locking::FileLockManager::new()),
             created_at: now,
             last_accessed_at: std::sync::RwLock::new(now),
             total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
