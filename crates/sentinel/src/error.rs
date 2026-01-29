@@ -71,6 +71,29 @@ pub enum SentinelError {
         reason: String,
     },
 
+    /// Lock acquisition timed out
+    #[error("Lock acquisition timed out for path '{path}' after {timeout:?}")]
+    LockTimeout {
+        path:    std::path::PathBuf,
+        timeout: std::time::Duration,
+    },
+
+    /// Deadlock detected during lock acquisition
+    #[error("Deadlock detected during lock acquisition")]
+    DeadlockDetected,
+
+    /// Lock contention is too high
+    #[error("Lock contention too high for path '{path}'")]
+    LockContention {
+        path: std::path::PathBuf,
+    },
+
+    /// Lock manager is in an invalid state
+    #[error("Lock manager is in an invalid state: {reason}")]
+    InvalidLockState {
+        reason: String,
+    },
+
     /// Encryption/decryption operation failed
     #[error("Cryptographic operation failed: {operation}")]
     CryptoFailed {
