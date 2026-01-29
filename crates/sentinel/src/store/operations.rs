@@ -125,6 +125,7 @@ pub async fn collection_with_config(
         wal_manager,
         wal_config: collection_wal_config,
         stored_wal_config,
+        lock_manager: Arc::clone(&store.lock_manager),
         created_at: now,
         updated_at: std::sync::RwLock::new(now),
         last_checkpoint_at: std::sync::RwLock::new(None),
