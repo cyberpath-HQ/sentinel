@@ -4,3 +4,4 @@ flamegraph.svg
 perf*.data*
 node_modules/
 *review.*
+.opencode
