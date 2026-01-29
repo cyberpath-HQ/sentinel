@@ -85,6 +85,8 @@ pub struct Collection {
     pub(crate) stored_wal_config:  sentinel_wal::CollectionWalConfig,
     /// Effective WAL configuration (stored + any temporary overrides).
     pub(crate) wal_config:         sentinel_wal::CollectionWalConfig,
+    /// The file lock manager for concurrency control.
+    pub(crate) lock_manager:       Arc<crate::locking::FileLockManager>,
     /// When the collection was created.
     pub(crate) created_at:         chrono::DateTime<chrono::Utc>,
     /// When the collection was last updated.
