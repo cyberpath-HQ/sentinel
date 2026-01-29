@@ -1,4 +1,5 @@
 use async_stream::stream;
+use std::sync::Arc;
 use futures::{StreamExt as _, TryStreamExt as _};
 use serde_json::Value;
 use tokio::fs as tokio_fs;
@@ -277,17 +278,18 @@ impl Collection {
 
                         let collection_ref = Self {
                             path: collection_path.clone(),
-                                                created_at: chrono::Utc::now(),
-                                                updated_at: std::sync::RwLock::new(chrono::Utc::now()),
-                                                last_checkpoint_at: std::sync::RwLock::new(None),
-                                                total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                                                total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                             signing_key: signing_key.clone(),
-                                                stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
-                                                wal_manager: None,
-                                                wal_config: sentinel_wal::CollectionWalConfig::default(),
-                                                event_sender: None,
-                                                event_task: None,
+                            wal_manager: None,
+                            wal_config: sentinel_wal::CollectionWalConfig::default(),
+                            stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
+                            lock_manager: Arc::new(crate::locking::FileLockManager::new()), // Temporary manager for verification
+                            created_at: chrono::Utc::now(),
+                            updated_at: std::sync::RwLock::new(chrono::Utc::now()),
+                            last_checkpoint_at: std::sync::RwLock::new(None),
+                            total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                            total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                            event_sender: None,
+                            event_task: None,
                             recovery_mode: std::sync::atomic::AtomicBool::new(false),
                         };
 
