@@ -25,9 +25,11 @@ mod streaming;
 /// Validation utilities module.
 mod validation;
 /// Verification utilities module.
-mod verification;
-/// WAL (Write-Ahead Logging) operations module.
+pub mod verification;
+/// Write-Ahead Logging (WAL) operations module.
 pub mod wal;
+/// File locking system module.
+pub mod locking;
 
 // Re-export commonly used external crates for convenience
 pub use async_stream;
@@ -76,6 +78,7 @@ pub use sentinel_wal::{
     WalVerificationIssue,
     WalVerificationResult,
 };
+pub use locking::{FileLockManager, LockGuard, LockStrategy, LockManagerStats};
 
 /// The current version of the Sentinel metadata format.
 pub const META_SENTINEL_VERSION: u32 = 2;
