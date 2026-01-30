@@ -88,6 +88,14 @@ impl DeadlockDetector {
         active.remove(path);
     }
 
+    /// Synchronous version of record_lock_released for use in Drop implementations.
+    /// Uses try_write() to avoid blocking. If lock is held, cleanup is skipped.
+    pub fn record_lock_released_sync(&self, path: &Path) {
+        if let Ok(mut active) = self.active_locks.try_write() {
+            active.remove(path);
+        }
+    }
+
     /// Register a pending lock request.
     pub async fn register_request(&self, request: LockRequest) {
         let mut pending = self.pending_requests.write().await;
