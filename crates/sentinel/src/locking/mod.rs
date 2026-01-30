@@ -121,12 +121,15 @@ mod tests {
         time::Duration,
     };
 
+    use serial_test::serial;
     use tempfile::tempdir;
     use tokio::time::timeout;
 
     use super::*;
 
     #[tokio::test]
+    #[serial]
+    #[serial]
     async fn test_filelockmanager_acquire_exclusive_lock() {
         // Test acquiring an exclusive lock
         let manager = Arc::new(FileLockManager::new());
@@ -145,6 +148,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_filelockmanager_acquire_shared_lock() {
         // Test acquiring shared locks (multiple readers)
         let manager = Arc::new(FileLockManager::new());
@@ -169,6 +173,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_filelockmanager_timeout_handling() {
         // Test timeout handling when lock is contended
         let manager = Arc::new(FileLockManager::new());
@@ -198,6 +203,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_filelockmanager_concurrent_access() {
         // Test concurrent access scenarios
         let manager = Arc::new(FileLockManager::new());
@@ -233,6 +239,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_filelockmanager_cleanup_on_drop() {
         // Test automatic cleanup when lock guard is dropped
         let manager = Arc::new(FileLockManager::new());
@@ -273,6 +280,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_lockguard_raii_behavior() {
         // Test RAII behavior - lock should be released when guard is dropped
         let manager = Arc::new(FileLockManager::new());
@@ -294,6 +302,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_lockstrategy_exclusive_behavior() {
         // Test exclusive lock blocks other locks
         let manager = Arc::new(FileLockManager::new());
@@ -334,6 +343,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_lockstrategy_shared_behavior() {
         // Test shared locks allow multiple concurrent readers
         let manager = Arc::new(FileLockManager::new());
@@ -371,6 +381,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_deadlockdetector_cycle_detection() {
         // Test deadlock detection with cycle
         let detector = DeadlockDetector::new();
@@ -397,6 +408,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_deadlockdetector_wait_graph_operations() {
         // Test wait graph registration and unregistration using public API
         let detector = DeadlockDetector::new();
@@ -426,6 +438,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_deadlockdetector_resolution_logic() {
         // Test deadlock resolution finds transactions in cycle
         let detector = DeadlockDetector::new();
@@ -468,6 +481,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_filelockmanager_multiple_locks_same_file() {
         // Test multiple lock holders trying to acquire same file
         let manager = Arc::new(FileLockManager::new());
@@ -503,6 +517,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_filelockmanager_lock_holder_info() {
         // Test getting lock holder information
         let manager = Arc::new(FileLockManager::new());
@@ -524,6 +539,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_filelockmanager_is_locked_check() {
         // Test is_locked method
         let manager = Arc::new(FileLockManager::new());
@@ -543,6 +559,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_lockmanager_stats_basic() {
         let manager = Arc::new(FileLockManager::new());
         let stats = manager.get_stats().await;
@@ -557,6 +574,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_lockmanager_stats_after_acquisition() {
         let manager = Arc::new(FileLockManager::new());
         let path = PathBuf::from("/tmp/test_stats_acquisition.json");
@@ -579,6 +597,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_lockmanager_stats_with_contention() {
         let manager = Arc::new(FileLockManager::new());
         let path = PathBuf::from("/tmp/test_stats_contention.json");
@@ -615,6 +634,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_lockmanager_stats_with_queue() {
         let manager = Arc::new(FileLockManager::new());
         let path = PathBuf::from("/tmp/test_stats_queue.json");
@@ -674,6 +694,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_filelockmanager_with_config() {
         // Test that FileLockManager can be created with custom config
         // Note: Configuration fields are private, so we verify the manager works correctly
@@ -706,6 +727,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_lockguard_methods() {
         // Test LockGuard getter methods
         let manager = Arc::new(FileLockManager::new());
