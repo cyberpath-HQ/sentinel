@@ -321,8 +321,8 @@ impl Collection {
             warn!("Detected potentially stale data for document {} at {:?}", id, stale_timestamp);
         }
 
-        // Update collection's last accessed timestamp
-        *self.updated_at.write().unwrap() = chrono::Utc::now();
+        // Update collection's last read timestamp
+        *self.last_read_at.write().unwrap() = chrono::Utc::now();
 
         debug!("Document {} retrieved successfully", id);
         Ok(Some(doc))
@@ -863,13 +863,53 @@ impl Collection {
     /// when the potential write operation occurred. Returns `None` if no stale data
     /// warning is needed.
     ///
-    /// # Note
+    /// # Implementation
     ///
-    /// This is a placeholder implementation. The full stale data detection logic
-    /// will be implemented as part of the background enhancement task.
-    async fn check_for_stale_data(&self, _doc: &Document, _file_path: &std::path::Path) -> Option<chrono::DateTime<chrono::Utc>> {
-        // TODO: Implement stale data detection logic
-        // This should check for concurrent writes that occurred during the read
+    /// The stale data detection works by comparing:
+    /// 1. The file's modification time on disk
+    /// 2. The document's internal `updated_at` timestamp
+    /// 3. The current time to detect recent modifications
+    ///
+    /// If the file was modified very recently (within 1 second), it may indicate
+    /// a race condition where another process updated the file concurrently.
+    async fn check_for_stale_data(&self, doc: &Document, file_path: &std::path::Path) -> Option<chrono::DateTime<chrono::Utc>> {
+        // Get the file's metadata to check modification time
+        let metadata = match tokio::fs::metadata(file_path).await {
+            Ok(m) => m,
+            Err(e) => {
+                debug!("Failed to get metadata for stale data check: {}", e);
+                return None;
+            }
+        };
+
+        // Get the file's modification time
+        let file_modified = match metadata.modified() {
+            Ok(t) => t,
+            Err(e) => {
+                debug!("Failed to get modification time for stale data check: {}", e);
+                return None;
+            }
+        };
+
+        // Convert to chrono DateTime for comparison
+        let file_modified_dt: chrono::DateTime<chrono::Utc> = file_modified.into();
+        let doc_updated = doc.updated_at();
+        let now = chrono::Utc::now();
+
+        // Check if file was modified more recently than document's internal timestamp
+        // This could indicate a concurrent write that wasn't reflected in the document we read
+        if file_modified_dt > doc_updated {
+            // Additional check: was the modification very recent? (within 1 second)
+            let time_since_mod = now.signed_duration_since(file_modified_dt);
+            if time_since_mod.num_milliseconds().abs() < 1000 {
+                warn!(
+                    "Potential stale data detected: file modified at {:?}, but document shows {:?}",
+                    file_modified_dt, doc_updated
+                );
+                return Some(file_modified_dt);
+            }
+        }
+
         None
     }
 }
