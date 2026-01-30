@@ -50,32 +50,27 @@ impl Drop for LockGuard {
         // The filesystem lock is automatically released when the file handle is closed
         // No need to call unlock() explicitly
 
-        // Notify the lock manager that this lock has been released
-        // We need to spawn a task since we can't await in drop
-        let manager = Arc::clone(&self._manager);
-        let path = self.path.clone();
+        // Clear the lock state synchronously for immediate effect
+        if let Some(lock_state) = self._manager.lock_table.get(&self.path) {
+            let mut state = lock_state.lock().unwrap();
+            *state = None;
+        }
 
-        tokio::spawn(async move {
-            // Clear the lock state
-            if let Some(lock_state) = manager.lock_table.get(&path) {
-                let mut state = lock_state.write().await;
-                *state = None;
-            }
-            manager.deadlock_detector.record_lock_released(&path).await;
+        // Note: Deadlock detector tracking is handled asynchronously elsewhere
+        // to avoid async operations in Drop
 
-            // Wake up the next waiter in the queue
-            if let Some(queue) = manager.lock_queues.get(&path) {
-                let mut queue = queue.write().await;
-                if let Some(next_waiter) = queue.dequeue() {
-                    debug!(
-                        "Waking up next waiter {:?} for path {:?}",
-                        next_waiter.requester_id, path
-                    );
-                    // Ignore send error (waiter may have timed out)
-                    let _ = next_waiter.waker.send(());
-                }
+        // Synchronously wake up the next waiter in the queue
+        if let Some(queue) = self._manager.lock_queues.get(&self.path) {
+            let mut queue = queue.lock().unwrap();
+            if let Some(next_waiter) = queue.dequeue() {
+                debug!(
+                    "Waking up next waiter {:?} for path {:?}",
+                    next_waiter.requester_id, self.path
+                );
+                // Ignore send error (waiter may have timed out)
+                let _ = next_waiter.waker.send(());
             }
-        });
+        }
     }
 }
 
@@ -130,7 +125,7 @@ impl LockGuard {
 
                 // Update the lock manager's state
                 if let Some(lock_state) = manager.lock_table.get(&upgraded_guard.path) {
-                    let mut state = lock_state.write().await;
+                    let mut state = lock_state.lock().unwrap();
                     *state = Some((requester_id, LockStrategy::Exclusive));
                 }
 
