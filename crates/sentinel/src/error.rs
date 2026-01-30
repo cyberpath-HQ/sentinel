@@ -7,6 +7,14 @@ use thiserror::Error;
 /// error messages for different failure scenarios.
 #[derive(Error, Debug)]
 pub enum SentinelError {
+    /// I/O operation failed with detailed context
+    #[error("I/O error '{operation}' on path '{path}': {source}")]
+    IoError {
+        operation: String,
+        path:      std::path::PathBuf,
+        source:    std::io::Error,
+    },
+
     /// I/O operations failed (file system, network, etc.)
     #[error("I/O error: {source}")]
     Io {
@@ -72,10 +80,10 @@ pub enum SentinelError {
     },
 
     /// Lock acquisition timed out
-    #[error("Lock acquisition timed out for path '{path}' after {timeout:?}")]
+    #[error("Lock acquisition timed out for path '{path}' after {timeout_ms}ms")]
     LockTimeout {
-        path:    std::path::PathBuf,
-        timeout: std::time::Duration,
+        path:       std::path::PathBuf,
+        timeout_ms: u64,
     },
 
     /// Deadlock detected during lock acquisition
