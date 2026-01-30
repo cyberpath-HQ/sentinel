@@ -120,7 +120,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Verify document is deleted
+        // Verify document is deleted by attempting to retrieve it
         let doc = collection.get(doc_id).await.unwrap();
         assert!(doc.is_none());
     }
