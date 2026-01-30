@@ -13,19 +13,25 @@ use crate::Result;
 )]
 pub struct Document {
     /// The unique identifier of the document.
-    pub(crate) id:         String,
+    pub(crate) id:                 String,
     /// The version of the document, represents the version of the client that created it.
-    pub(crate) version:    u32,
+    pub(crate) version:            u32,
     /// The timestamp when the document was created.
-    pub(crate) created_at: DateTime<Utc>,
+    pub(crate) created_at:         DateTime<Utc>,
     /// The timestamp when the document was last updated.
-    pub(crate) updated_at: DateTime<Utc>,
+    pub(crate) updated_at:         DateTime<Utc>,
     /// The hash of the document data.
-    pub(crate) hash:       String,
+    pub(crate) hash:               String,
     /// The signature of the document data.
-    pub(crate) signature:  String,
+    pub(crate) signature:          String,
     /// The JSON data of the document.
-    pub(crate) data:       Value,
+    pub(crate) data:               Value,
+    /// Indicates whether this document was read during a concurrent write operation.
+    /// Set to true when reads occur while an exclusive lock is held for a different path.
+    pub(crate) stale_data_warning: bool,
+    /// Timestamp when the stale data warning was set.
+    /// None if no warning is set.
+    pub(crate) warning_timestamp:  Option<DateTime<Utc>>,
 }
 
 impl Document {
@@ -45,6 +51,8 @@ impl Document {
             hash,
             signature,
             data,
+            stale_data_warning: false,
+            warning_timestamp: None,
         })
     }
 
@@ -63,6 +71,8 @@ impl Document {
             hash,
             signature: String::new(),
             data,
+            stale_data_warning: false,
+            warning_timestamp: None,
         })
     }
 
@@ -86,6 +96,77 @@ impl Document {
 
     /// Returns a reference to the document data.
     pub const fn data(&self) -> &Value { &self.data }
+
+    /// Returns whether this document has a stale data warning.
+    /// True if this document was read during a concurrent write operation.
+    pub const fn stale_data_warning(&self) -> bool { self.stale_data_warning }
+
+    /// Returns the timestamp when the stale data warning was set.
+    /// None if no warning is set.
+    pub const fn warning_timestamp(&self) -> Option<DateTime<Utc>> { self.warning_timestamp }
+
+    /// Sets the stale data warning state.
+    /// This should only be called internally by the locking system.
+    pub(crate) fn set_stale_data_warning(&mut self, warning: bool, timestamp: Option<DateTime<Utc>>) {
+        self.stale_data_warning = warning;
+        self.warning_timestamp = timestamp;
+    }
+
+    /// Verifies the document's signature against the provided public key.
+    ///
+    /// Returns `Ok(())` if the signature is valid, or an error if invalid.
+    pub async fn verify_signature(&self, public_key: &sentinel_crypto::VerifyingKey) -> Result<()> {
+        use sentinel_crypto::verify_signature;
+
+        if self.signature.is_empty() {
+            return Err(crate::SentinelError::SignatureVerificationFailed {
+                id:     self.id.clone(),
+                reason: "Document has no signature".to_string(),
+            });
+        }
+
+        let is_valid = verify_signature(&self.hash, &self.signature, public_key)
+            .await
+            .map_err(|e| {
+                crate::SentinelError::SignatureVerificationFailed {
+                    id:     self.id.clone(),
+                    reason: format!("Signature verification failed: {}", e),
+                }
+            })?;
+
+        if !is_valid {
+            return Err(crate::SentinelError::SignatureVerificationFailed {
+                id:     self.id.clone(),
+                reason: "Signature is invalid".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Verifies the document's hash against the current data.
+    ///
+    /// Returns `Ok(())` if the hash matches, or an error if it doesn't.
+    pub async fn verify_hash(&self) -> Result<()> {
+        let computed_hash = sentinel_crypto::hash_data(&self.data).await.map_err(|e| {
+            crate::SentinelError::HashVerificationFailed {
+                id:     self.id.clone(),
+                reason: format!("Hash computation failed: {}", e),
+            }
+        })?;
+
+        if computed_hash != self.hash {
+            return Err(crate::SentinelError::HashVerificationFailed {
+                id:     self.id.clone(),
+                reason: format!(
+                    "Hash mismatch: expected {}, got {}",
+                    self.hash, computed_hash
+                ),
+            });
+        }
+
+        Ok(())
+    }
 
     /// Sets the document data, updates the hash and signature, and refreshes the updated_at
     /// timestamp.
@@ -124,6 +205,8 @@ mod tests {
         assert!(!doc.hash().is_empty());
         assert!(!doc.signature().is_empty());
         assert_eq!(doc.created_at(), doc.updated_at());
+        assert_eq!(doc.stale_data_warning(), false);
+        assert_eq!(doc.warning_timestamp(), None);
     }
 
     #[tokio::test]
@@ -140,6 +223,8 @@ mod tests {
         assert_eq!(doc.id(), "empty");
         assert_eq!(doc.version(), crate::DOCUMENT_SENTINEL_VERSION);
         assert!(doc.data().as_object().unwrap().is_empty());
+        assert_eq!(doc.stale_data_warning(), false);
+        assert_eq!(doc.warning_timestamp(), None);
     }
 
     #[tokio::test]
@@ -236,10 +321,57 @@ mod tests {
         assert!(!doc.hash().is_empty());
         assert!(!doc.signature().is_empty());
         assert_eq!(doc.data(), &data);
+        assert_eq!(doc.stale_data_warning(), false);
+        assert_eq!(doc.warning_timestamp(), None);
 
         // Test set_data to cover the closure inside it
         let new_data = serde_json::json!({"updated": "data"});
         doc.set_data(new_data.clone(), &private_key).await.unwrap();
         assert_eq!(doc.data(), &new_data);
+        // Warning fields should remain false after update
+        assert_eq!(doc.stale_data_warning(), false);
+        assert_eq!(doc.warning_timestamp(), None);
+    }
+
+    #[tokio::test]
+    async fn test_stale_data_warning_defaults() {
+        let mut rng = OsRng;
+        let mut key_bytes = [0u8; 32];
+        rng.fill_bytes(&mut key_bytes);
+        let private_key = SigningKey::from_bytes(&key_bytes);
+        let data = serde_json::json!({"test": "data"});
+        let doc = Document::new("test-id".to_string(), data, &private_key)
+            .await
+            .unwrap();
+
+        // Warning fields should be false and None by default
+        assert_eq!(doc.stale_data_warning(), false);
+        assert_eq!(doc.warning_timestamp(), None);
+    }
+
+    #[tokio::test]
+    async fn test_set_data_preserves_warning_state() {
+        let mut rng = OsRng;
+        let mut key_bytes = [0u8; 32];
+        rng.fill_bytes(&mut key_bytes);
+        let private_key = SigningKey::from_bytes(&key_bytes);
+
+        let mut doc = Document::new(
+            "test".to_string(),
+            serde_json::json!({"initial": "data"}),
+            &private_key,
+        )
+        .await
+        .unwrap();
+
+        // Initially no warning
+        assert_eq!(doc.stale_data_warning(), false);
+
+        // Update data - warning should remain false
+        doc.set_data(serde_json::json!({"new": "data"}), &private_key)
+            .await
+            .unwrap();
+        assert_eq!(doc.stale_data_warning(), false);
+        assert_eq!(doc.warning_timestamp(), None);
     }
 }
