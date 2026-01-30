@@ -279,13 +279,15 @@ mod tests {
 
         // Corrupt the hash field
         doc = Document {
-            id:         doc.id().to_string(),
-            version:    doc.version(),
-            created_at: doc.created_at(),
-            updated_at: doc.updated_at(),
-            hash:       "corrupted_hash".to_string(),
-            signature:  doc.signature().to_string(),
-            data:       doc.data().clone(),
+            id:                 doc.id().to_string(),
+            version:            doc.version(),
+            created_at:         doc.created_at(),
+            updated_at:         doc.updated_at(),
+            hash:               "corrupted_hash".to_string(),
+            signature:          doc.signature().to_string(),
+            data:               doc.data().clone(),
+            stale_data_warning: false,
+            warning_timestamp:  None,
         };
 
         let options = VerificationOptions {
@@ -470,13 +472,15 @@ mod tests {
 
         // Corrupt the signature field
         doc = Document {
-            id:         doc.id().to_string(),
-            version:    doc.version(),
-            created_at: doc.created_at(),
-            updated_at: doc.updated_at(),
-            hash:       doc.hash().to_string(),
-            signature:  "corrupted_signature".to_string(),
-            data:       doc.data().clone(),
+            id:                 doc.id().to_string(),
+            version:            doc.version(),
+            created_at:         doc.created_at(),
+            updated_at:         doc.updated_at(),
+            hash:               doc.hash().to_string(),
+            signature:          "corrupted_signature".to_string(),
+            data:               doc.data().clone(),
+            stale_data_warning: false,
+            warning_timestamp:  None,
         };
 
         let options = VerificationOptions {
@@ -507,13 +511,15 @@ mod tests {
 
         // Corrupt the hash field so signature doesn't match
         doc = Document {
-            id:         doc.id().to_string(),
-            version:    doc.version(),
-            created_at: doc.created_at(),
-            updated_at: doc.updated_at(),
-            hash:       "corrupted_hash".to_string(),
-            signature:  doc.signature().to_string(),
-            data:       doc.data().clone(),
+            id:                 doc.id().to_string(),
+            version:            doc.version(),
+            created_at:         doc.created_at(),
+            updated_at:         doc.updated_at(),
+            hash:               "corrupted_hash".to_string(),
+            signature:          doc.signature().to_string(),
+            data:               doc.data().clone(),
+            stale_data_warning: false,
+            warning_timestamp:  None,
         };
 
         let options = VerificationOptions {
@@ -537,13 +543,15 @@ mod tests {
 
         // Corrupt the hash field so signature doesn't match
         doc = Document {
-            id:         doc.id().to_string(),
-            version:    doc.version(),
-            created_at: doc.created_at(),
-            updated_at: doc.updated_at(),
-            hash:       "corrupted_hash".to_string(),
-            signature:  doc.signature().to_string(),
-            data:       doc.data().clone(),
+            id:                 doc.id().to_string(),
+            version:            doc.version(),
+            created_at:         doc.created_at(),
+            updated_at:         doc.updated_at(),
+            hash:               "corrupted_hash".to_string(),
+            signature:          doc.signature().to_string(),
+            data:               doc.data().clone(),
+            stale_data_warning: false,
+            warning_timestamp:  None,
         };
 
         let options = VerificationOptions {
@@ -567,13 +575,15 @@ mod tests {
 
         // Corrupt the signature field
         doc = Document {
-            id:         doc.id().to_string(),
-            version:    doc.version(),
-            created_at: doc.created_at(),
-            updated_at: doc.updated_at(),
-            hash:       doc.hash().to_string(),
-            signature:  "corrupted_signature".to_string(),
-            data:       doc.data().clone(),
+            id:                 doc.id().to_string(),
+            version:            doc.version(),
+            created_at:         doc.created_at(),
+            updated_at:         doc.updated_at(),
+            hash:               doc.hash().to_string(),
+            signature:          "corrupted_signature".to_string(),
+            data:               doc.data().clone(),
+            stale_data_warning: false,
+            warning_timestamp:  None,
         };
 
         let options = VerificationOptions {
@@ -606,13 +616,15 @@ mod tests {
 
         // Corrupt the hash field so signature doesn't match
         doc = Document {
-            id:         doc.id().to_string(),
-            version:    doc.version(),
-            created_at: doc.created_at(),
-            updated_at: doc.updated_at(),
-            hash:       "corrupted_hash".to_string(),
-            signature:  doc.signature().to_string(),
-            data:       doc.data().clone(),
+            id:                 doc.id().to_string(),
+            version:            doc.version(),
+            created_at:         doc.created_at(),
+            updated_at:         doc.updated_at(),
+            hash:               "corrupted_hash".to_string(),
+            signature:          doc.signature().to_string(),
+            data:               doc.data().clone(),
+            stale_data_warning: false,
+            warning_timestamp:  None,
         };
 
         let options = VerificationOptions {
