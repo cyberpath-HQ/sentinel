@@ -459,6 +459,9 @@ mod tests {
         )
         .await;
 
+        if let Err(ref e) = result {
+            eprintln!("Error in test_get_nonexistent_document: {:?}", e);
+        }
         assert!(result.is_ok());
     }
 
