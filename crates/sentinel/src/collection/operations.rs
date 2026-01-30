@@ -291,18 +291,18 @@ impl Collection {
         Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
 
+        // Check if file exists before acquiring lock
+        if !tokio_fs::try_exists(&file_path).await.unwrap_or(false) {
+            debug!("Document {} does not exist", id);
+            return Ok(None);
+        }
+
         // Acquire shared lock for read operation
         let _lock = self.lock_manager.acquire_lock(
             &file_path,
             crate::LockStrategy::Shared,
             None, // Use default timeout
         ).await?;
-
-        // Check if file exists
-        if !tokio_fs::try_exists(&file_path).await.unwrap_or(false) {
-            debug!("Document {} does not exist", id);
-            return Ok(None);
-        }
 
         // Read the file
         let content = tokio_fs::read_to_string(&file_path).await.map_err(|e| {
@@ -584,6 +584,14 @@ impl Collection {
         Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
 
+        // Check if file exists before acquiring lock
+        let exists = tokio_fs::try_exists(&file_path).await.unwrap_or(false);
+        debug!("File {} exists: {}", file_path.display(), exists);
+        if !exists {
+            debug!("Document {} does not exist", id);
+            return Ok(None);
+        }
+
         // Acquire shared lock for read operation
         let _lock = self.lock_manager.acquire_lock(
             &file_path,
@@ -591,17 +599,18 @@ impl Collection {
             None, // Use default timeout
         ).await?;
 
-        // Check if file exists
-        if !tokio_fs::try_exists(&file_path).await.unwrap_or(false) {
-            debug!("Document {} does not exist", id);
-            return Ok(None);
-        }
-
         // Read the file
         let content = tokio_fs::read_to_string(&file_path).await.map_err(|e| {
             error!("Failed to read document {} from file {:?}: {}", id, file_path, e);
             e
         })?;
+        debug!("Read content length: {}", content.len());
+
+        // If the file is empty, treat as non-existent (created by locking but no document)
+        if content.trim().is_empty() {
+            debug!("File is empty, treating as non-existent");
+            return Ok(None);
+        }
 
         // Deserialize the document
         let doc: Document = serde_json::from_str(&content).map_err(|e| {
