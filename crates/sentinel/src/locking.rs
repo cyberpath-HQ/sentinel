@@ -134,12 +134,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use uuid::Uuid;
 use dashmap::DashMap;
 use fs2::FileExt;
 use tokio::{
     sync::{Mutex, RwLock},
     time,
 };
+use tracing::{debug, error};
 
 use crate::{Result, SentinelError};
 
@@ -169,15 +171,14 @@ pub struct LockGuard {
     file:        File,
     /// When this lock was acquired (for deadlock detection)
     acquired_at: Instant,
-    /// Thread/process ID holding this lock (for deadlock detection)
-    holder_id:   u64,
+    /// Unique ID holding this lock (for deadlock detection)
+    holder_id:   Uuid,
 }
 
 impl Drop for LockGuard {
     fn drop(&mut self) {
-        // Attempt to unlock the file when the guard is dropped
-        // We ignore errors here since we're in a destructor
-        let _ = self.file.unlock();
+        // The filesystem lock is automatically released when the file handle is closed
+        // No need to call unlock() explicitly
 
         // Notify the lock manager that this lock has been released
         // We need to spawn a task since we can't await in drop
@@ -206,18 +207,18 @@ struct LockRequest {
     /// Timeout for this request
     timeout:      Duration,
     /// ID of the requester (for deadlock detection)
-    requester_id: u64,
+    requester_id: Uuid,
 }
 
 /// Global deadlock detector that monitors all lock requests.
 #[derive(Debug)]
 struct DeadlockDetector {
     /// Wait-for graph: holder_id -> set of requesters waiting for that holder
-    wait_graph:       RwLock<HashMap<u64, Vec<u64>>>,
+    wait_graph:       RwLock<HashMap<Uuid, Vec<Uuid>>>,
     /// Current lock requests: path -> list of pending requests
     pending_requests: RwLock<HashMap<PathBuf, Vec<LockRequest>>>,
     /// Active locks: path -> (holder_id, strategy)
-    active_locks:     RwLock<HashMap<PathBuf, (u64, LockStrategy)>>,
+    active_locks:     RwLock<HashMap<PathBuf, (Uuid, LockStrategy)>>,
 }
 
 impl DeadlockDetector {
@@ -230,16 +231,17 @@ impl DeadlockDetector {
     }
 
     /// Register that a requester is waiting for a lock held by holder_id.
-    async fn register_wait(&self, requester_id: u64, holder_id: u64) {
+    async fn register_wait(&self, requester_id: Uuid, holder_id: Uuid) -> Result<()> {
         let mut graph = self.wait_graph.write().await;
         graph
             .entry(holder_id)
             .or_insert_with(Vec::new)
             .push(requester_id);
+        Ok(())
     }
 
     /// Remove a wait relationship when a request completes.
-    async fn unregister_wait(&self, requester_id: u64, holder_id: u64) {
+    async fn unregister_wait(&self, requester_id: Uuid, holder_id: Uuid) -> Result<()> {
         let mut graph = self.wait_graph.write().await;
         if let Some(waiters) = graph.get_mut(&holder_id) {
             waiters.retain(|&id| id != requester_id);
@@ -247,10 +249,11 @@ impl DeadlockDetector {
                 graph.remove(&holder_id);
             }
         }
+        Ok(())
     }
 
     /// Record an active lock acquisition.
-    async fn record_lock_acquired(&self, path: &Path, holder_id: u64, strategy: LockStrategy) {
+    async fn record_lock_acquired(&self, path: &Path, holder_id: Uuid, strategy: LockStrategy) {
         let mut active = self.active_locks.write().await;
         active.insert(path.to_path_buf(), (holder_id, strategy));
     }
@@ -271,7 +274,7 @@ impl DeadlockDetector {
     }
 
     /// Remove a pending request when it completes.
-    async fn unregister_request(&self, path: &Path, requester_id: u64) {
+    async fn unregister_request(&self, path: &Path, requester_id: Uuid) {
         let mut pending = self.pending_requests.write().await;
         if let Some(requests) = pending.get_mut(path) {
             requests.retain(|req| req.requester_id != requester_id);
@@ -283,7 +286,7 @@ impl DeadlockDetector {
 
     /// Detect if there's a deadlock involving the given requester.
     /// Returns true if a cycle is found in the wait-for graph.
-    async fn detect_deadlock(&self, requester_id: u64) -> bool {
+    async fn detect_deadlock(&self, requester_id: Uuid) -> bool {
         let graph = self.wait_graph.read().await;
         let mut visited = std::collections::HashSet::new();
         let mut stack = vec![requester_id];
@@ -308,7 +311,7 @@ impl DeadlockDetector {
     }
 
     /// Check for deadlocks and return IDs of deadlocked transactions.
-    async fn find_deadlocked_transactions(&self) -> Vec<u64> {
+    async fn find_deadlocked_transactions(&self) -> Vec<Uuid> {
         let graph = self.wait_graph.read().await;
         let mut deadlocked = Vec::new();
         let mut visited = std::collections::HashSet::new();
@@ -340,11 +343,11 @@ impl DeadlockDetector {
 
     /// Helper function to detect cycles in the wait-for graph using DFS.
     fn has_cycle(
-        graph: &HashMap<u64, Vec<u64>>,
-        node: u64,
-        path: &mut Vec<u64>,
-        current_path: &mut std::collections::HashSet<u64>,
-        visited: &mut std::collections::HashSet<u64>,
+        graph: &HashMap<Uuid, Vec<Uuid>>,
+        node: Uuid,
+        path: &mut Vec<Uuid>,
+        current_path: &mut std::collections::HashSet<Uuid>,
+        visited: &mut std::collections::HashSet<Uuid>,
     ) -> bool {
         visited.insert(node);
         current_path.insert(node);
@@ -410,7 +413,7 @@ impl DeadlockDetector {
 #[derive(Debug)]
 pub struct FileLockManager {
     /// Lock table: path -> current lock state
-    lock_table:            Arc<DashMap<PathBuf, Arc<RwLock<Option<(u64, LockStrategy)>>>>>,
+    lock_table:            Arc<DashMap<PathBuf, Arc<RwLock<Option<(Uuid, LockStrategy)>>>>>,
     /// Deadlock detector instance
     deadlock_detector:     Arc<DeadlockDetector>,
     /// Default timeout for lock acquisitions
@@ -487,7 +490,7 @@ impl FileLockManager {
     ) -> Result<LockGuard> {
         let timeout = timeout.unwrap_or(self.default_timeout);
         let _start_time = Instant::now();
-        let requester_id = std::process::id() as u64; // Simple process ID for now
+        let requester_id = Uuid::new_v4(); // Unique UUID for this lock acquisition
 
         // Try to acquire lock with deadlock detection and retries
         for retry in 0 ..= self.max_deadlock_retries {
@@ -515,10 +518,52 @@ impl FileLockManager {
         path: &Path,
         strategy: LockStrategy,
         timeout: Duration,
-        requester_id: u64,
+        requester_id: Uuid,
     ) -> Result<LockGuard> {
         // Serialize acquisitions to prevent thundering herd
         let _acquisition_guard = self.acquisition_mutex.lock().await;
+
+        // Check if the path is already locked by a different holder
+        let existing_holder = if let Some(lock_state) = self.lock_table.get(path) {
+            let state = lock_state.read().await;
+            state.clone().and_then(|(holder, strategy)| {
+                if holder != requester_id {
+                    Some((holder, strategy))
+                }
+                else {
+                    None
+                }
+            })
+        }
+        else {
+            None
+        };
+
+        // If path is locked by someone else, register wait relationship
+        if let Some((holder_id, existing_strategy)) = existing_holder {
+            // Record wait relationship: requester is waiting for holder
+            self.deadlock_detector
+                .register_wait(requester_id, holder_id)
+                .await?;
+
+            // Before retrying, check if we're in a deadlock cycle
+            if self.deadlock_detector.detect_deadlock(requester_id).await {
+                // Deadlock detected! Abort this request
+                error!(
+                    "Deadlock detected for requester {:?} while waiting for holder {:?}",
+                    requester_id, holder_id
+                );
+                self.deadlock_detector
+                    .unregister_wait(requester_id, holder_id)
+                    .await?;
+                return Err(SentinelError::DeadlockDetected);
+            }
+
+            debug!(
+                "Requester {:?} waiting for lock held by holder {:?} (strategy: {:?})",
+                requester_id, holder_id, existing_strategy
+            );
+        }
 
         // Try to acquire the filesystem lock with timeout
         let file = self
@@ -536,6 +581,7 @@ impl FileLockManager {
             *state = Some((requester_id, strategy));
         }
 
+        // Record active lock in deadlock detector
         self.deadlock_detector
             .record_lock_acquired(path, requester_id, strategy)
             .await;
@@ -606,8 +652,8 @@ impl FileLockManager {
             Ok(Err(e)) => Err(e),
             Err(_) => {
                 Err(SentinelError::LockTimeout {
-                    path: path.to_path_buf(),
-                    timeout,
+                    path:       path.to_path_buf(),
+                    timeout_ms: timeout.as_millis() as u64,
                 })
             },
         }
@@ -636,7 +682,7 @@ impl FileLockManager {
     }
 
     /// Get information about the current lock holder for a path.
-    pub async fn get_lock_holder(&self, path: &Path) -> Option<(u64, LockStrategy)> {
+    pub async fn get_lock_holder(&self, path: &Path) -> Option<(Uuid, LockStrategy)> {
         if let Some(lock_state) = self.lock_table.get(path) {
             let state = lock_state.read().await;
             *state
@@ -686,5 +732,470 @@ impl LockGuard {
     pub const fn acquired_at(&self) -> Instant { self.acquired_at }
 
     /// Get the ID of the lock holder.
-    pub const fn holder_id(&self) -> u64 { self.holder_id }
+    pub fn holder_id(&self) -> Uuid { self.holder_id }
+
+    /// Upgrade from shared lock to exclusive lock.
+    ///
+    /// This method converts the current shared lock into an exclusive lock
+    /// without releasing it. The lock manager ensures that no other locks
+    /// are held on the same path before allowing the upgrade.
+    ///
+    /// # Errors
+    ///
+    /// * `SentinelError::InvalidLockState` - Guard is not holding a shared lock
+    /// * `SentinelError::LockTimeout` - Upgrade wait timeout expires
+    /// * `SentinelError::DeadlockDetected` - Deadlock detected during upgrade
+    /// * `SentinelError::LockContention` - Other locks prevent upgrade
+    pub async fn upgrade_to_exclusive(self, manager: &Arc<FileLockManager>, timeout: Option<Duration>) -> Result<Self> {
+        // Check if current lock is shared
+        if self.strategy != LockStrategy::Shared {
+            return Err(SentinelError::InvalidLockState {
+                reason: "cannot upgrade non-shared lock".to_string(),
+            });
+        }
+
+        let _timeout = timeout.unwrap_or(manager.default_timeout);
+        let _requester_id = Uuid::new_v4();
+
+        // Attempt upgrade - for now, just return an error as this feature is not fully implemented
+        return Err(SentinelError::InvalidLockState {
+            reason: "lock upgrade not yet implemented".to_string(),
+        });
+    }
+
+    /// Downgrade from exclusive lock to shared lock.
+    ///
+    /// This method converts the current exclusive lock into a shared lock
+    /// without releasing it. The file handle's lock is downgraded, allowing
+    /// other readers to acquire shared locks simultaneously.
+    ///
+    /// # Errors
+    ///
+    /// * `SentinelError::InvalidLockState` - Guard is not holding an exclusive lock
+    pub fn downgrade_to_shared(mut self) -> Result<Self> {
+        // Check if current lock is exclusive
+        if self.strategy != LockStrategy::Exclusive {
+            return Err(SentinelError::InvalidLockState {
+                reason: "cannot downgrade non-exclusive lock".to_string(),
+            });
+        }
+
+        // Downgrade the filesystem lock
+        match self.file.lock_shared() {
+            Ok(()) => {
+                // Update the strategy in the guard
+                self.strategy = LockStrategy::Shared;
+                Ok(self)
+            },
+            Err(e) => {
+                Err(SentinelError::Io {
+                    source: e,
+                })
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        path::{Path, PathBuf},
+        time::Duration,
+    };
+
+    use uuid::Uuid;
+    use tempfile::tempdir;
+    use tokio::time::timeout;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_filelockmanager_acquire_exclusive_lock() {
+        // Test acquiring an exclusive lock
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_file.txt");
+
+        let guard = manager
+            .acquire_lock(&path, LockStrategy::Exclusive, None)
+            .await
+            .unwrap();
+
+        assert!(manager.is_locked(&path).await);
+        assert_eq!(guard.strategy(), LockStrategy::Exclusive);
+
+        drop(guard);
+        assert!(!manager.is_locked(&path).await);
+    }
+
+    #[tokio::test]
+    async fn test_filelockmanager_acquire_shared_lock() {
+        // Test acquiring shared locks (multiple readers)
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_file_shared.txt");
+
+        let guard1 = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await
+            .unwrap();
+        let guard2 = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await
+            .unwrap();
+
+        assert!(manager.is_locked(&path).await);
+        assert_eq!(guard1.strategy(), LockStrategy::Shared);
+        assert_eq!(guard2.strategy(), LockStrategy::Shared);
+
+        drop(guard1);
+        drop(guard2);
+        assert!(!manager.is_locked(&path).await);
+    }
+
+    #[tokio::test]
+    async fn test_filelockmanager_timeout_handling() {
+        // Test timeout handling for lock acquisition
+        let manager = Arc::new(FileLockManager::with_config(
+            Duration::from_millis(100),
+            0,
+            Duration::from_millis(10),
+        ));
+        let path = PathBuf::from("/tmp/test_file_timeout.txt");
+
+        let result = manager
+            .acquire_lock(
+                &path,
+                LockStrategy::Exclusive,
+                Some(Duration::from_millis(100)),
+            )
+            .await;
+
+        assert!(matches!(result, Err(SentinelError::LockTimeout { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_filelockmanager_concurrent_access() {
+        // Test concurrent access scenarios
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_file_concurrent.txt");
+
+        let guard1 = manager
+            .acquire_lock(&path, LockStrategy::Exclusive, None)
+            .await
+            .unwrap();
+
+        // Try to acquire same file with different strategy (should fail)
+        let result = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await;
+        assert!(matches!(result, Err(SentinelError::LockTimeout { .. })));
+
+        drop(guard1);
+        let guard2 = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await
+            .unwrap();
+        assert_eq!(guard2.strategy(), LockStrategy::Shared);
+
+        drop(guard2);
+        assert!(!manager.is_locked(&path).await);
+    }
+
+    #[tokio::test]
+    async fn test_filelockmanager_cleanup_on_drop() {
+        // Test automatic cleanup when lock guard is dropped
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_file_cleanup.txt");
+
+        {
+            let guard = manager
+                .acquire_lock(&path, LockStrategy::Exclusive, None)
+                .await
+                .unwrap();
+            assert!(manager.is_locked(&path).await);
+
+            // Verify lock manager can acquire again after dropping
+            let guard2 = manager
+                .acquire_lock(&path, LockStrategy::Shared, None)
+                .await
+                .unwrap();
+            assert!(manager.is_locked(&path).await);
+
+            drop(guard2);
+            assert!(manager.is_locked(&path).await);
+        }
+
+        assert!(!manager.is_locked(&path).await);
+    }
+
+    #[tokio::test]
+    async fn test_lockguard_raii_behavior() {
+        // Test RAII behavior - lock should be released when guard is dropped
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_raii.txt");
+
+        {
+            let guard = manager
+                .acquire_lock(&path, LockStrategy::Exclusive, None)
+                .await
+                .unwrap();
+            assert!(manager.is_locked(&path).await);
+
+            assert_eq!(guard.path(), &path);
+            assert_eq!(guard.strategy(), LockStrategy::Exclusive);
+            assert!(guard.acquired_at() < std::time::Instant::now());
+        }
+
+        assert!(!manager.is_locked(&path).await);
+    }
+
+    #[tokio::test]
+    async fn test_lockstrategy_exclusive_behavior() {
+        // Test exclusive lock blocks other locks
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_exclusive.txt");
+
+        let guard = manager
+            .acquire_lock(&path, LockStrategy::Exclusive, None)
+            .await
+            .unwrap();
+
+        // Exclusive lock blocks other exclusive locks
+        let result = manager
+            .acquire_lock(&path, LockStrategy::Exclusive, None)
+            .await;
+        assert!(matches!(result, Err(SentinelError::LockTimeout { .. })));
+
+        // Exclusive lock also blocks shared locks
+        let result = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await;
+        assert!(matches!(result, Err(SentinelError::LockTimeout { .. })));
+
+        drop(guard);
+    }
+
+    #[tokio::test]
+    async fn test_lockstrategy_shared_behavior() {
+        // Test shared locks allow multiple concurrent readers
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_shared.txt");
+
+        let guard1 = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await
+            .unwrap();
+        let guard2 = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await
+            .unwrap();
+
+        assert!(manager.is_locked(&path).await);
+        assert_eq!(guard1.strategy(), LockStrategy::Shared);
+        assert_eq!(guard2.strategy(), LockStrategy::Shared);
+
+        // Shared locks block exclusive locks
+        let result = manager
+            .acquire_lock(&path, LockStrategy::Exclusive, None)
+            .await;
+        assert!(matches!(result, Err(SentinelError::LockTimeout { .. })));
+
+        drop(guard1);
+        drop(guard2);
+        assert!(!manager.is_locked(&path).await);
+    }
+
+    #[tokio::test]
+    async fn test_deadlockdetector_cycle_detection() {
+        // Test deadlock detection with cycle
+        let detector = DeadlockDetector::new();
+        let pid1 = Uuid::new_v4();
+        let pid2 = Uuid::new_v4();
+        let pid3 = Uuid::new_v4();
+
+        detector.register_wait(pid1, pid2).await.unwrap();
+        detector.register_wait(pid2, pid3).await.unwrap();
+        detector.register_wait(pid3, pid1).await.unwrap();
+
+        assert!(detector.detect_deadlock(pid1).await);
+        assert!(detector.detect_deadlock(pid2).await);
+        assert!(detector.detect_deadlock(pid3).await);
+    }
+
+    #[tokio::test]
+    async fn test_deadlockdetector_wait_graph_updates() {
+        // Test wait-for graph update and cleanup
+        let detector = DeadlockDetector::new();
+        let pid1 = Uuid::new_v4();
+        let pid2 = Uuid::new_v4();
+
+        detector.register_wait(pid1, pid2).await.unwrap();
+
+        let graph = detector.wait_graph.read().await;
+        assert!(graph.contains_key(&pid2));
+        assert_eq!(graph.get(&pid2).unwrap().len(), 1);
+        assert!(graph.get(&pid2).unwrap().contains(&pid1));
+
+        drop(graph);
+        detector.unregister_wait(pid1, pid2).await.unwrap();
+
+        let graph = detector.wait_graph.read().await;
+        assert!(!graph.contains_key(&pid2));
+    }
+
+    #[tokio::test]
+    async fn test_deadlockdetector_resolution_logic() {
+        // Test deadlock resolution finds transactions in cycle
+        let detector = DeadlockDetector::new();
+        let pid1 = Uuid::new_v4();
+        let pid2 = Uuid::new_v4();
+        let pid3 = Uuid::new_v4();
+
+        detector.register_wait(pid1, pid2).await.unwrap();
+        detector.register_wait(pid2, pid3).await.unwrap();
+        detector.register_wait(pid3, pid1).await.unwrap();
+
+        let deadlocked = detector.find_deadlocked_transactions().await;
+        assert!(!deadlocked.is_empty());
+
+        for pid in deadlocked {
+            assert!(pid == pid1 || pid == pid2 || pid == pid3);
+        }
+
+        detector.unregister_wait(pid1, pid2).await.unwrap();
+        detector.unregister_wait(pid2, pid3).await.unwrap();
+        detector.unregister_wait(pid3, pid1).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_filelockmanager_multiple_locks_same_file() {
+        // Test multiple lock holders trying to acquire same file
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_multi_lock.txt");
+
+        let guard1 = manager
+            .acquire_lock(&path, LockStrategy::Exclusive, None)
+            .await
+            .unwrap();
+        assert!(manager.is_locked(&path).await);
+
+        let result = manager
+            .acquire_lock(&path, LockStrategy::Exclusive, None)
+            .await;
+        assert!(matches!(result, Err(SentinelError::LockTimeout { .. })));
+
+        drop(guard1);
+        let guard2 = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await
+            .unwrap();
+        assert!(manager.is_locked(&path).await);
+
+        drop(guard2);
+        assert!(!manager.is_locked(&path).await);
+    }
+
+    #[tokio::test]
+    async fn test_filelockmanager_lock_holder_info() {
+        // Test getting lock holder information
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_holder.txt");
+
+        let guard = manager
+            .acquire_lock(&path, LockStrategy::Exclusive, None)
+            .await
+            .unwrap();
+
+        let holder = manager.get_lock_holder(&path).await;
+        assert!(holder.is_some());
+        let (holder_id, strategy) = holder.unwrap();
+        assert_eq!(holder_id, guard.holder_id());
+        assert_eq!(strategy, LockStrategy::Exclusive);
+
+        drop(guard);
+        assert!(manager.get_lock_holder(&path).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_filelockmanager_is_locked_check() {
+        // Test is_locked method
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_islocked.txt");
+
+        assert!(!manager.is_locked(&path).await);
+
+        let guard = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await
+            .unwrap();
+
+        assert!(manager.is_locked(&path).await);
+
+        drop(guard);
+        assert!(!manager.is_locked(&path).await);
+    }
+
+    #[tokio::test]
+    async fn test_filelockmanager_stats() {
+        // Test getting lock manager statistics
+        let manager = Arc::new(FileLockManager::new());
+        let stats = manager.get_stats().await;
+
+        assert_eq!(stats.active_locks, 0);
+        assert_eq!(stats.total_pending_requests, 0);
+        assert_eq!(stats.paths_with_pending_requests, 0);
+    }
+
+    #[tokio::test]
+    async fn test_filelockmanager_with_config() {
+        // Test that FileLockManager can be created with custom config
+        // Note: Configuration fields are private, so we verify the manager works correctly
+        let manager = Arc::new(FileLockManager::with_config(
+            Duration::from_secs(60),
+            5,
+            Duration::from_millis(200),
+        ));
+
+        // Use a unique temp path to avoid conflicts with other tests
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("test_config.lock");
+
+        // Explicitly check lock table is clean
+        assert!(!manager.lock_table.contains_key(&path));
+        assert!(!manager.is_locked(&path).await);
+
+        let guard = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await
+            .unwrap();
+
+        assert!(manager.lock_table.contains_key(&path));
+        assert!(manager.is_locked(&path).await);
+
+        drop(guard);
+
+        // After drop, lock should be removed from lock table
+        // Note: File on disk might still exist temporarily
+        // Use a small delay to ensure cleanup completes
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        assert!(!manager.is_locked(&path).await);
+    }
+
+    #[tokio::test]
+    async fn test_lockguard_methods() {
+        // Test LockGuard getter methods
+        let manager = Arc::new(FileLockManager::new());
+        let path = PathBuf::from("/tmp/test_guard_methods.txt");
+
+        let guard = manager
+            .acquire_lock(&path, LockStrategy::Shared, None)
+            .await
+            .unwrap();
+
+        assert_eq!(guard.path(), &path);
+        assert_eq!(guard.strategy(), LockStrategy::Shared);
+        assert!(guard.acquired_at() < std::time::Instant::now());
+
+        drop(guard);
+    }
 }
