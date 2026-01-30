@@ -620,11 +620,29 @@ impl Collection {
 
         // Perform verification if enabled
         if options.verify_signature {
-            if let Some(key) = &self.signing_key {
-                doc.verify_signature(&key.verifying_key()).await?;
-                debug!("Document {} signature verified", id);
+            if doc.signature().is_empty() {
+                match options.empty_signature_mode {
+                    crate::VerificationMode::Strict => {
+                        return Err(crate::SentinelError::SignatureVerificationFailed {
+                            id:     id.to_string(),
+                            reason: "Document has no signature".to_string(),
+                        });
+                    }
+                    crate::VerificationMode::Warn => {
+                        warn!("Document {} has no signature but verification is requested", id);
+                    }
+                    crate::VerificationMode::Silent => {
+                        // Do nothing
+                    }
+                }
             } else {
-                warn!("Signature verification requested but no signing key available for document {}", id);
+                // Signature exists, check if we have a key to verify it
+                if let Some(key) = &self.signing_key {
+                    doc.verify_signature(&key.verifying_key()).await?;
+                    debug!("Document {} signature verified", id);
+                } else {
+                    warn!("Signature verification requested for document {} but no signing key available", id);
+                }
             }
         }
 
@@ -723,13 +741,33 @@ impl Collection {
     pub async fn bulk_insert(&self, documents: Vec<(&str, Value)>) -> Result<()> {
         trace!("Bulk inserting {} documents", documents.len());
 
-        // Validate all document IDs first
-        for (id, _) in &documents {
-            Self::validate_document_id(id)?;
+        // If there are no documents at all, succeed silently
+        if documents.is_empty() {
+            debug!("Bulk insert called with empty document list, nothing to do");
+            return Ok(());
         }
 
-        // Check if any documents already exist
-        for (id, _) in &documents {
+        // Separate valid and invalid documents
+        let mut valid_documents = Vec::new();
+        let mut invalid_ids = Vec::new();
+
+        for (id, data) in documents {
+            if Self::validate_document_id(id).is_ok() {
+                valid_documents.push((id, data));
+            } else {
+                invalid_ids.push(id.to_string());
+            }
+        }
+
+        // If no valid documents, return error
+        if valid_documents.is_empty() {
+            return Err(SentinelError::InvalidDocumentId {
+                id: invalid_ids.into_iter().next().unwrap_or_else(|| "unknown".to_string()),
+            });
+        }
+
+        // Check if any valid documents already exist
+        for (id, _) in &valid_documents {
             let file_path = self.path.join(format!("{}.json", id));
             if tokio_fs::try_exists(&file_path).await.unwrap_or(false) && !self.name().starts_with('.') {
                 return Err(SentinelError::DocumentAlreadyExists {
@@ -739,14 +777,14 @@ impl Collection {
             }
         }
 
-        // Prepare WAL entries for all documents
+        // Prepare WAL entries for valid documents
         let mut wal_entries = Vec::new();
         if let Some(_wal) = self.wal_manager.as_ref() &&
             !self
                 .recovery_mode
                 .load(std::sync::atomic::Ordering::Relaxed)
         {
-            for (id, data) in &documents {
+            for (id, data) in &valid_documents {
                 let entry = LogEntry::new(
                     EntryType::Insert,
                     self.name().to_owned(),
@@ -757,9 +795,9 @@ impl Collection {
             }
         }
 
-        // Create all documents first
+        // Create all valid documents
         let mut created_docs = Vec::new();
-        for (id, data) in &documents {
+        for (id, data) in &valid_documents {
             #[allow(clippy::pattern_type_mismatch, reason = "false positive")]
             let doc = if let Some(key) = &self.signing_key {
                 debug!("Creating signed document for id: {}", id);
@@ -813,7 +851,14 @@ impl Collection {
             });
         }
 
-        debug!("Bulk insert completed successfully for {} documents", documents.len());
+        // If there were invalid IDs, return error after inserting valid ones
+        if !invalid_ids.is_empty() {
+            return Err(SentinelError::InvalidDocumentId {
+                id: invalid_ids[0].clone(),
+            });
+        }
+
+        debug!("Bulk insert completed successfully for {} documents", valid_documents.len());
         Ok(())
     }
 
