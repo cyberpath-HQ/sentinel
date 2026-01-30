@@ -4,7 +4,7 @@
 //! Provides thread-safe, cross-process file locking with deadlock detection.
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     path::{Path, PathBuf},
     sync::{atomic::AtomicU64, Arc},
@@ -14,10 +14,7 @@ use std::{
 use dashmap::DashMap;
 use fs2::FileExt;
 use futures::channel::oneshot;
-use tokio::{
-    sync::{Mutex, RwLock},
-    time,
-};
+use tokio::{sync::Mutex, time};
 use tracing::{debug, error};
 
 use crate::error::{Result, SentinelError};
@@ -26,6 +23,17 @@ use super::{
     lock_guard::LockGuard,
     lock_strategy::LockStrategy,
 };
+
+/// State of a lock on a specific path
+#[derive(Debug, Clone)]
+pub enum LockState {
+    /// No lock held
+    None,
+    /// Exclusive lock held by single holder
+    Exclusive(String),
+    /// Shared locks held by multiple holders
+    Shared(HashSet<String>),
+}
 
 /// Entry in the lock queue representing a waiting requester.
 #[derive(Debug)]
@@ -124,8 +132,8 @@ impl Default for LockQueue {
 /// Returns `SentinelError::IoError` - I/O error during lock acquisition.
 #[derive(Debug)]
 pub struct FileLockManager {
-    /// Lock table: path -> current lock state
-    pub(crate) lock_table:            Arc<DashMap<PathBuf, Arc<std::sync::Mutex<Option<(String, LockStrategy)>>>>>,
+    /// Lock table: path -> current lock state (tracks all holders)
+    pub(crate) lock_table:            Arc<DashMap<PathBuf, Arc<std::sync::Mutex<LockState>>>>,
     /// Lock queues: path -> FIFO queue of waiting requesters
     pub(crate) lock_queues:           Arc<DashMap<PathBuf, Arc<std::sync::Mutex<LockQueue>>>>,
     /// Deadlock detector instance
@@ -242,31 +250,51 @@ impl FileLockManager {
         timeout: Duration,
         requester_id: String,
     ) -> Result<LockGuard> {
-        // Serialize lock acquisitions to prevent thundering herd
-        let _acquisition_guard = self.acquisition_mutex.lock().await;
+        // Serialize lock table checks to prevent thundering herd
+        // But release before filesystem lock acquisition
+        let (is_locked, is_compatible, holders) = {
+            let _acquisition_guard = self.acquisition_mutex.lock().await;
 
-        // Check if the path is already locked by a different holder
-        let existing_holder = if let Some(lock_state) = self.lock_table.get(path) {
-            let state = lock_state.lock().unwrap();
-            state.clone().and_then(|(holder, strategy)| {
-                if holder != requester_id {
-                    Some((holder, strategy))
+            // Check if the path is already locked and determine compatibility
+            if let Some(lock_state_ref) = self.lock_table.get(path) {
+                let state = lock_state_ref.lock().unwrap();
+                match &*state {
+                    LockState::None => (false, true, Vec::new()),
+                    LockState::Exclusive(holder) if holder != &requester_id => {
+                        // Exclusive lock held by someone else - not compatible
+                        (true, false, vec![holder.clone()])
+                    },
+                    LockState::Exclusive(_) => {
+                        // We already hold the exclusive lock (reentrant)
+                        (true, true, Vec::new())
+                    },
+                    LockState::Shared(holders) if !holders.contains(&requester_id) => {
+                        // Shared locks held - compatible only if we're requesting shared
+                        match strategy {
+                            LockStrategy::Shared => (true, true, Vec::new()),
+                            LockStrategy::Exclusive => (true, false, holders.iter().cloned().collect()),
+                        }
+                    },
+                    LockState::Shared(_) => {
+                        // We already hold a shared lock (reentrant)
+                        (true, true, Vec::new())
+                    },
                 }
-                else {
-                    None
-                }
-            })
-        }
-        else {
-            None
+            }
+            else {
+                (false, true, Vec::new())
+            }
+            // _acquisition_guard is dropped here, releasing the mutex
         };
 
-        // If path is locked by someone else, enqueue this requester
-        if let Some((holder_id, existing_strategy)) = existing_holder {
-            // Record wait relationship: requester is waiting for holder
-            self.deadlock_detector
-                .register_wait(requester_id.clone(), holder_id.clone())
-                .await?;
+        // If path is locked by someone else and not compatible, enqueue this requester
+        if is_locked && !is_compatible {
+            // Record wait relationships for all current holders
+            for holder_id in &holders {
+                self.deadlock_detector
+                    .register_wait(requester_id.clone(), holder_id.clone())
+                    .await?;
+            }
 
             // Before enqueuing, check if we're in a deadlock cycle
             if self
@@ -276,27 +304,30 @@ impl FileLockManager {
             {
                 // Deadlock detected! Abort this request
                 error!(
-                    "Deadlock detected for requester {:?} while waiting for holder {:?}",
-                    requester_id, holder_id
+                    "Deadlock detected for requester {:?} while waiting for holders {:?}",
+                    requester_id, holders
                 );
-                self.deadlock_detector
-                    .unregister_wait(requester_id.clone(), holder_id.clone())
-                    .await?;
+                for holder_id in &holders {
+                    self.deadlock_detector
+                        .unregister_wait(requester_id.clone(), holder_id.clone())
+                        .await?;
+                }
                 return Err(SentinelError::DeadlockDetected);
             }
 
             debug!(
-                "Requester {:?} enqueuing for lock held by holder {:?} (strategy: {:?})",
-                requester_id, holder_id, existing_strategy
+                "Requester {:?} enqueuing for lock held by holders {:?}",
+                requester_id, holders
             );
 
             // Enqueue this requester and wait
             return self
-                .enqueue_and_wait(path, strategy, timeout, requester_id)
+                .enqueue_and_wait(path, strategy, timeout, requester_id, holders)
                 .await;
         }
 
-        // Path is not locked, try to acquire immediately
+        // Path is not locked or locks are compatible, try to acquire immediately
+        // Note: acquisition_mutex is released at this point, allowing other threads to check locks
         match self.acquire_filesystem_lock(path, strategy, timeout).await {
             Ok(file) => {
                 let acquired_at = Instant::now();
@@ -306,9 +337,26 @@ impl FileLockManager {
                     let lock_state = self
                         .lock_table
                         .entry(path.to_path_buf())
-                        .or_insert_with(|| Arc::new(std::sync::Mutex::new(None)));
+                        .or_insert_with(|| Arc::new(std::sync::Mutex::new(LockState::None)));
                     let mut state = lock_state.lock().unwrap();
-                    *state = Some((requester_id.clone(), strategy));
+
+                    *state = match strategy {
+                        LockStrategy::Exclusive => LockState::Exclusive(requester_id.clone()),
+                        LockStrategy::Shared => {
+                            match &*state {
+                                LockState::Shared(existing) => {
+                                    let mut holders = existing.clone();
+                                    holders.insert(requester_id.clone());
+                                    LockState::Shared(holders)
+                                },
+                                _ => {
+                                    let mut holders = HashSet::new();
+                                    holders.insert(requester_id.clone());
+                                    LockState::Shared(holders)
+                                },
+                            }
+                        },
+                    };
                 }
 
                 // Record active lock in deadlock detector
@@ -336,7 +384,7 @@ impl FileLockManager {
                 // Increment failed acquisitions counter for immediate timeout
                 self.failed_acquisitions
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                self.enqueue_and_wait(path, strategy, timeout, requester_id)
+                self.enqueue_and_wait(path, strategy, timeout, requester_id, Vec::new())
                     .await
             },
             Err(e) => Err(e),
@@ -350,6 +398,7 @@ impl FileLockManager {
         strategy: LockStrategy,
         timeout: Duration,
         requester_id: String,
+        holders: Vec<String>,
     ) -> Result<LockGuard> {
         // Create a channel to wait for wakeup
         let (sender, receiver) = oneshot::channel();
@@ -403,6 +452,14 @@ impl FileLockManager {
                 debug!("Timeout waiting in queue for requester {:?}", requester_id);
                 self.remove_from_queue(path, &requester_id).await;
 
+                // Unregister wait relationships from deadlock detector
+                for holder_id in &holders {
+                    let _ = self
+                        .deadlock_detector
+                        .unregister_wait(requester_id.clone(), holder_id.clone())
+                        .await;
+                }
+
                 // Increment failed acquisitions counter
                 self.failed_acquisitions
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -423,8 +480,10 @@ impl FileLockManager {
         requester_id: String,
     ) -> Result<LockGuard> {
         // Try to acquire the filesystem lock (should succeed since we were woken)
+        // Use a longer timeout here since the previous holder just released the lock
+        // but the OS may need time to fully release it
         let file = self
-            .acquire_filesystem_lock(path, strategy, Duration::from_millis(100))
+            .acquire_filesystem_lock(path, strategy, Duration::from_secs(5))
             .await?;
         let acquired_at = Instant::now();
 
@@ -433,9 +492,26 @@ impl FileLockManager {
             let lock_state = self
                 .lock_table
                 .entry(path.to_path_buf())
-                .or_insert_with(|| Arc::new(std::sync::Mutex::new(None)));
+                .or_insert_with(|| Arc::new(std::sync::Mutex::new(LockState::None)));
             let mut state = lock_state.lock().unwrap();
-            *state = Some((requester_id.clone(), strategy));
+
+            *state = match strategy {
+                LockStrategy::Exclusive => LockState::Exclusive(requester_id.clone()),
+                LockStrategy::Shared => {
+                    match &*state {
+                        LockState::Shared(existing) => {
+                            let mut holders = existing.clone();
+                            holders.insert(requester_id.clone());
+                            LockState::Shared(holders)
+                        },
+                        _ => {
+                            let mut holders = HashSet::new();
+                            holders.insert(requester_id.clone());
+                            LockState::Shared(holders)
+                        },
+                    }
+                },
+            };
         }
 
         // Record active lock in deadlock detector
@@ -468,6 +544,23 @@ impl FileLockManager {
         }
     }
 
+    /// Wake up the next waiter in the queue for a given path.
+    /// This should be called when a lock is released.
+    pub(crate) fn wake_next_waiter(&self, path: &Path) {
+        if let Some(queue_ref) = self.lock_queues.get(path) {
+            if let Ok(mut queue) = queue_ref.try_lock() {
+                if let Some(entry) = queue.dequeue() {
+                    debug!(
+                        "Waking up next waiter {:?} for path {:?}",
+                        entry.requester_id, path
+                    );
+                    // Send wakeup signal (ignore if receiver is dropped)
+                    let _ = entry.waker.send(());
+                }
+            }
+        }
+    }
+
     /// Acquire the actual filesystem lock using fs2.
     async fn acquire_filesystem_lock(
         &self,
@@ -475,64 +568,80 @@ impl FileLockManager {
         strategy: LockStrategy,
         timeout: Duration,
     ) -> Result<fs::File> {
-        // For locking, we need to open the file synchronously
-        // Try to open existing file first
-        let file = match fs::File::open(path) {
-            Ok(file) => file,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // File doesn't exist, create it for locking purposes
-                // This is necessary for fs2 locking to work
-                fs::OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .open(path)
-                    .map_err(|e| {
-                        SentinelError::Io {
-                            source: e,
-                        }
-                    })?
-            },
-            Err(e) => {
-                return Err(SentinelError::Io {
-                    source: e,
-                })
-            },
-        };
+        let path_owned = path.to_path_buf();
 
-        // Attempt to acquire the lock with timeout
-        let result = match strategy {
-            LockStrategy::Exclusive => {
-                time::timeout(timeout, async {
-                    file.lock_exclusive().map_err(|e| {
-                        SentinelError::Io {
-                            source: e,
-                        }
+        // Open the file in a blocking task to avoid blocking the tokio runtime
+        let file = tokio::task::spawn_blocking(move || {
+            // Try to open existing file first
+            match fs::File::open(&path_owned) {
+                Ok(file) => Ok(file),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // File doesn't exist, create it for locking purposes
+                    // This is necessary for fs2 locking to work
+                    fs::OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .create(true)
+                        .open(&path_owned)
+                        .map_err(|e| {
+                            SentinelError::Io {
+                                source: e,
+                            }
+                        })
+                },
+                Err(e) => {
+                    Err(SentinelError::Io {
+                        source: e,
                     })
-                })
-                .await
-            },
-            LockStrategy::Shared => {
-                time::timeout(timeout, async {
-                    file.lock_shared().map_err(|e| {
-                        SentinelError::Io {
-                            source: e,
-                        }
-                    })
-                })
-                .await
-            },
-        };
+                },
+            }
+        })
+        .await
+        .map_err(|e| {
+            SentinelError::Io {
+                source: std::io::Error::new(std::io::ErrorKind::Other, e),
+            }
+        })??;
 
-        match result {
-            Ok(Ok(())) => Ok(file),
-            Ok(Err(e)) => Err(e),
-            Err(_) => {
-                Err(SentinelError::LockTimeout {
-                    path:       path.to_path_buf(),
-                    timeout_ms: timeout.as_millis() as u64,
-                })
-            },
+        // Use try_lock with polling and timeout instead of blocking lock
+        // This allows us to respect the timeout and not block indefinitely
+        let deadline = Instant::now() + timeout;
+        let poll_interval = Duration::from_millis(10);
+
+        loop {
+            // Try to acquire the lock (non-blocking)
+            let result = match strategy {
+                LockStrategy::Exclusive => {
+                    file.try_lock_exclusive()
+                        .map_err(|e| std::io::Error::from(e))
+                },
+                LockStrategy::Shared => file.try_lock_shared().map_err(|e| std::io::Error::from(e)),
+            };
+
+            match result {
+                Ok(()) => {
+                    // Lock acquired successfully
+                    return Ok(file);
+                },
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // Lock is held by someone else, check if we've timed out
+                    if Instant::now() >= deadline {
+                        return Err(SentinelError::LockTimeout {
+                            path:       path.to_path_buf(),
+                            timeout_ms: timeout.as_millis() as u64,
+                        });
+                    }
+
+                    // Wait a bit before trying again
+                    time::sleep(poll_interval).await;
+                },
+                Err(e) => {
+                    // Some other error occurred
+                    return Err(SentinelError::Io {
+                        source: e,
+                    });
+                },
+            }
         }
     }
 
@@ -541,7 +650,7 @@ impl FileLockManager {
     pub async fn force_release_lock(&self, path: &Path) -> Result<()> {
         if let Some(lock_state) = self.lock_table.get(path) {
             let mut state = lock_state.lock().unwrap();
-            *state = None;
+            *state = LockState::None;
         }
         self.deadlock_detector.record_lock_released(path).await;
         Ok(())
@@ -551,7 +660,7 @@ impl FileLockManager {
     pub async fn is_locked(&self, path: &Path) -> bool {
         if let Some(lock_state) = self.lock_table.get(path) {
             let state = lock_state.lock().unwrap();
-            state.is_some()
+            !matches!(*state, LockState::None)
         }
         else {
             false
@@ -562,7 +671,17 @@ impl FileLockManager {
     pub async fn get_lock_holder(&self, path: &Path) -> Option<(String, LockStrategy)> {
         if let Some(lock_state) = self.lock_table.get(path) {
             let state = lock_state.lock().unwrap();
-            state.clone()
+            match &*state {
+                LockState::None => None,
+                LockState::Exclusive(holder) => Some((holder.clone(), LockStrategy::Exclusive)),
+                LockState::Shared(holders) => {
+                    // Return first holder for backward compatibility
+                    holders
+                        .iter()
+                        .next()
+                        .map(|h| (h.clone(), LockStrategy::Shared))
+                },
+            }
         }
         else {
             None
@@ -571,13 +690,13 @@ impl FileLockManager {
 
     /// Get statistics about the lock manager.
     pub async fn get_stats(&self) -> super::lock_stats::LockManagerStats {
-        // Count only entries that have active locks (Some state)
+        // Count only entries that have active locks (not None state)
         let active_locks = self
             .lock_table
             .iter()
             .filter(|entry| {
                 let state = entry.value().lock().unwrap();
-                state.is_some()
+                !matches!(*state, LockState::None)
             })
             .count();
 
