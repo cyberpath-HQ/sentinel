@@ -31,7 +31,6 @@ async-stream = "0.3.6"
 cuid2 = "0.1.4"
 fs2 = "0.4.3"
 dashmap = "5.5"
-uuid = { version = "1.10", features = ["v4", "serde"] }
 
 [dev-dependencies]
 tempfile = "3.24.0"
