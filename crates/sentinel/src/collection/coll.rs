@@ -91,6 +91,8 @@ pub struct Collection {
     pub(crate) created_at:         chrono::DateTime<chrono::Utc>,
     /// When the collection was last updated.
     pub(crate) updated_at:         std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
+    /// When the collection was last read from.
+    pub(crate) last_read_at:       std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
     /// When the collection was last checkpointed.
     pub(crate) last_checkpoint_at: std::sync::RwLock<Option<chrono::DateTime<chrono::Utc>>>,
     /// Total number of documents in the collection.
@@ -118,6 +120,9 @@ impl Collection {
 
     /// Returns the last update timestamp of the collection.
     pub fn updated_at(&self) -> chrono::DateTime<chrono::Utc> { *self.updated_at.read().unwrap() }
+
+    /// Returns the last read timestamp of the collection.
+    pub fn last_read_at(&self) -> chrono::DateTime<chrono::Utc> { *self.last_read_at.read().unwrap() }
 
     /// Returns the last checkpoint timestamp of the collection, if any.
     pub fn last_checkpoint_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
