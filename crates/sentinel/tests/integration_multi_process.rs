@@ -5,7 +5,9 @@ use std::{path::PathBuf, process::Command};
 /// This test suite verifies that the file locking system prevents race conditions
 /// and ensures consistent access across multiple processes.
 use sentinel_dbms::{Collection, Store};
+use sentinel_wal::StoreWalConfig;
 use serde_json::json;
+use serial_test::serial;
 
 /// Test S4.2.1: Multi-process document operations
 ///
@@ -121,25 +123,20 @@ async fn test_multi_process_read_write_concurrency() {
     for i in 0 .. 2 {
         let store_path_clone = store_path.clone();
         let child = std::thread::spawn(move || {
-            let store = tokio::runtime::Runtime::new().unwrap().block_on(async {
-                Store::new_with_config(
-                    &store_path_clone,
-                    None,
-                    sentinel_wal::StoreWalConfig::default(),
-                )
-                .await
-            });
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let store = rt
+                .block_on(async { Store::new_with_config(&store_path_clone, None, StoreWalConfig::default()).await })
+                .unwrap();
 
-            let store = store.unwrap();
-            let collection = store.collection("read_write_test").await.unwrap();
+            let collection = rt
+                .block_on(async { store.collection("read_write_test").await })
+                .unwrap();
 
             for j in 0 .. 20 {
                 let id = format!("doc-{}", j);
                 let data = json!({ "writer": i, "sequence": j });
 
-                let _: () = tokio::runtime::Runtime::new()
-                    .unwrap()
-                    .block_on(async { collection.update(id, data).await })
+                rt.block_on(async { collection.update(&id, data).await })
                     .unwrap();
             }
         });
@@ -151,20 +148,18 @@ async fn test_multi_process_read_write_concurrency() {
     for i in 0 .. 3 {
         let store_path_clone = store_path.clone();
         let child = std::thread::spawn(move || {
-            let store = tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(async { Store::new(&store_path_clone, None).await });
-
-            let store = store.unwrap();
-            let collection = store.collection("read_write_test").await.unwrap();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let store = rt
+                .block_on(async { Store::new(&store_path_clone, None).await })
+                .unwrap();
+            let collection = rt
+                .block_on(async { store.collection("read_write_test").await })
+                .unwrap();
 
             // Each reader reads all documents
             for j in 0 .. 20 {
                 let id = format!("doc-{}", j);
-                let _: () = tokio::runtime::Runtime::new()
-                    .unwrap()
-                    .block_on(async { collection.get(&id).await })
-                    .unwrap();
+                rt.block_on(async { collection.get(&id).await }).unwrap();
             }
         });
         reader_children.push(child);
@@ -175,12 +170,25 @@ async fn test_multi_process_read_write_concurrency() {
         child.join().unwrap();
     }
 
-    let total_count = tokio::runtime::Runtime::new().unwrap().block_on(async {
-        collection
-            .count()
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-    });
+    // Wait for writers to complete
+    for child in writer_children {
+        child.join().unwrap();
+    }
+
+    // Now count the documents
+    let store = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async { Store::new_with_config(&store_path, None, StoreWalConfig::default()).await });
+
+    let store = store.unwrap();
+    let collection = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async { store.collection_with_config("read_write_test", None).await })
+        .unwrap();
+
+    let total_count = tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(async { collection.count().await });
 
     let total_count = total_count.unwrap();
 
@@ -189,11 +197,6 @@ async fn test_multi_process_read_write_concurrency() {
         "Expected 40 documents, got {:?}",
         total_count
     );
-
-    // Wait for writers to complete
-    for child in writer_children {
-        child.join().unwrap();
-    }
 
     println!("✓ Multi-process read-write concurrency test passed");
 }
@@ -224,18 +227,13 @@ async fn test_multi_process_concurrent_updates() {
     for proc_id in 0 .. 3 {
         let store_path_clone = store_path.clone();
         let child = std::thread::spawn(move || {
-            let store = tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(async {
-                    Store::new_with_config(&store_path_clone, None, StoreWalConfig::default())
-                        .await
-                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                })
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let store: Store = rt
+                .block_on(async { Store::new_with_config(&store_path_clone, None, StoreWalConfig::default()).await })
                 .unwrap();
 
-            let collection = store
-                .collection_with_config("update_test", None)
-                .await
+            let collection = rt
+                .block_on(async { store.collection_with_config("update_test", None).await })
                 .unwrap();
 
             // Each process updates different subset of documents
@@ -243,9 +241,7 @@ async fn test_multi_process_concurrent_updates() {
                 let id = format!("doc-{}", i);
                 let data = json!({ "value": i * 10 + proc_id });
 
-                let _: () = tokio::runtime::Runtime::new()
-                    .unwrap()
-                    .block_on(async { collection.update(&id, data).await })
+                rt.block_on(async { collection.update(&id, data).await })
                     .unwrap();
             }
         });
@@ -309,20 +305,18 @@ async fn test_multi_process_concurrent_deletes() {
     for proc_id in 0 .. 3 {
         let store_path_clone = store_path.clone();
         let child = std::thread::spawn(move || {
-            let store = tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(async { Store::new(&store_path_clone, None).await });
-
-            let store = store.unwrap();
-            let collection = store.collection("delete_test").await.unwrap();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let store = rt
+                .block_on(async { Store::new(&store_path_clone, None).await })
+                .unwrap();
+            let collection = rt
+                .block_on(async { store.collection("delete_test").await })
+                .unwrap();
 
             // Each process deletes different subset
             for i in (proc_id * 5) .. ((proc_id + 1) * 5) {
                 let id = format!("doc-{}", i);
-                let _: () = tokio::runtime::Runtime::new()
-                    .unwrap()
-                    .block_on(async { collection.delete(&id).await })
-                    .unwrap();
+                rt.block_on(async { collection.delete(&id).await }).unwrap();
             }
         });
         children.push(child);

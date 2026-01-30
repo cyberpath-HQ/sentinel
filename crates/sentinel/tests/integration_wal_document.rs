@@ -205,20 +205,19 @@ async fn test_concurrent_wal_document_locks() {
     for proc_id in 0 .. 3 {
         let store_path_clone = store_path.clone();
         let child = std::thread::spawn(move || {
-            let store = tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(async { Store::new(&store_path_clone, None).await });
-
-            let store = store.unwrap();
-            let collection = store.collection("concurrent_wal_test").await.unwrap();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let store = rt
+                .block_on(async { Store::new(&store_path_clone, None).await })
+                .unwrap();
+            let collection = rt
+                .block_on(async { store.collection("concurrent_wal_test").await })
+                .unwrap();
 
             // Each process updates the same document
             let id = "shared-doc";
             let data = json!({ "process": proc_id, "value": proc_id * 100 });
 
-            tokio::runtime::Runtime::new()
-                .unwrap()
-                .block_on(async { collection.update(id, data).await })
+            rt.block_on(async { collection.update(id, data).await })
                 .unwrap();
         });
         children.push(child);
@@ -237,7 +236,7 @@ async fn test_concurrent_wal_document_locks() {
     let store = store.unwrap();
     let collection = store.collection("concurrent_wal_test").await.unwrap();
 
-    let doc: Option<Document> = tokio::runtime::Runtime::new()
+    let doc: Document = tokio::runtime::Runtime::new()
         .unwrap()
         .block_on(async { collection.get("shared-doc").await })
         .unwrap()
