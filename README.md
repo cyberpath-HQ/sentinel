@@ -279,6 +279,7 @@ data/
 - **Collections** - Folder-based namespaces for organizing documents
 - **Async CRUD Operations** - Full Create, Read, Update, Delete with Tokio
 - **Document Metadata** - Automatic version, timestamps, hash, and signature
+- **Stale Data Warnings** - Track reads during concurrent writes
 - **Streaming API** - Memory-efficient streaming for large datasets
 - **Advanced Querying** - Filter, sort, limit, offset, and projection
 - **Query Builder** - Fluent API for building complex queries
@@ -295,6 +296,10 @@ data/
 - **Comprehensive Testing** - Extensive unit and integration tests
 - **Benchmarking** - Performance benchmarks with Criterion
 - **WAL (Write-Ahead Logging)** - Durable transaction logging for crash recovery
+- **File Locking System** - Cross-process, deadlock detection, timeout handling
+- **Lock Statistics** - Metrics for lock contention and pending requests
+- **Deadlock Detection** - Automated cycle detection and resolution
+- **Lock Management API** - Monitor locks, check status, force releases
 
 ### 🚧 In Progress
 
