@@ -196,9 +196,7 @@ async fn test_multi_process_read_write_concurrency() {
     }
 
     println!("✓ Multi-process read-write concurrency test passed");
-
-/// Test S4.2.1: Multi-process update operations
-///
+}
 /// This test verifies that exclusive locks are properly acquired during update
 /// operations across multiple processes.
 #[tokio::test]
