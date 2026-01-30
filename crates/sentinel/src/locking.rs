@@ -134,7 +134,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use uuid::Uuid;
+use cuid2::cuid;
 use dashmap::DashMap;
 use fs2::FileExt;
 use tokio::{
@@ -172,7 +172,7 @@ pub struct LockGuard {
     /// When this lock was acquired (for deadlock detection)
     acquired_at: Instant,
     /// Unique ID holding this lock (for deadlock detection)
-    holder_id:   Uuid,
+    holder_id:   String,
 }
 
 impl Drop for LockGuard {
@@ -207,18 +207,18 @@ struct LockRequest {
     /// Timeout for this request
     timeout:      Duration,
     /// ID of the requester (for deadlock detection)
-    requester_id: Uuid,
+    requester_id: String,
 }
 
 /// Global deadlock detector that monitors all lock requests.
 #[derive(Debug)]
 struct DeadlockDetector {
     /// Wait-for graph: holder_id -> set of requesters waiting for that holder
-    wait_graph:       RwLock<HashMap<Uuid, Vec<Uuid>>>,
+    wait_graph:       RwLock<HashMap<String, Vec<String>>>,
     /// Current lock requests: path -> list of pending requests
     pending_requests: RwLock<HashMap<PathBuf, Vec<LockRequest>>>,
     /// Active locks: path -> (holder_id, strategy)
-    active_locks:     RwLock<HashMap<PathBuf, (Uuid, LockStrategy)>>,
+    active_locks:     RwLock<HashMap<PathBuf, (String, LockStrategy)>>,
 }
 
 impl DeadlockDetector {
@@ -231,7 +231,7 @@ impl DeadlockDetector {
     }
 
     /// Register that a requester is waiting for a lock held by holder_id.
-    async fn register_wait(&self, requester_id: Uuid, holder_id: Uuid) -> Result<()> {
+    async fn register_wait(&self, requester_id: String, holder_id: String) -> Result<()> {
         let mut graph = self.wait_graph.write().await;
         graph
             .entry(holder_id)
@@ -241,10 +241,10 @@ impl DeadlockDetector {
     }
 
     /// Remove a wait relationship when a request completes.
-    async fn unregister_wait(&self, requester_id: Uuid, holder_id: Uuid) -> Result<()> {
+    async fn unregister_wait(&self, requester_id: String, holder_id: String) -> Result<()> {
         let mut graph = self.wait_graph.write().await;
         if let Some(waiters) = graph.get_mut(&holder_id) {
-            waiters.retain(|&id| id != requester_id);
+            waiters.retain(|id| id != &requester_id);
             if waiters.is_empty() {
                 graph.remove(&holder_id);
             }
@@ -253,7 +253,7 @@ impl DeadlockDetector {
     }
 
     /// Record an active lock acquisition.
-    async fn record_lock_acquired(&self, path: &Path, holder_id: Uuid, strategy: LockStrategy) {
+    async fn record_lock_acquired(&self, path: &Path, holder_id: String, strategy: LockStrategy) {
         let mut active = self.active_locks.write().await;
         active.insert(path.to_path_buf(), (holder_id, strategy));
     }
@@ -274,7 +274,7 @@ impl DeadlockDetector {
     }
 
     /// Remove a pending request when it completes.
-    async fn unregister_request(&self, path: &Path, requester_id: Uuid) {
+    async fn unregister_request(&self, path: &Path, requester_id: String) {
         let mut pending = self.pending_requests.write().await;
         if let Some(requests) = pending.get_mut(path) {
             requests.retain(|req| req.requester_id != requester_id);
@@ -286,22 +286,22 @@ impl DeadlockDetector {
 
     /// Detect if there's a deadlock involving the given requester.
     /// Returns true if a cycle is found in the wait-for graph.
-    async fn detect_deadlock(&self, requester_id: Uuid) -> bool {
+    async fn detect_deadlock(&self, requester_id: String) -> bool {
         let graph = self.wait_graph.read().await;
         let mut visited = std::collections::HashSet::new();
         let mut stack = vec![requester_id];
 
         while let Some(current) = stack.pop() {
-            if !visited.insert(current) {
+            if !visited.insert(current.clone()) {
                 // Cycle detected
                 return true;
             }
 
             // Add all nodes that are waiting for this one
             if let Some(waiters) = graph.get(&current) {
-                for &waiter in waiters {
-                    if !visited.contains(&waiter) {
-                        stack.push(waiter);
+                for waiter in waiters {
+                    if !visited.contains(waiter) {
+                        stack.push(waiter.clone());
                     }
                 }
             }
@@ -311,13 +311,13 @@ impl DeadlockDetector {
     }
 
     /// Check for deadlocks and return IDs of deadlocked transactions.
-    async fn find_deadlocked_transactions(&self) -> Vec<Uuid> {
+    async fn find_deadlocked_transactions(&self) -> Vec<String> {
         let graph = self.wait_graph.read().await;
         let mut deadlocked = Vec::new();
         let mut visited = std::collections::HashSet::new();
 
-        for &start_node in graph.keys() {
-            if visited.contains(&start_node) {
+        for start_node in graph.keys() {
+            if visited.contains(start_node) {
                 continue;
             }
 
@@ -326,14 +326,14 @@ impl DeadlockDetector {
 
             if Self::has_cycle(
                 &graph,
-                start_node,
+                &start_node,
                 &mut path,
                 &mut current_path,
                 &mut visited,
             ) {
                 // Find the transaction to abort (youngest in the cycle)
-                if let Some(&victim) = path.last() {
-                    deadlocked.push(victim);
+                if let Some(victim) = path.last() {
+                    deadlocked.push(victim.clone());
                 }
             }
         }
@@ -343,28 +343,39 @@ impl DeadlockDetector {
 
     /// Helper function to detect cycles in the wait-for graph using DFS.
     fn has_cycle(
-        graph: &HashMap<Uuid, Vec<Uuid>>,
-        node: Uuid,
-        path: &mut Vec<Uuid>,
-        current_path: &mut std::collections::HashSet<Uuid>,
-        visited: &mut std::collections::HashSet<Uuid>,
+        graph: &HashMap<String, Vec<String>>,
+        node: &String,
+        path: &mut Vec<String>,
+        current_path: &mut std::collections::HashSet<String>,
+        visited: &mut std::collections::HashSet<String>,
     ) -> bool {
-        visited.insert(node);
-        current_path.insert(node);
-        path.push(node);
+        // If this node is in the current traversal path, we found a cycle
+        if current_path.contains(node) {
+            return true;
+        }
 
-        if let Some(neighbors) = graph.get(&node) {
-            for &neighbor in neighbors {
-                if !visited.contains(&neighbor) && Self::has_cycle(graph, neighbor, path, current_path, visited) {
+        // Mark this node as visited
+        if visited.contains(node) {
+            return false;
+        }
+        visited.insert(node.clone());
+        current_path.insert(node.clone());
+        path.push(node.clone());
+
+        // Recursively check neighbors
+        if let Some(neighbors) = graph.get(node) {
+            for neighbor in neighbors {
+                if !visited.contains(neighbor) && Self::has_cycle(graph, neighbor, path, current_path, visited) {
                     return true;
                 }
-                else if current_path.contains(&neighbor) {
-                    return true; // Cycle found
+                else if current_path.contains(neighbor) {
+                    return true;
                 }
             }
         }
 
-        current_path.remove(&node);
+        // Backtrack: remove node from current path
+        current_path.remove(node);
         path.pop();
         false
     }
@@ -413,7 +424,7 @@ impl DeadlockDetector {
 #[derive(Debug)]
 pub struct FileLockManager {
     /// Lock table: path -> current lock state
-    lock_table:            Arc<DashMap<PathBuf, Arc<RwLock<Option<(Uuid, LockStrategy)>>>>>,
+    lock_table:            Arc<DashMap<PathBuf, Arc<RwLock<Option<(String, LockStrategy)>>>>>,
     /// Deadlock detector instance
     deadlock_detector:     Arc<DeadlockDetector>,
     /// Default timeout for lock acquisitions
@@ -490,12 +501,12 @@ impl FileLockManager {
     ) -> Result<LockGuard> {
         let timeout = timeout.unwrap_or(self.default_timeout);
         let _start_time = Instant::now();
-        let requester_id = Uuid::new_v4(); // Unique UUID for this lock acquisition
+        let requester_id = cuid(); // Unique UUID for this lock acquisition
 
         // Try to acquire lock with deadlock detection and retries
         for retry in 0 ..= self.max_deadlock_retries {
             match self
-                .try_acquire_lock_with_deadlock_detection(path, strategy, timeout, requester_id)
+                .try_acquire_lock_with_deadlock_detection(path, strategy, timeout, requester_id.clone())
                 .await
             {
                 Ok(guard) => return Ok(guard),
@@ -518,7 +529,7 @@ impl FileLockManager {
         path: &Path,
         strategy: LockStrategy,
         timeout: Duration,
-        requester_id: Uuid,
+        requester_id: String,
     ) -> Result<LockGuard> {
         // Serialize acquisitions to prevent thundering herd
         let _acquisition_guard = self.acquisition_mutex.lock().await;
@@ -543,18 +554,22 @@ impl FileLockManager {
         if let Some((holder_id, existing_strategy)) = existing_holder {
             // Record wait relationship: requester is waiting for holder
             self.deadlock_detector
-                .register_wait(requester_id, holder_id)
+                .register_wait(requester_id.clone(), holder_id.clone())
                 .await?;
 
             // Before retrying, check if we're in a deadlock cycle
-            if self.deadlock_detector.detect_deadlock(requester_id).await {
+            if self
+                .deadlock_detector
+                .detect_deadlock(requester_id.clone())
+                .await
+            {
                 // Deadlock detected! Abort this request
                 error!(
                     "Deadlock detected for requester {:?} while waiting for holder {:?}",
                     requester_id, holder_id
                 );
                 self.deadlock_detector
-                    .unregister_wait(requester_id, holder_id)
+                    .unregister_wait(requester_id.clone(), holder_id.clone())
                     .await?;
                 return Err(SentinelError::DeadlockDetected);
             }
@@ -578,12 +593,12 @@ impl FileLockManager {
                 .entry(path.to_path_buf())
                 .or_insert_with(|| Arc::new(RwLock::new(None)));
             let mut state = lock_state.write().await;
-            *state = Some((requester_id, strategy));
+            *state = Some((requester_id.clone(), strategy));
         }
 
         // Record active lock in deadlock detector
         self.deadlock_detector
-            .record_lock_acquired(path, requester_id, strategy)
+            .record_lock_acquired(path, requester_id.clone(), strategy)
             .await;
 
         Ok(LockGuard {
@@ -682,10 +697,10 @@ impl FileLockManager {
     }
 
     /// Get information about the current lock holder for a path.
-    pub async fn get_lock_holder(&self, path: &Path) -> Option<(Uuid, LockStrategy)> {
+    pub async fn get_lock_holder(&self, path: &Path) -> Option<(String, LockStrategy)> {
         if let Some(lock_state) = self.lock_table.get(path) {
             let state = lock_state.read().await;
-            *state
+            state.clone()
         }
         else {
             None
@@ -732,7 +747,7 @@ impl LockGuard {
     pub const fn acquired_at(&self) -> Instant { self.acquired_at }
 
     /// Get the ID of the lock holder.
-    pub fn holder_id(&self) -> Uuid { self.holder_id }
+    pub fn holder_id(&self) -> String { self.holder_id.clone() }
 
     /// Upgrade from shared lock to exclusive lock.
     ///
@@ -755,7 +770,7 @@ impl LockGuard {
         }
 
         let _timeout = timeout.unwrap_or(manager.default_timeout);
-        let _requester_id = Uuid::new_v4();
+        let _requester_id = cuid();
 
         // Attempt upgrade - for now, just return an error as this feature is not fully implemented
         return Err(SentinelError::InvalidLockState {
@@ -803,7 +818,6 @@ mod tests {
         time::Duration,
     };
 
-    use uuid::Uuid;
     use tempfile::tempdir;
     use tokio::time::timeout;
 
@@ -1008,16 +1022,25 @@ mod tests {
     async fn test_deadlockdetector_cycle_detection() {
         // Test deadlock detection with cycle
         let detector = DeadlockDetector::new();
-        let pid1 = Uuid::new_v4();
-        let pid2 = Uuid::new_v4();
-        let pid3 = Uuid::new_v4();
+        let pid1 = cuid();
+        let pid2 = cuid();
+        let pid3 = cuid();
 
-        detector.register_wait(pid1, pid2).await.unwrap();
-        detector.register_wait(pid2, pid3).await.unwrap();
-        detector.register_wait(pid3, pid1).await.unwrap();
+        detector
+            .register_wait(pid1.clone(), pid2.clone())
+            .await
+            .unwrap();
+        detector
+            .register_wait(pid2.clone(), pid3.clone())
+            .await
+            .unwrap();
+        detector
+            .register_wait(pid3.clone(), pid1.clone())
+            .await
+            .unwrap();
 
-        assert!(detector.detect_deadlock(pid1).await);
-        assert!(detector.detect_deadlock(pid2).await);
+        assert!(detector.detect_deadlock(pid1.clone()).await);
+        assert!(detector.detect_deadlock(pid2.clone()).await);
         assert!(detector.detect_deadlock(pid3).await);
     }
 
@@ -1025,10 +1048,13 @@ mod tests {
     async fn test_deadlockdetector_wait_graph_updates() {
         // Test wait-for graph update and cleanup
         let detector = DeadlockDetector::new();
-        let pid1 = Uuid::new_v4();
-        let pid2 = Uuid::new_v4();
+        let pid1 = cuid();
+        let pid2 = cuid();
 
-        detector.register_wait(pid1, pid2).await.unwrap();
+        detector
+            .register_wait(pid1.clone(), pid2.clone())
+            .await
+            .unwrap();
 
         let graph = detector.wait_graph.read().await;
         assert!(graph.contains_key(&pid2));
@@ -1036,7 +1062,10 @@ mod tests {
         assert!(graph.get(&pid2).unwrap().contains(&pid1));
 
         drop(graph);
-        detector.unregister_wait(pid1, pid2).await.unwrap();
+        detector
+            .unregister_wait(pid1.clone(), pid2.clone())
+            .await
+            .unwrap();
 
         let graph = detector.wait_graph.read().await;
         assert!(!graph.contains_key(&pid2));
@@ -1046,13 +1075,22 @@ mod tests {
     async fn test_deadlockdetector_resolution_logic() {
         // Test deadlock resolution finds transactions in cycle
         let detector = DeadlockDetector::new();
-        let pid1 = Uuid::new_v4();
-        let pid2 = Uuid::new_v4();
-        let pid3 = Uuid::new_v4();
+        let pid1 = cuid();
+        let pid2 = cuid();
+        let pid3 = cuid();
 
-        detector.register_wait(pid1, pid2).await.unwrap();
-        detector.register_wait(pid2, pid3).await.unwrap();
-        detector.register_wait(pid3, pid1).await.unwrap();
+        detector
+            .register_wait(pid1.clone(), pid2.clone())
+            .await
+            .unwrap();
+        detector
+            .register_wait(pid2.clone(), pid3.clone())
+            .await
+            .unwrap();
+        detector
+            .register_wait(pid3.clone(), pid1.clone())
+            .await
+            .unwrap();
 
         let deadlocked = detector.find_deadlocked_transactions().await;
         assert!(!deadlocked.is_empty());
@@ -1061,9 +1099,18 @@ mod tests {
             assert!(pid == pid1 || pid == pid2 || pid == pid3);
         }
 
-        detector.unregister_wait(pid1, pid2).await.unwrap();
-        detector.unregister_wait(pid2, pid3).await.unwrap();
-        detector.unregister_wait(pid3, pid1).await.unwrap();
+        detector
+            .unregister_wait(pid1.clone(), pid2.clone())
+            .await
+            .unwrap();
+        detector
+            .unregister_wait(pid2.clone(), pid3.clone())
+            .await
+            .unwrap();
+        detector
+            .unregister_wait(pid3.clone(), pid1.clone())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
