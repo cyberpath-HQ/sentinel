@@ -31,12 +31,12 @@ pub struct LockRequest {
 
 /// Global deadlock detector that monitors all lock requests.
 ///
-/// This detector maintains a wait-for graph where each node represents a lock holder,
+/// This detector maintains a wait-for graph where each node represents a lock requester,
 /// and each edge represents a waiting relationship. Cycles in this graph indicate
 /// deadlocks, which are detected and resolved by aborting the youngest transaction.
 #[derive(Debug)]
 pub struct DeadlockDetector {
-    /// Wait-for graph: holder_id -> set of requesters waiting for that holder
+    /// Wait-for graph: requester_id -> set of holders that requester is waiting for
     wait_graph:       RwLock<HashMap<String, Vec<String>>>,
     /// Current lock requests: path -> list of pending requests
     pending_requests: RwLock<HashMap<PathBuf, Vec<LockRequest>>>,
@@ -58,19 +58,19 @@ impl DeadlockDetector {
     pub async fn register_wait(&self, requester_id: String, holder_id: String) -> Result<()> {
         let mut graph = self.wait_graph.write().await;
         graph
-            .entry(holder_id)
+            .entry(requester_id)
             .or_insert_with(Vec::new)
-            .push(requester_id);
+            .push(holder_id);
         Ok(())
     }
 
     /// Remove a wait relationship when a request completes.
     pub async fn unregister_wait(&self, requester_id: String, holder_id: String) -> Result<()> {
         let mut graph = self.wait_graph.write().await;
-        if let Some(waiters) = graph.get_mut(&holder_id) {
-            waiters.retain(|id| id != &requester_id);
-            if waiters.is_empty() {
-                graph.remove(&holder_id);
+        if let Some(holders) = graph.get_mut(&requester_id) {
+            holders.retain(|id| id != &holder_id);
+            if holders.is_empty() {
+                graph.remove(&requester_id);
             }
         }
         Ok(())
@@ -113,25 +113,16 @@ impl DeadlockDetector {
     pub async fn detect_deadlock(&self, requester_id: String) -> bool {
         let graph = self.wait_graph.read().await;
         let mut visited = std::collections::HashSet::new();
-        let mut stack = vec![requester_id];
+        let mut path: Vec<String> = Vec::new();
+        let mut current_path = std::collections::HashSet::new();
 
-        while let Some(current) = stack.pop() {
-            if !visited.insert(current.clone()) {
-                // Cycle detected
-                return true;
-            }
-
-            // Add all nodes that are waiting for this one
-            if let Some(waiters) = graph.get(&current) {
-                for waiter in waiters {
-                    if !visited.contains(waiter) {
-                        stack.push(waiter.clone());
-                    }
-                }
-            }
-        }
-
-        false
+        Self::has_cycle(
+            &graph,
+            &requester_id,
+            &mut path,
+            &mut current_path,
+            &mut visited,
+        )
     }
 
     /// Check for deadlocks and return IDs of deadlocked transactions.
@@ -145,7 +136,7 @@ impl DeadlockDetector {
                 continue;
             }
 
-            let mut path = Vec::new();
+            let mut path: Vec<String> = Vec::new();
             let mut current_path = std::collections::HashSet::new();
 
             if Self::has_cycle(
