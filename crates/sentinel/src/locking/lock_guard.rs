@@ -47,28 +47,70 @@ pub struct LockGuard {
 
 impl Drop for LockGuard {
     fn drop(&mut self) {
-        // The filesystem lock is automatically released when the file handle is closed
-        // No need to call unlock() explicitly
+        // Explicitly unlock the file at the filesystem level
+        // This ensures the lock is released immediately, not just when the file handle is dropped
+        let _ = self.file.unlock();
 
         // Clear the lock state synchronously for immediate effect
+        // Use try_lock to avoid deadlocks - if we can't acquire the lock, skip cleanup
         if let Some(lock_state) = self._manager.lock_table.get(&self.path) {
-            let mut state = lock_state.lock().unwrap();
-            *state = None;
+            if let Ok(mut state) = lock_state.try_lock() {
+                // Remove this holder from the lock state
+                *state = match &*state {
+                    crate::locking::file_lock_manager::LockState::None => {
+                        crate::locking::file_lock_manager::LockState::None
+                    },
+                    crate::locking::file_lock_manager::LockState::Exclusive(holder) if holder == &self.holder_id => {
+                        crate::locking::file_lock_manager::LockState::None
+                    },
+                    crate::locking::file_lock_manager::LockState::Shared(holders) => {
+                        let mut new_holders = holders.clone();
+                        new_holders.remove(&self.holder_id);
+                        if new_holders.is_empty() {
+                            crate::locking::file_lock_manager::LockState::None
+                        }
+                        else {
+                            crate::locking::file_lock_manager::LockState::Shared(new_holders)
+                        }
+                    },
+                    _ => {
+                        // Lock state doesn't match our holder_id, keep as is
+                        state.clone()
+                    },
+                };
+            }
+            else {
+                // Could not acquire lock, state may be stale but will be cleaned up later
+                debug!(
+                    "Could not acquire lock state for cleanup on drop for {:?}",
+                    self.path
+                );
+            }
         }
 
-        // Note: Deadlock detector tracking is handled asynchronously elsewhere
-        // to avoid async operations in Drop
+        // Clean up deadlock detector tracking synchronously
+        self._manager
+            .deadlock_detector
+            .record_lock_released_sync(&self.path);
 
         // Synchronously wake up the next waiter in the queue
+        // Use try_lock to avoid deadlocks
         if let Some(queue) = self._manager.lock_queues.get(&self.path) {
-            let mut queue = queue.lock().unwrap();
-            if let Some(next_waiter) = queue.dequeue() {
+            if let Ok(mut queue) = queue.try_lock() {
+                if let Some(next_waiter) = queue.dequeue() {
+                    debug!(
+                        "Waking up next waiter {:?} for path {:?}",
+                        next_waiter.requester_id, self.path
+                    );
+                    // Ignore send error (waiter may have timed out)
+                    let _ = next_waiter.waker.send(());
+                }
+            }
+            else {
                 debug!(
-                    "Waking up next waiter {:?} for path {:?}",
-                    next_waiter.requester_id, self.path
+                    "Could not acquire queue lock for wakeup on drop for {:?}",
+                    self.path
                 );
-                // Ignore send error (waiter may have timed out)
-                let _ = next_waiter.waker.send(());
             }
         }
     }
@@ -112,7 +154,7 @@ impl LockGuard {
         }
 
         let _timeout = timeout.unwrap_or(manager.default_timeout);
-        let requester_id = cuid2::cuid();
+        let holder_id = self.holder_id.clone();
 
         // First, check if we're the only holder of this shared lock
         // In a proper implementation, we'd need to track all holders, but for now
@@ -126,7 +168,7 @@ impl LockGuard {
                 // Update the lock manager's state
                 if let Some(lock_state) = manager.lock_table.get(&upgraded_guard.path) {
                     let mut state = lock_state.lock().unwrap();
-                    *state = Some((requester_id, LockStrategy::Exclusive));
+                    *state = crate::locking::file_lock_manager::LockState::Exclusive(holder_id);
                 }
 
                 debug!("Successfully upgraded lock for {:?}", upgraded_guard.path);
