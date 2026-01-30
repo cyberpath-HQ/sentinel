@@ -128,6 +128,7 @@ pub async fn collection_with_config(
         lock_manager: Arc::clone(&store.lock_manager),
         created_at: now,
         updated_at: std::sync::RwLock::new(now),
+        last_read_at: std::sync::RwLock::new(now),
         last_checkpoint_at: std::sync::RwLock::new(None),
         total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.document_count)),
         total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.total_size_bytes)),
