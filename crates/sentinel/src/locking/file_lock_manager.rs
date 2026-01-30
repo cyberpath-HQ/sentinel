@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, VecDeque},
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{atomic::AtomicU64, Arc},
     time::{Duration, Instant},
 };
 
@@ -125,9 +125,9 @@ impl Default for LockQueue {
 #[derive(Debug)]
 pub struct FileLockManager {
     /// Lock table: path -> current lock state
-    pub(crate) lock_table:            Arc<DashMap<PathBuf, Arc<RwLock<Option<(String, LockStrategy)>>>>>,
+    pub(crate) lock_table:            Arc<DashMap<PathBuf, Arc<std::sync::Mutex<Option<(String, LockStrategy)>>>>>,
     /// Lock queues: path -> FIFO queue of waiting requesters
-    pub(crate) lock_queues:           Arc<DashMap<PathBuf, Arc<RwLock<LockQueue>>>>,
+    pub(crate) lock_queues:           Arc<DashMap<PathBuf, Arc<std::sync::Mutex<LockQueue>>>>,
     /// Deadlock detector instance
     pub(crate) deadlock_detector:     Arc<DeadlockDetector>,
     /// Default timeout for lock acquisitions
@@ -138,6 +138,10 @@ pub struct FileLockManager {
     pub(crate) deadlock_backoff_base: Duration,
     /// Mutex to serialize lock acquisitions (prevents thundering herd)
     pub(crate) acquisition_mutex:     Arc<Mutex<()>>,
+    /// Performance metrics counters
+    pub(crate) lock_acquisitions:     Arc<AtomicU64>,
+    pub(crate) lock_contentions:      Arc<AtomicU64>,
+    pub(crate) failed_acquisitions:   Arc<AtomicU64>,
 }
 
 impl FileLockManager {
@@ -157,6 +161,9 @@ impl FileLockManager {
             max_deadlock_retries:  3,
             deadlock_backoff_base: Duration::from_millis(100),
             acquisition_mutex:     Arc::new(Mutex::new(())),
+            lock_acquisitions:     Arc::new(AtomicU64::new(0)),
+            lock_contentions:      Arc::new(AtomicU64::new(0)),
+            failed_acquisitions:   Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -235,12 +242,12 @@ impl FileLockManager {
         timeout: Duration,
         requester_id: String,
     ) -> Result<LockGuard> {
-        // Serialize acquisitions to prevent thundering herd
+        // Serialize lock acquisitions to prevent thundering herd
         let _acquisition_guard = self.acquisition_mutex.lock().await;
 
         // Check if the path is already locked by a different holder
         let existing_holder = if let Some(lock_state) = self.lock_table.get(path) {
-            let state = lock_state.read().await;
+            let state = lock_state.lock().unwrap();
             state.clone().and_then(|(holder, strategy)| {
                 if holder != requester_id {
                     Some((holder, strategy))
@@ -299,8 +306,8 @@ impl FileLockManager {
                     let lock_state = self
                         .lock_table
                         .entry(path.to_path_buf())
-                        .or_insert_with(|| Arc::new(RwLock::new(None)));
-                    let mut state = lock_state.write().await;
+                        .or_insert_with(|| Arc::new(std::sync::Mutex::new(None)));
+                    let mut state = lock_state.lock().unwrap();
                     *state = Some((requester_id.clone(), strategy));
                 }
 
@@ -308,6 +315,10 @@ impl FileLockManager {
                 self.deadlock_detector
                     .record_lock_acquired(path, requester_id.clone(), strategy)
                     .await;
+
+                // Increment acquisition counter
+                self.lock_acquisitions
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
                 Ok(LockGuard {
                     path: path.to_path_buf(),
@@ -322,6 +333,9 @@ impl FileLockManager {
                 ..
             }) => {
                 // Could not acquire immediately, enqueue and wait
+                // Increment failed acquisitions counter for immediate timeout
+                self.failed_acquisitions
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 self.enqueue_and_wait(path, strategy, timeout, requester_id)
                     .await
             },
@@ -353,21 +367,26 @@ impl FileLockManager {
             let queue = self
                 .lock_queues
                 .entry(path.to_path_buf())
-                .or_insert_with(|| Arc::new(RwLock::new(LockQueue::new())));
-            let mut queue = queue.write().await;
+                .or_insert_with(|| Arc::new(std::sync::Mutex::new(LockQueue::new())));
+            let mut queue = queue.lock().unwrap();
             queue.enqueue(entry);
         }
+
+        // Increment contention counter
+        self.lock_contentions
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         debug!("Enqueued requester {:?} for path {:?}", requester_id, path);
 
         // Wait for wakeup with timeout
         match time::timeout(timeout, receiver).await {
             Ok(Ok(())) => {
-                // Woken up! Try to acquire the lock now
+                // Woken up! Remove ourselves from queue and try to acquire the lock
                 debug!(
-                    "Requester {:?} woken up, attempting lock acquisition",
+                    "Requester {:?} woken up, removing from queue and attempting lock acquisition",
                     requester_id
                 );
+                self.remove_from_queue(path, &requester_id).await;
                 self.try_acquire_lock_immediately(path, strategy, requester_id)
                     .await
             },
@@ -383,6 +402,11 @@ impl FileLockManager {
                 // Timeout - remove from queue and return error
                 debug!("Timeout waiting in queue for requester {:?}", requester_id);
                 self.remove_from_queue(path, &requester_id).await;
+
+                // Increment failed acquisitions counter
+                self.failed_acquisitions
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
                 Err(SentinelError::LockTimeout {
                     path:       path.to_path_buf(),
                     timeout_ms: timeout.as_millis() as u64,
@@ -409,8 +433,8 @@ impl FileLockManager {
             let lock_state = self
                 .lock_table
                 .entry(path.to_path_buf())
-                .or_insert_with(|| Arc::new(RwLock::new(None)));
-            let mut state = lock_state.write().await;
+                .or_insert_with(|| Arc::new(std::sync::Mutex::new(None)));
+            let mut state = lock_state.lock().unwrap();
             *state = Some((requester_id.clone(), strategy));
         }
 
@@ -418,6 +442,10 @@ impl FileLockManager {
         self.deadlock_detector
             .record_lock_acquired(path, requester_id.clone(), strategy)
             .await;
+
+        // Increment acquisition counter
+        self.lock_acquisitions
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         Ok(LockGuard {
             path: path.to_path_buf(),
@@ -432,7 +460,7 @@ impl FileLockManager {
     /// Remove a specific requester from the queue for a path.
     async fn remove_from_queue(&self, path: &Path, requester_id: &str) {
         if let Some(queue) = self.lock_queues.get(path) {
-            let mut queue = queue.write().await;
+            let mut queue = queue.lock().unwrap();
             // Remove the specific requester (inefficient but correct)
             queue
                 .queue
@@ -512,7 +540,7 @@ impl FileLockManager {
     /// This is an emergency method that should be used carefully.
     pub async fn force_release_lock(&self, path: &Path) -> Result<()> {
         if let Some(lock_state) = self.lock_table.get(path) {
-            let mut state = lock_state.write().await;
+            let mut state = lock_state.lock().unwrap();
             *state = None;
         }
         self.deadlock_detector.record_lock_released(path).await;
@@ -522,7 +550,7 @@ impl FileLockManager {
     /// Check if a path is currently locked.
     pub async fn is_locked(&self, path: &Path) -> bool {
         if let Some(lock_state) = self.lock_table.get(path) {
-            let state = lock_state.read().await;
+            let state = lock_state.lock().unwrap();
             state.is_some()
         }
         else {
@@ -533,7 +561,7 @@ impl FileLockManager {
     /// Get information about the current lock holder for a path.
     pub async fn get_lock_holder(&self, path: &Path) -> Option<(String, LockStrategy)> {
         if let Some(lock_state) = self.lock_table.get(path) {
-            let state = lock_state.read().await;
+            let state = lock_state.lock().unwrap();
             state.clone()
         }
         else {
@@ -543,16 +571,26 @@ impl FileLockManager {
 
     /// Get statistics about the lock manager.
     pub async fn get_stats(&self) -> super::lock_stats::LockManagerStats {
-        let active_locks = self.lock_table.len();
+        // Count only entries that have active locks (Some state)
+        let active_locks = self
+            .lock_table
+            .iter()
+            .filter(|entry| {
+                let state = entry.value().lock().unwrap();
+                state.is_some()
+            })
+            .count();
 
-        // Count actual queued requests
+        // Count actual queued requests and build queue lengths map
         let mut total_pending_requests = 0;
         let mut paths_with_pending_requests = 0;
-        for queue in self.lock_queues.iter() {
-            let queue_len = queue.value().read().await.len();
+        let mut queue_lengths = HashMap::new();
+        for queue_ref in self.lock_queues.iter() {
+            let queue_len = queue_ref.value().lock().unwrap().len();
             if queue_len > 0 {
                 total_pending_requests += queue_len;
                 paths_with_pending_requests += 1;
+                queue_lengths.insert(queue_ref.key().to_string_lossy().to_string(), queue_len);
             }
         }
 
@@ -560,6 +598,17 @@ impl FileLockManager {
             active_locks,
             total_pending_requests,
             paths_with_pending_requests,
+            queue_lengths,
+            total_wait_time: tokio::time::Duration::ZERO, // TODO: Implement wait time tracking
+            lock_acquisitions: self
+                .lock_acquisitions
+                .load(std::sync::atomic::Ordering::Relaxed),
+            lock_contentions: self
+                .lock_contentions
+                .load(std::sync::atomic::Ordering::Relaxed),
+            failed_acquisitions: self
+                .failed_acquisitions
+                .load(std::sync::atomic::Ordering::Relaxed),
         }
     }
 }
