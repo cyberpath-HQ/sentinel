@@ -218,6 +218,7 @@ impl Collection {
                                                  lock_manager: Arc::new(crate::locking::FileLockManager::new()), // Temporary manager for verification
                                                  created_at: chrono::Utc::now(),
                                                  updated_at: std::sync::RwLock::new(chrono::Utc::now()),
+                                                 last_read_at: std::sync::RwLock::new(chrono::Utc::now()),
                                                  last_checkpoint_at: std::sync::RwLock::new(None),
                                                  total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                                                  total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -375,6 +376,7 @@ impl Collection {
                                                  lock_manager: Arc::new(crate::locking::FileLockManager::new()), // Temporary manager for verification
                                                  created_at: chrono::Utc::now(),
                                                  updated_at: std::sync::RwLock::new(chrono::Utc::now()),
+                                                 last_read_at: std::sync::RwLock::new(chrono::Utc::now()),
                                                  last_checkpoint_at: std::sync::RwLock::new(None),
                                                  total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                                                  total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
