@@ -6,13 +6,12 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc,
     time::{Duration, Instant},
 };
 
 use tokio::sync::RwLock;
 
-use crate::error::{Result, SentinelError};
+use crate::error::Result;
 
 /// Deadlock detection state for a single lock request.
 #[derive(Debug)]

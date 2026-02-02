@@ -30,6 +30,10 @@ use crate::locking::{FileLockManager, LockStrategy};
 /// - `acquired_at`: When this lock was acquired
 /// - `holder_id`: Unique ID of the lock holder
 #[derive(Debug)]
+#[allow(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) fields are used internally within the crate and are appropriate for internal visibility"
+)]
 pub struct LockGuard {
     /// Path to the locked file
     pub(crate) path:        PathBuf,

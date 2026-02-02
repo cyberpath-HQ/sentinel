@@ -14,14 +14,14 @@ pub enum LockStrategy {
 
 impl LockStrategy {
     /// Check if this strategy is compatible with an existing lock
-    pub fn is_compatible(&self, existing: LockStrategy) -> bool {
+    pub fn is_compatible(&self, existing: Self) -> bool {
         match (self, existing) {
             // Shared with shared is compatible
-            (LockStrategy::Shared, LockStrategy::Shared) => true,
+            (Self::Shared, Self::Shared) => true,
             // Exclusive with anything is incompatible
-            (LockStrategy::Exclusive, _) => false,
+            (Self::Exclusive, _) => false,
             // Shared with exclusive is incompatible
-            (LockStrategy::Shared, LockStrategy::Exclusive) => false,
+            (Self::Shared, Self::Exclusive) => false,
         }
     }
 }

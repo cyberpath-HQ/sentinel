@@ -622,6 +622,8 @@ mod tests {
 
         let stats = manager.get_stats().await;
 
+        let stats = manager.get_stats().await;
+
         assert_eq!(stats.active_locks, 1);
         assert_eq!(stats.total_pending_requests, 0); // Request was removed after timeout
         assert_eq!(stats.paths_with_pending_requests, 0);
@@ -629,8 +631,6 @@ mod tests {
         assert_eq!(stats.lock_acquisitions, 1);
         assert_eq!(stats.lock_contentions, 1); // Request was enqueued before timing out
         assert_eq!(stats.failed_acquisitions, 1);
-
-        drop(guard);
     }
 
     #[tokio::test]
@@ -676,7 +676,8 @@ mod tests {
         assert_eq!(stats.lock_acquisitions, 1);
         assert_eq!(stats.lock_contentions, 1); // One request was queued
 
-        drop(guard); // Release lock, allowing queued request to proceed
+        // Release lock, allowing queued request to proceed
+        drop(guard);
         let _ = handle.await; // Wait for background task to complete
 
         // Give a small delay to ensure all cleanup is done

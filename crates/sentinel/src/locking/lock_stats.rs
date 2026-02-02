@@ -54,6 +54,10 @@ impl LockManagerStats {
     /// # Arguments
     ///
     /// * `path` - The path that was locked
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "Lock stats mutate state; cannot be const"
+    )]
     pub fn increment_active_lock(&mut self, path: String) {
         self.active_locks += 1;
         *self.queue_lengths.entry(path).or_insert(0) += 1;
@@ -64,6 +68,10 @@ impl LockManagerStats {
     /// # Arguments
     ///
     /// * `path` - The path that was unlocked
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "Lock stats mutate state; cannot be const"
+    )]
     pub fn decrement_active_lock(&mut self, path: &str) {
         if self.active_locks > 0 {
             self.active_locks -= 1;
@@ -78,20 +86,22 @@ impl LockManagerStats {
         }
     }
 
-    /// Increments the total pending requests counter.
-    pub fn increment_pending_requests(&mut self) { self.total_pending_requests += 1; }
-
     /// Decrements the total pending requests counter.
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "Lock stats mutate state; cannot be const"
+    )]
     pub fn decrement_pending_requests(&mut self) {
         if self.total_pending_requests > 0 {
             self.total_pending_requests -= 1;
         }
     }
 
-    /// Increments the count of paths with pending requests.
-    pub fn increment_paths_with_pending(&mut self) { self.paths_with_pending_requests += 1; }
-
     /// Decrements the count of paths with pending requests.
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "Lock stats mutate state; cannot be const"
+    )]
     pub fn decrement_paths_with_pending(&mut self) {
         if self.paths_with_pending_requests > 0 {
             self.paths_with_pending_requests -= 1;
@@ -103,15 +113,34 @@ impl LockManagerStats {
     /// # Arguments
     ///
     /// * `duration` - The duration to add to total_wait_time
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "Lock stats mutate state; cannot be const"
+    )]
     pub fn add_wait_time(&mut self, duration: Duration) { self.total_wait_time += duration; }
 
     /// Increments the total lock acquisitions counter.
+    #[allow(
+        clippy::missing_const_for_fn,
+        clippy::arithmetic_side_effects,
+        reason = "const fn cannot mutate fields or perform arithmetic operations"
+    )]
     pub fn increment_lock_acquisition(&mut self) { self.lock_acquisitions += 1; }
 
     /// Increments the total lock contention counter.
+    #[allow(
+        clippy::missing_const_for_fn,
+        clippy::arithmetic_side_effects,
+        reason = "const fn cannot mutate fields or perform arithmetic operations"
+    )]
     pub fn increment_lock_contention(&mut self) { self.lock_contentions += 1; }
 
     /// Increments the total failed acquisitions counter.
+    #[allow(
+        clippy::missing_const_for_fn,
+        clippy::arithmetic_side_effects,
+        reason = "const fn cannot mutate fields or perform arithmetic operations"
+    )]
     pub fn increment_failed_acquisition(&mut self) { self.failed_acquisitions += 1; }
 
     /// Gets the current queue length for a specific path.
@@ -130,7 +159,7 @@ impl LockManagerStats {
     /// # Returns
     ///
     /// The total duration spent waiting.
-    pub fn get_total_wait_time(&self) -> Duration { self.total_wait_time }
+    pub const fn get_total_wait_time(&self) -> Duration { self.total_wait_time }
 
     /// Gets the average wait time per contention event.
     ///
@@ -147,7 +176,7 @@ impl LockManagerStats {
     }
 
     /// Resets all metrics to zero, except for queue_lengths which is emptied.
-    pub fn reset(&mut self) {
+    pub const fn reset(&mut self) {
         self.active_locks = 0;
         self.total_pending_requests = 0;
         self.paths_with_pending_requests = 0;

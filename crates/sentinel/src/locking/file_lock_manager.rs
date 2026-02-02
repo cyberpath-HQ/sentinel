@@ -18,11 +18,7 @@ use tokio::{sync::Mutex, time};
 use tracing::{debug, error};
 
 use crate::error::{Result, SentinelError};
-use super::{
-    deadlock_detector::{DeadlockDetector, LockRequest},
-    lock_guard::LockGuard,
-    lock_strategy::LockStrategy,
-};
+use super::{deadlock_detector::DeadlockDetector, lock_guard::LockGuard, lock_strategy::LockStrategy};
 
 /// State of a lock on a specific path
 #[derive(Debug, Clone)]
@@ -131,6 +127,10 @@ impl Default for LockQueue {
 /// Returns `SentinelError::DeadlockDetected` when deadlock is detected.
 /// Returns `SentinelError::IoError` - I/O error during lock acquisition.
 #[derive(Debug)]
+#[allow(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) fields are used internally within the crate and are appropriate for internal visibility"
+)]
 pub struct FileLockManager {
     /// Lock table: path -> current lock state (tracks all holders)
     pub(crate) lock_table:            Arc<DashMap<PathBuf, Arc<std::sync::Mutex<LockState>>>>,
@@ -231,7 +231,7 @@ impl FileLockManager {
                 Ok(guard) => return Ok(guard),
                 Err(SentinelError::DeadlockDetected) if retry < self.max_deadlock_retries => {
                     // Exponential backoff before retry
-                    let delay = self.deadlock_backoff_base * 2_u32.pow(retry);
+                    let delay = self.deadlock_backoff_base * 2u32.pow(retry);
                     time::sleep(delay).await;
                     continue;
                 },
