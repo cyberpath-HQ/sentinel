@@ -128,7 +128,10 @@ fn bench_fuzzy_crypto_corrupted_ciphertext(c: &mut Criterion) {
 async fn setup_fuzzy_collection() -> (Collection, tempfile::TempDir) {
     let temp_dir = tempdir().unwrap();
     let store = Store::new(temp_dir.path(), None).await.unwrap();
-    let collection = store.collection("fuzzy_test").await.unwrap();
+    let collection = store
+        .collection_with_config("fuzzy_test", Some(CollectionWalConfigOverrides::default()))
+        .await
+        .unwrap();
 
     // Insert some valid data
     for i in 0 .. 100 {

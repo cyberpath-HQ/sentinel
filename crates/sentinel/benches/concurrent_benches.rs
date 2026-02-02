@@ -9,7 +9,15 @@ use tokio::runtime::Runtime;
 async fn setup_concurrent_collection(count: usize) -> (Arc<Collection>, tempfile::TempDir) {
     let temp_dir = tempdir().unwrap();
     let store = Store::new(temp_dir.path(), None).await.unwrap();
-    let collection = Arc::new(store.collection("concurrent_test").await.unwrap());
+    let collection = Arc::new(
+        store
+            .collection_with_config(
+                "concurrent_test",
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap(),
+    );
 
     // Pre-populate with some data
     for i in 0 .. count {

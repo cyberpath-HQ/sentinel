@@ -9,7 +9,10 @@ use tempfile::tempdir;
 async fn setup_memory_test_collection(count: usize) -> (Collection, tempfile::TempDir) {
     let temp_dir = tempdir().unwrap();
     let store = Store::new(temp_dir.path(), None).await.unwrap();
-    let collection = store.collection("memory_test").await.unwrap();
+    let collection = store
+        .collection_with_config("memory_test", Some(CollectionWalConfigOverrides::default()))
+        .await
+        .unwrap();
 
     // Insert documents with varying sizes
     for i in 0 .. count {

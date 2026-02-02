@@ -9,7 +9,13 @@ use tempfile::tempdir;
 async fn setup_large_collection(count: usize) -> (Collection, tempfile::TempDir) {
     let temp_dir = tempdir().unwrap();
     let store = Store::new(temp_dir.path(), None).await.unwrap();
-    let collection = store.collection("load_test_collection").await.unwrap();
+    let collection = store
+        .collection_with_config(
+            "load_test_collection",
+            Some(CollectionWalConfigOverrides::default()),
+        )
+        .await
+        .unwrap();
 
     // Insert large dataset
     for i in 0 .. count {
@@ -53,7 +59,10 @@ fn bench_load_test_insert_10k(c: &mut Criterion) {
             rt.block_on(async {
                 let temp_dir = tempdir().unwrap();
                 let store = Store::new(temp_dir.path(), None).await.unwrap();
-                let collection = store.collection("load_test").await.unwrap();
+                let collection = store
+                    .collection_with_config("load_test", Some(CollectionWalConfigOverrides::default()))
+                    .await
+                    .unwrap();
 
                 for i in 0 .. 10000 {
                     let doc = json!({"id": i, "data": format!("data_{}", i)});
