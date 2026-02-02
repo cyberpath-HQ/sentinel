@@ -7,7 +7,15 @@ use chrono::{DateTime, Utc};
 use tokio::{fs as tokio_fs, sync::mpsc};
 use tracing::{debug, error, trace};
 
-use crate::{events::StoreEvent, CollectionWalConfigOverrides, Result, SentinelError, StoreMetadata, KEYS_COLLECTION, STORE_METADATA_FILE};
+use crate::{
+    events::StoreEvent,
+    CollectionWalConfigOverrides,
+    Result,
+    SentinelError,
+    StoreMetadata,
+    KEYS_COLLECTION,
+    STORE_METADATA_FILE,
+};
 use super::{events::start_event_processor, operations::collection_with_config};
 
 /// The top-level manager for document collections in Cyberpath Sentinel.
@@ -165,7 +173,7 @@ impl Store {
                     None, // Use default timeout
                 )
                 .await?;
-            
+
             // Try to read existing metadata first
             let mut store_metadata = None;
             if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
@@ -175,7 +183,7 @@ impl Store {
                     }
                 }
             }
-            
+
             // If we couldn't read valid metadata, create new
             if store_metadata.is_none() {
                 debug!("Creating new store metadata");
@@ -184,7 +192,7 @@ impl Store {
                 tokio_fs::write(&metadata_path, &content).await?;
                 store_metadata = Some(metadata);
             }
-            
+
             store_metadata.unwrap()
         };
 
@@ -357,7 +365,7 @@ impl Store {
                     None, // Use default timeout
                 )
                 .await?;
-            
+
             // Try to read existing metadata first
             let mut store_metadata = None;
             if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
@@ -371,7 +379,7 @@ impl Store {
                     }
                 }
             }
-            
+
             // If we couldn't read valid metadata, create new
             if store_metadata.is_none() {
                 debug!("Creating new store metadata with custom WAL config");
@@ -381,7 +389,7 @@ impl Store {
                 tokio_fs::write(&metadata_path, &content).await?;
                 store_metadata = Some(metadata);
             }
-            
+
             store_metadata.unwrap()
         };
 

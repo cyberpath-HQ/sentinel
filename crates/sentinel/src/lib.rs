@@ -12,6 +12,8 @@ mod error;
 mod events;
 /// Filtering utilities module.
 mod filtering;
+/// File locking system module.
+pub mod locking;
 /// Metadata management module.
 mod metadata;
 /// Projection utilities module.
@@ -28,8 +30,6 @@ mod validation;
 pub mod verification;
 /// Write-Ahead Logging (WAL) operations module.
 pub mod wal;
-/// File locking system module.
-pub mod locking;
 
 // Re-export commonly used external crates for convenience
 pub use async_stream;
@@ -78,7 +78,7 @@ pub use sentinel_wal::{
     WalVerificationIssue,
     WalVerificationResult,
 };
-pub use locking::{FileLockManager, LockGuard, LockStrategy, LockManagerStats};
+pub use locking::{FileLockManager, LockGuard, LockManagerStats, LockStrategy};
 
 /// The current version of the Sentinel metadata format.
 pub const META_SENTINEL_VERSION: u32 = 2;

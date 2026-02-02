@@ -27,7 +27,7 @@
 //! # use futures::StreamExt;
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! # let store = Store::new("/tmp/store", None).await?;
-//! # let collection = store.collection_with_config("users", None).await?;
+//! # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
 //! use sentinel_dbms::wal::ops::CollectionWalOps;
 //!
 //! // Insert some data
@@ -98,7 +98,7 @@ use sentinel_wal::{
     WalVerificationResult,
 };
 
-use crate::{store::operations::collection_with_config, Collection, Store};
+use crate::{store::operations::collection_with_config, Collection, CollectionWalConfigOverrides, Store};
 
 /// Extension trait for Store to add WAL operations.
 ///
@@ -265,7 +265,7 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
     ///
     /// // Perform operations
@@ -295,7 +295,7 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
     /// use futures::StreamExt;
     ///
@@ -327,7 +327,7 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
     ///
     /// let result = collection.verify_against_wal().await?;
@@ -362,7 +362,7 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
     ///
     /// let result = collection.recover_from_wal().await?;
@@ -397,7 +397,7 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
     ///
     /// let size_bytes = collection.wal_size().await?;
@@ -429,7 +429,7 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
     ///
     /// let count = collection.wal_entries_count().await?;
