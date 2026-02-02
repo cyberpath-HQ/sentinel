@@ -65,7 +65,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -97,7 +100,10 @@ mod tests {
 
         // Create collection and insert documents
         let collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 

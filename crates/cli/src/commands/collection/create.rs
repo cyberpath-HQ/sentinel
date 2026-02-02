@@ -161,7 +161,12 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify collection exists
-        let collection = store.collection_with_config(collection_name, None).await;
+        let collection = store
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
+            .await;
         assert!(collection.is_ok());
     }
 
@@ -177,7 +182,10 @@ mod tests {
             .unwrap();
 
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
