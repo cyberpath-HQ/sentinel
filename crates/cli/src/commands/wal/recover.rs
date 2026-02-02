@@ -71,7 +71,10 @@ mod tests {
             .unwrap();
 
         let collection = store
-            .collection_with_config("test_collection", None)
+            .collection_with_config(
+                "test_collection",
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -111,11 +114,11 @@ mod tests {
             .unwrap();
 
         let collection1 = store
-            .collection_with_config("collection1", None)
+            .collection_with_config("collection1", Some(sentinel_dbms::CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
         let collection2 = store
-            .collection_with_config("collection2", None)
+            .collection_with_config("collection2", Some(sentinel_dbms::CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
 

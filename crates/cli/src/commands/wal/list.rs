@@ -1,8 +1,8 @@
 //! WAL list command.
 
 use clap::Args;
-use serde_json::json;
 use sentinel_dbms::futures::StreamExt as _;
+use serde_json::json;
 use tracing::info;
 
 /// Arguments for the WAL list command.
@@ -146,7 +146,7 @@ pub async fn run(store_path: String, collection: Option<String>, args: ListArgs)
 
 #[cfg(test)]
 mod tests {
-    use sentinel_dbms::StoreWalConfig;
+    use sentinel_dbms::{StoreWalConfig};
     use tempfile::TempDir;
     use tokio::time::{sleep, Duration};
 
@@ -163,7 +163,10 @@ mod tests {
             .unwrap();
 
         let collection = store
-            .collection_with_config("test_collection", None)
+            .collection_with_config(
+                "test_collection",
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -206,11 +209,11 @@ mod tests {
             .unwrap();
 
         let collection1 = store
-            .collection_with_config("collection1", None)
+            .collection_with_config("collection1", Some(sentinel_dbms::CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
         let collection2 = store
-            .collection_with_config("collection2", None)
+            .collection_with_config("collection2", Some(sentinel_dbms::CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
 
@@ -248,7 +251,10 @@ mod tests {
             .unwrap();
 
         let _collection = store
-            .collection_with_config("empty_collection", None)
+            .collection_with_config(
+                "empty_collection",
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -278,7 +284,10 @@ mod tests {
             .unwrap();
 
         let _collection = store
-            .collection_with_config("test_collection", None)
+            .collection_with_config(
+                "test_collection",
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
