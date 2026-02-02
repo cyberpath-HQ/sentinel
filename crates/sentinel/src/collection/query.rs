@@ -1,5 +1,6 @@
-use async_stream::stream;
 use std::sync::Arc;
+
+use async_stream::stream;
 use futures::{StreamExt as _, TryStreamExt as _};
 use serde_json::Value;
 use tokio::fs as tokio_fs;
@@ -49,7 +50,7 @@ impl Collection {
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert test data
     /// collection.insert("user-1", json!({"name": "Alice", "age": 25, "city": "NYC"})).await?;
@@ -100,7 +101,7 @@ impl Collection {
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert test data
     /// collection.insert("user-1", json!({"name": "Alice", "age": 25, "city": "NYC"})).await?;

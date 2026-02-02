@@ -184,6 +184,7 @@ impl Collection {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use sentinel_wal::CollectionWalConfigOverrides;
 
     use super::*;
     use crate::{Document, Store, VerificationMode, VerificationOptions};
@@ -197,7 +198,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         (collection, temp_dir)
     }
 
@@ -210,7 +214,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         (collection, temp_dir)
     }
 

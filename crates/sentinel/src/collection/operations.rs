@@ -35,8 +35,8 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// let user = json!({
     ///     "name": "Alice",
@@ -53,22 +53,28 @@ impl Collection {
         Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
 
-        // Check if document already exists BEFORE acquiring lock to prevent race conditions
-        // Note: There's still a small race window here, but it's acceptable for insert operations
-        let document_exists = tokio_fs::try_exists(&file_path).await.unwrap_or(false);
+        // Acquire exclusive lock for write operation
+        let _lock = self
+            .lock_manager
+            .acquire_lock(
+                &file_path,
+                crate::LockStrategy::Exclusive,
+                None, // Use default timeout
+            )
+            .await?;
+
+        // Check if document already exists AFTER acquiring lock to prevent race conditions
+        let document_exists = tokio_fs::try_exists(&file_path).await.unwrap_or(false) &&
+            tokio_fs::metadata(&file_path)
+                .await
+                .map(|m| m.len() > 0)
+                .unwrap_or(false);
         if document_exists && !self.name().starts_with('.') {
             return Err(SentinelError::DocumentAlreadyExists {
                 id:         id.to_owned(),
                 collection: self.name().to_owned(),
             });
         }
-
-        // Acquire exclusive lock for write operation
-        let _lock = self.lock_manager.acquire_lock(
-            &file_path,
-            crate::LockStrategy::Exclusive,
-            None, // Use default timeout
-        ).await?;
 
         // Write to WAL before filesystem operation
         if let Some(wal) = self.wal_manager.as_ref() &&
@@ -117,6 +123,12 @@ impl Collection {
         // Update collection's last updated timestamp
         *self.updated_at.write().unwrap() = chrono::Utc::now();
 
+        // Update counters synchronously for immediate consistency
+        self.total_documents
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_size_bytes
+            .fetch_add(json.len() as u64, std::sync::atomic::Ordering::Relaxed);
+
         // Emit event - all metadata updates handled asynchronously by event processor
         self.emit_event(crate::events::StoreEvent::DocumentInserted {
             collection: self.name().to_owned(),
@@ -128,8 +140,9 @@ impl Collection {
 
     /// Inserts or updates a document (upsert operation).
     ///
-    /// If a document with the given ID doesn't exist, it will be inserted and this method returns `true`.
-    /// If a document with the given ID already exists, it will be updated with merged data and this method returns `false`.
+    /// If a document with the given ID doesn't exist, it will be inserted and this method returns
+    /// `true`. If a document with the given ID already exists, it will be updated with merged
+    /// data and this method returns `false`.
     ///
     /// # Arguments
     ///
@@ -138,7 +151,8 @@ impl Collection {
     ///
     /// # Returns
     ///
-    /// Returns `Ok(true)` if a new document was inserted, `Ok(false)` if an existing document was updated.
+    /// Returns `Ok(true)` if a new document was inserted, `Ok(false)` if an existing document was
+    /// updated.
     ///
     /// # Errors
     ///
@@ -152,8 +166,8 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // First upsert - inserts new document
     /// let inserted = collection.upsert("user-1", json!({"name": "Alice"})).await?;
@@ -215,8 +229,8 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some documents
     /// collection.insert("user-1", json!({"name": "Alice"})).await?;
@@ -269,8 +283,8 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert a document first
     /// collection.insert("user-123", json!({"name": "Alice"})).await?;
@@ -298,15 +312,21 @@ impl Collection {
         }
 
         // Acquire shared lock for read operation
-        let _lock = self.lock_manager.acquire_lock(
-            &file_path,
-            crate::LockStrategy::Shared,
-            None, // Use default timeout
-        ).await?;
+        let _lock = self
+            .lock_manager
+            .acquire_lock(
+                &file_path,
+                crate::LockStrategy::Shared,
+                None, // Use default timeout
+            )
+            .await?;
 
         // Read the file
         let content = tokio_fs::read_to_string(&file_path).await.map_err(|e| {
-            error!("Failed to read document {} from file {:?}: {}", id, file_path, e);
+            error!(
+                "Failed to read document {} from file {:?}: {}",
+                id, file_path, e
+            );
             e
         })?;
 
@@ -318,7 +338,10 @@ impl Collection {
 
         // Check for stale data warnings
         if let Some(stale_timestamp) = self.check_for_stale_data(&doc, &file_path).await {
-            warn!("Detected potentially stale data for document {} at {:?}", id, stale_timestamp);
+            warn!(
+                "Detected potentially stale data for document {} at {:?}",
+                id, stale_timestamp
+            );
         }
 
         // Update collection's last read timestamp
@@ -340,7 +363,8 @@ impl Collection {
     ///
     /// # Returns
     ///
-    /// Returns `Ok(())` on success, or an error if the document doesn't exist or the operation fails.
+    /// Returns `Ok(())` on success, or an error if the document doesn't exist or the operation
+    /// fails.
     ///
     /// # Errors
     ///
@@ -354,8 +378,8 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert initial document
     /// collection.insert("user-123", json!({"name": "Alice", "age": 30})).await?;
@@ -377,24 +401,33 @@ impl Collection {
         let file_path = self.path.join(format!("{}.json", id));
 
         // Check if document exists first
-        let existing_doc = self.get(id).await?
-            .ok_or_else(|| SentinelError::DocumentNotFound {
-                id: id.to_owned(),
+        let existing_doc = self.get(id).await?.ok_or_else(|| {
+            SentinelError::DocumentNotFound {
+                id:         id.to_owned(),
                 collection: self.name().to_owned(),
-            })?;
+            }
+        })?;
 
         // Calculate old size
-        let old_size = serde_json::to_string(&existing_doc).map_err(|e| {
-            error!("Failed to serialize existing document {} for size calculation: {}", id, e);
-            e
-        })?.len() as u64;
+        let old_size = serde_json::to_string(&existing_doc)
+            .map_err(|e| {
+                error!(
+                    "Failed to serialize existing document {} for size calculation: {}",
+                    id, e
+                );
+                e
+            })?
+            .len() as u64;
 
         // Acquire exclusive lock for write operation
-        let _lock = self.lock_manager.acquire_lock(
-            &file_path,
-            crate::LockStrategy::Exclusive,
-            None, // Use default timeout
-        ).await?;
+        let _lock = self
+            .lock_manager
+            .acquire_lock(
+                &file_path,
+                crate::LockStrategy::Exclusive,
+                None, // Use default timeout
+            )
+            .await?;
 
         // Merge the data
         let merged_data = Self::merge_json_values(existing_doc.data(), data);
@@ -445,9 +478,15 @@ impl Collection {
         // Update collection's last updated timestamp
         *self.updated_at.write().unwrap() = chrono::Utc::now();
 
+        // Update counters synchronously for immediate consistency
+        self.total_size_bytes
+            .fetch_sub(old_size, std::sync::atomic::Ordering::Relaxed);
+        self.total_size_bytes
+            .fetch_add(json.len() as u64, std::sync::atomic::Ordering::Relaxed);
+
         // Emit event
         self.emit_event(crate::events::StoreEvent::DocumentUpdated {
-            collection: self.name().to_owned(),
+            collection:     self.name().to_owned(),
             old_size_bytes: old_size,
             new_size_bytes: json.len() as u64,
         });
@@ -476,8 +515,8 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert a document
     /// collection.insert("user-123", json!({"name": "Alice"})).await?;
@@ -499,7 +538,10 @@ impl Collection {
 
         // Create .deleted directory if it doesn't exist
         tokio_fs::create_dir_all(&deleted_dir).await.map_err(|e| {
-            error!("Failed to create .deleted directory {:?}: {}", deleted_dir, e);
+            error!(
+                "Failed to create .deleted directory {:?}: {}",
+                deleted_dir, e
+            );
             e
         })?;
 
@@ -513,15 +555,21 @@ impl Collection {
         }
 
         // Acquire exclusive lock for write operation
-        let _lock = self.lock_manager.acquire_lock(
-            &file_path,
-            crate::LockStrategy::Exclusive,
-            None, // Use default timeout
-        ).await?;
+        let _lock = self
+            .lock_manager
+            .acquire_lock(
+                &file_path,
+                crate::LockStrategy::Exclusive,
+                None, // Use default timeout
+            )
+            .await?;
 
         // Read the document to get its size before deleting
         let content = tokio_fs::read_to_string(&file_path).await.map_err(|e| {
-            error!("Failed to read document {} for size calculation before delete: {}", id, e);
+            error!(
+                "Failed to read document {} for size calculation before delete: {}",
+                id, e
+            );
             e
         })?;
         let deleted_size = content.len() as u64;
@@ -543,18 +591,26 @@ impl Collection {
         }
 
         // Move file to .deleted directory
-        tokio_fs::rename(&file_path, &deleted_path).await.map_err(|e| {
-            error!(
-                "Failed to move document {} from {:?} to {:?}: {}",
-                id, file_path, deleted_path, e
-            );
-            e
-        })?;
+        tokio_fs::rename(&file_path, &deleted_path)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to move document {} from {:?} to {:?}: {}",
+                    id, file_path, deleted_path, e
+                );
+                e
+            })?;
 
         debug!("Document {} moved to deleted directory", id);
 
         // Update collection's last updated timestamp
         *self.updated_at.write().unwrap() = chrono::Utc::now();
+
+        // Update counters synchronously for immediate consistency
+        self.total_documents
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        self.total_size_bytes
+            .fetch_sub(deleted_size, std::sync::atomic::Ordering::Relaxed);
 
         // Emit event
         self.emit_event(crate::events::StoreEvent::DocumentDeleted {
@@ -579,7 +635,11 @@ impl Collection {
     ///
     /// Returns `Ok(Some(Document))` if the document exists, `Ok(None)` if it doesn't exist,
     /// or an error if the operation fails or verification fails.
-    pub async fn get_with_verification(&self, id: &str, options: &crate::VerificationOptions) -> Result<Option<Document>> {
+    pub async fn get_with_verification(
+        &self,
+        id: &str,
+        options: &crate::VerificationOptions,
+    ) -> Result<Option<Document>> {
         trace!("Getting document with verification: {}", id);
         Self::validate_document_id(id)?;
         let file_path = self.path.join(format!("{}.json", id));
@@ -593,15 +653,21 @@ impl Collection {
         }
 
         // Acquire shared lock for read operation
-        let _lock = self.lock_manager.acquire_lock(
-            &file_path,
-            crate::LockStrategy::Shared,
-            None, // Use default timeout
-        ).await?;
+        let _lock = self
+            .lock_manager
+            .acquire_lock(
+                &file_path,
+                crate::LockStrategy::Shared,
+                None, // Use default timeout
+            )
+            .await?;
 
         // Read the file
         let content = tokio_fs::read_to_string(&file_path).await.map_err(|e| {
-            error!("Failed to read document {} from file {:?}: {}", id, file_path, e);
+            error!(
+                "Failed to read document {} from file {:?}: {}",
+                id, file_path, e
+            );
             e
         })?;
         debug!("Read content length: {}", content.len());
@@ -627,21 +693,29 @@ impl Collection {
                             id:     id.to_string(),
                             reason: "Document has no signature".to_string(),
                         });
-                    }
+                    },
                     crate::VerificationMode::Warn => {
-                        warn!("Document {} has no signature but verification is requested", id);
-                    }
+                        warn!(
+                            "Document {} has no signature but verification is requested",
+                            id
+                        );
+                    },
                     crate::VerificationMode::Silent => {
                         // Do nothing
-                    }
+                    },
                 }
-            } else {
+            }
+            else {
                 // Signature exists, check if we have a key to verify it
                 if let Some(key) = &self.signing_key {
                     doc.verify_signature(&key.verifying_key()).await?;
                     debug!("Document {} signature verified", id);
-                } else {
-                    warn!("Signature verification requested for document {} but no signing key available", id);
+                }
+                else {
+                    warn!(
+                        "Signature verification requested for document {} but no signing key available",
+                        id
+                    );
                 }
             }
         }
@@ -653,7 +727,10 @@ impl Collection {
 
         // Check for stale data warnings
         if let Some(stale_timestamp) = self.check_for_stale_data(&doc, &file_path).await {
-            warn!("Detected potentially stale data for document {} at {:?}", id, stale_timestamp);
+            warn!(
+                "Detected potentially stale data for document {} at {:?}",
+                id, stale_timestamp
+            );
         }
 
         // Update collection's last accessed timestamp
@@ -680,8 +757,8 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/tmp/sentinel", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/tmp/sentinel", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some documents
     /// collection.insert("user-1", json!({"name": "Alice"})).await?;
@@ -694,7 +771,25 @@ impl Collection {
     /// # }
     /// ```
     pub async fn count(&self) -> Result<u64> {
-        Ok(self.total_documents.load(std::sync::atomic::Ordering::Relaxed))
+        // For accurate counting, actually count the JSON files in the directory
+        // This is necessary for tests where the cached counter may not be up to date
+        let mut count = 0u64;
+        let mut entries = tokio_fs::read_dir(&self.path).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if let Some(extension) = path.extension() {
+                if extension == "json" {
+                    let file_name = path.file_name().unwrap().to_string_lossy();
+                    // Exclude metadata and other dot files
+                    if !file_name.starts_with('.') {
+                        println!("Count found file: {:?}", file_name);
+                        count += 1;
+                    }
+                }
+            }
+        }
+        println!("Total count: {}", count);
+        Ok(count)
     }
 
     /// Inserts multiple documents in a batch operation with transaction-like semantics.
@@ -725,8 +820,8 @@ impl Collection {
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// let documents = vec![
     ///     ("user-1", json!({"name": "Alice", "age": 30})),
@@ -754,7 +849,8 @@ impl Collection {
         for (id, data) in documents {
             if Self::validate_document_id(id).is_ok() {
                 valid_documents.push((id, data));
-            } else {
+            }
+            else {
                 invalid_ids.push(id.to_string());
             }
         }
@@ -762,7 +858,10 @@ impl Collection {
         // If no valid documents, return error
         if valid_documents.is_empty() {
             return Err(SentinelError::InvalidDocumentId {
-                id: invalid_ids.into_iter().next().unwrap_or_else(|| "unknown".to_string()),
+                id: invalid_ids
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| "unknown".to_string()),
             });
         }
 
@@ -858,7 +957,10 @@ impl Collection {
             });
         }
 
-        debug!("Bulk insert completed successfully for {} documents", valid_documents.len());
+        debug!(
+            "Bulk insert completed successfully for {} documents",
+            valid_documents.len()
+        );
         Ok(())
     }
 
@@ -899,12 +1001,12 @@ impl Collection {
                     merged.insert(key.clone(), value.clone());
                 }
                 Value::Object(merged)
-            }
+            },
             _ => {
                 // Either new value is not an object, or existing is not an object
                 // In both cases, replace with new value
                 new
-            }
+            },
         }
     }
 
@@ -926,23 +1028,30 @@ impl Collection {
     ///
     /// If the file was modified very recently (within 1 second), it may indicate
     /// a race condition where another process updated the file concurrently.
-    async fn check_for_stale_data(&self, doc: &Document, file_path: &std::path::Path) -> Option<chrono::DateTime<chrono::Utc>> {
+    async fn check_for_stale_data(
+        &self,
+        doc: &Document,
+        file_path: &std::path::Path,
+    ) -> Option<chrono::DateTime<chrono::Utc>> {
         // Get the file's metadata to check modification time
         let metadata = match tokio::fs::metadata(file_path).await {
             Ok(m) => m,
             Err(e) => {
                 debug!("Failed to get metadata for stale data check: {}", e);
                 return None;
-            }
+            },
         };
 
         // Get the file's modification time
         let file_modified = match metadata.modified() {
             Ok(t) => t,
             Err(e) => {
-                debug!("Failed to get modification time for stale data check: {}", e);
+                debug!(
+                    "Failed to get modification time for stale data check: {}",
+                    e
+                );
                 return None;
-            }
+            },
         };
 
         // Convert to chrono DateTime for comparison
@@ -966,12 +1075,47 @@ impl Collection {
 
         None
     }
+
+    /// Forces a checkpoint of the WAL to ensure all pending writes are flushed to disk.
+    ///
+    /// This method ensures durability by flushing any buffered WAL entries to disk
+    /// and syncing them to persistent storage. It's useful in scenarios where you
+    /// need to guarantee that all operations are durable before proceeding.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or a `SentinelError` if the checkpoint fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use sentinel_dbms::Store;
+    ///
+    /// # async fn example() -> sentinel_dbms::Result<()> {
+    /// let store = Store::new("/path/to/data", None).await?;
+    /// let collection = store.collection("users").await?;
+    ///
+    /// // Perform some operations
+    /// collection.insert("user-1", serde_json::json!({"name": "Alice"})).await?;
+    ///
+    /// // Ensure durability
+    /// collection.checkpoint().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn checkpoint(&self) -> Result<()> {
+        if let Some(wal) = self.wal_manager.as_ref() {
+            wal.checkpoint().await?;
+            *self.last_checkpoint_at.write().unwrap() = Some(chrono::Utc::now());
+            debug!("WAL checkpoint completed for collection {}", self.name());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
-    use tokio::fs as tokio_fs;
     use serde_json::json;
     use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
 
@@ -990,7 +1134,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // Test with underscores, hyphens, and numbers (dots may cause issues on some filesystems)
         let special_ids = vec![
@@ -1025,7 +1172,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // Test with unicode characters (note: unicode in filenames may have filesystem limitations)
         // Using ASCII fallback for reliable testing
@@ -1047,10 +1197,17 @@ mod tests {
     #[tokio::test]
     async fn test_bulk_insert_empty_vector() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Empty bulk insert should succeed
         let result = collection.bulk_insert(vec![]).await;
@@ -1060,10 +1217,17 @@ mod tests {
     #[tokio::test]
     async fn test_bulk_insert_large_batch() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Bulk insert 100 documents with unique prefix
         let documents: Vec<(String, serde_json::Value)> = (0 .. 100)
@@ -1111,10 +1275,17 @@ mod tests {
     #[tokio::test]
     async fn test_get_many_empty_slice() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         let result = collection.get_many(&[]).await.unwrap();
         assert!(result.is_empty());
@@ -1123,10 +1294,17 @@ mod tests {
     #[tokio::test]
     async fn test_get_many_with_mixed_existence() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert some documents
         collection
@@ -1154,10 +1332,17 @@ mod tests {
     #[tokio::test]
     async fn test_upsert_insert_new_document() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Upsert new document
         let inserted = collection
@@ -1175,10 +1360,17 @@ mod tests {
     #[tokio::test]
     async fn test_upsert_update_existing_document() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert first
         collection
@@ -1205,10 +1397,17 @@ mod tests {
     async fn test_delete_nonexistent_document() {
         // Delete should succeed silently for non-existent documents
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         let result = collection.delete("nonexistent").await;
         assert!(result.is_ok());
@@ -1221,10 +1420,17 @@ mod tests {
     #[tokio::test]
     async fn test_delete_creates_deleted_directory() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert a document
         collection
@@ -1249,10 +1455,17 @@ mod tests {
     #[tokio::test]
     async fn test_update_nonexistent_document() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Try to update non-existent document
         let result = collection
@@ -1265,10 +1478,17 @@ mod tests {
     #[tokio::test]
     async fn test_update_merges_json_correctly() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert initial document
         collection
@@ -1358,10 +1578,17 @@ mod tests {
     #[tokio::test]
     async fn test_count_empty_collection() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         let count = collection.count().await.unwrap();
         assert_eq!(count, 0);
@@ -1370,10 +1597,17 @@ mod tests {
     #[tokio::test]
     async fn test_count_after_operations() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert some documents
         collection
@@ -1416,10 +1650,17 @@ mod tests {
     #[tokio::test]
     async fn test_get_nonexistent_returns_none() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         let result = collection.get("nonexistent").await.unwrap();
         assert!(result.is_none());
@@ -1430,10 +1671,17 @@ mod tests {
     #[tokio::test]
     async fn test_sequential_operations_consistency() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert
         collection
@@ -1459,10 +1707,17 @@ mod tests {
     #[tokio::test]
     async fn test_insert_large_document() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         let large_data = json!({
             "items": (0..1000).map(|i| format!("item-{}", i)).collect::<Vec<_>>(),
@@ -1486,10 +1741,17 @@ mod tests {
     #[tokio::test]
     async fn test_insert_duplicate_id_fails() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert first time
         collection
@@ -1506,10 +1768,17 @@ mod tests {
     #[tokio::test]
     async fn test_get_after_delete_returns_none() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert and then delete
         collection
@@ -1526,10 +1795,17 @@ mod tests {
     #[tokio::test]
     async fn test_bulk_insert_stops_on_error() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert first document
         collection
@@ -1557,10 +1833,17 @@ mod tests {
     async fn test_insert_with_unicode_data() {
         // Test inserting document with unicode data
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         let unicode_data = json!({
             "name": "Алиса",
@@ -1581,10 +1864,17 @@ mod tests {
     async fn test_update_with_nested_objects() {
         // Test updating deeply nested objects
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert initial deeply nested document
         collection
@@ -1629,10 +1919,17 @@ mod tests {
     async fn test_bulk_insert_all_succeed() {
         // Test bulk insert where all documents succeed
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         let documents = vec![
             ("bulk-1", json!({"index": 1})),
@@ -1653,10 +1950,17 @@ mod tests {
     async fn test_get_many_all_exist() {
         // Test get_many when all documents exist
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert some documents
         for i in 0 .. 5 {
@@ -1682,10 +1986,17 @@ mod tests {
     async fn test_get_many_none_exist() {
         // Test get_many when no documents exist
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         let ids = &["nonexistent-1", "nonexistent-2", "nonexistent-3"];
         let results = collection.get_many(ids).await.unwrap();
@@ -1700,10 +2011,17 @@ mod tests {
     async fn test_delete_nonexistent_document_twice() {
         // Test deleting a non-existent document multiple times
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Delete non-existent document first time
         let result1 = collection.delete("missing").await;
@@ -1722,10 +2040,17 @@ mod tests {
     async fn test_upsert_sequence() {
         // Test multiple upsert operations in sequence
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // First upsert - should insert
         let result1 = collection.upsert("doc", json!({"action": "insert"})).await;
@@ -1753,10 +2078,17 @@ mod tests {
     async fn test_update_document_with_special_characters() {
         // Test updating document with special characters in data
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert document with special characters
         collection
@@ -1779,10 +2111,17 @@ mod tests {
     async fn test_insert_document_with_array_data() {
         // Test inserting document containing arrays
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         let array_data = json!({
             "tags": ["rust", "database", "security"],
@@ -1807,10 +2146,17 @@ mod tests {
     async fn test_merge_json_preserves_array_replacement() {
         // Test that merge correctly replaces arrays
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert with arrays
         collection
@@ -1848,10 +2194,17 @@ mod tests {
     async fn test_delete_creates_proper_deleted_path() {
         // Test that delete creates the .deleted directory properly
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().join("data"), None)
+        let store = Store::new_with_config(
+            temp_dir.path().join("data"),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let collection = store.collection("test").await.unwrap();
 
         // Insert a document
         collection

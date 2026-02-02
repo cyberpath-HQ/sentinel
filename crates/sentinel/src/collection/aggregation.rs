@@ -36,7 +36,7 @@ impl Collection {
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("products").await?;
+    /// let collection = store.collection_with_config("products", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some test data
     /// collection.insert("prod-1", json!({"name": "Widget", "price": 10.0})).await?;

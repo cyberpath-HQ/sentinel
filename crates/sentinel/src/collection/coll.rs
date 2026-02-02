@@ -356,9 +356,7 @@ impl Collection {
                                 size_bytes,
                             }) => {
                                 tracing::debug!("Processing document inserted event: {} (size: {})", collection, size_bytes);
-                                // Update atomic counters asynchronously
-                                total_documents.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                total_size_bytes.fetch_add(size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                // Counters are updated synchronously in operations, just mark for periodic save
                                 changed = true;
                             },
                             Some(crate::events::StoreEvent::DocumentUpdated {
@@ -368,9 +366,7 @@ impl Collection {
                             }) => {
                                 tracing::debug!("Processing document updated event: {} (old: {}, new: {})",
                                     collection, old_size_bytes, new_size_bytes);
-                                // Update atomic counters asynchronously
-                                total_size_bytes.fetch_sub(old_size_bytes, std::sync::atomic::Ordering::Relaxed);
-                                total_size_bytes.fetch_add(new_size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                // Counters are updated synchronously in operations, just mark for periodic save
                                 changed = true;
                             },
                             Some(crate::events::StoreEvent::DocumentDeleted {
@@ -378,9 +374,7 @@ impl Collection {
                                 size_bytes,
                             }) => {
                                 tracing::debug!("Processing document deleted event: {} (size: {})", collection, size_bytes);
-                                // Update atomic counters asynchronously
-                                total_documents.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                                total_size_bytes.fetch_sub(size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                // Counters are updated synchronously in operations, just mark for periodic save
                                 changed = true;
                             },
                             None => {
@@ -464,6 +458,13 @@ impl Collection {
     ///
     /// * `event` - The event to emit to the store.
     pub fn emit_event(&self, event: crate::events::StoreEvent) {
+        // Don't emit events during recovery to avoid double counting
+        if self
+            .recovery_mode
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return;
+        }
         if let Some(sender) = self.event_sender.as_ref() &&
             let Err(e) = sender.send(event)
         {

@@ -33,7 +33,7 @@ impl Collection {
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some documents
     /// collection.insert("user-123", json!({"name": "Alice"})).await?;
@@ -79,7 +79,7 @@ impl Collection {
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some test data
     /// collection.insert("user-1", json!({"name": "Alice", "age": 25})).await?;
@@ -135,7 +135,7 @@ impl Collection {
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some test data
     /// collection.insert("user-1", json!({"name": "Alice", "age": 25})).await?;
@@ -276,7 +276,12 @@ impl Collection {
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let collection = store
+    ///     .collection_with_config(
+    ///         "users",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
     ///
     /// // Stream all documents
     /// let mut all_docs = collection.all();
@@ -312,7 +317,12 @@ impl Collection {
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let collection = store
+    ///     .collection_with_config(
+    ///         "users",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
     ///
     /// // Stream all documents with warnings instead of errors
     /// let options = VerificationOptions::warn();
