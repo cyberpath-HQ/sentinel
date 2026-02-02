@@ -8,6 +8,7 @@ use crate::{
     events::StoreEvent,
     Collection,
     CollectionMetadata,
+    CollectionWalConfigOverrides,
     Result,
     COLLECTION_METADATA_FILE,
     DATA_DIR,
@@ -175,7 +176,7 @@ impl Store {
     /// let store = Store::new("/var/lib/sentinel", None).await?;
     ///
     /// // Access a users collection
-    /// let users = store.collection("users").await?;
+    /// let users = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert a document into the collection
     /// users.insert("user-123", json!({
@@ -184,8 +185,8 @@ impl Store {
     /// })).await?;
     ///
     /// // Access multiple collections
-    /// let audit_logs = store.collection("audit_logs").await?;
-    /// let certificates = store.collection("certificates").await?;
+    /// let audit_logs = store.collection_with_config("audit_logs", Some(CollectionWalConfigOverrides::default())).await?;
+    /// let certificates = store.collection_with_config("certificates", Some(CollectionWalConfigOverrides::default())).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -247,7 +248,7 @@ impl Store {
     /// };
     ///
     /// // Access a users collection with WAL overrides
-    /// let users = store.collection_with_config("users", Some(wal_overrides)).await?;
+    /// let users = store.collection_with_config("users", Some(wal_overrides, Some(CollectionWalConfigOverrides::default()))).await?;
     ///
     /// // Insert a document into the collection
     /// users.insert("user-123", json!({
@@ -288,7 +289,12 @@ impl Store {
     /// let store = Store::new("/path/to/data", None).await?;
     ///
     /// // Create a collection
-    /// let collection = store.collection("temp_collection").await?;
+    /// let collection = store
+    ///     .collection_with_config(
+    ///         "temp_collection",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
     ///
     /// // ... use collection ...
     ///
@@ -357,8 +363,18 @@ impl Store {
     /// let store = Store::new("/path/to/data", None).await?;
     ///
     /// // Create some collections
-    /// store.collection("users").await?;
-    /// store.collection("products").await?;
+    /// store
+    ///     .collection_with_config(
+    ///         "users",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
+    /// store
+    ///     .collection_with_config(
+    ///         "products",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
     ///
     /// // List all collections
     /// let collections = store.list_collections().await?;

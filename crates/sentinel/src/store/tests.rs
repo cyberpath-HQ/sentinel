@@ -2,16 +2,18 @@
 mod tests {
     use tempfile::tempdir;
     use tracing_subscriber;
-    use sentinel_wal::StoreWalConfig;
+    use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
 
-    use crate::{events::StoreEvent, SentinelError, Store, StoreMetadata, STORE_METADATA_FILE};
+    use crate::{events::StoreEvent, Document, SentinelError, Store, StoreMetadata, STORE_METADATA_FILE};
 
     #[tokio::test]
     async fn test_store_new_creates_directory() {
         let temp_dir = tempdir().unwrap();
         let store_path = temp_dir.path().join("store");
 
-        let _store = Store::new(&store_path, None).await.unwrap();
+        let _store = Store::new_with_config(&store_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
         assert!(store_path.exists());
         assert!(store_path.is_dir());
     }
@@ -22,16 +24,23 @@ mod tests {
         let store_path = temp_dir.path();
 
         // Directory already exists
-        let _store = Store::new(&store_path, None).await.unwrap();
+        let _store = Store::new_with_config(&store_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
         assert!(store_path.exists());
     }
 
     #[tokio::test]
     async fn test_store_collection_creates_subdirectory() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
-        let collection = store.collection("users").await.unwrap();
+        let collection = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         assert!(collection.path.exists());
         assert!(collection.path.is_dir());
         assert_eq!(collection.name(), "users");
@@ -40,18 +49,38 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_with_valid_special_characters() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Test valid names with underscores, hyphens, and dots
-        let collection = store.collection("user_data-123").await.unwrap();
+        let collection = store
+            .collection_with_config(
+                "user_data-123",
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
         assert!(collection.path.exists());
         assert_eq!(collection.name(), "user_data-123");
 
-        let collection2 = store.collection("test.collection").await.unwrap();
+        let collection2 = store
+            .collection_with_config(
+                "test.collection",
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
         assert!(collection2.path.exists());
         assert_eq!(collection2.name(), "test.collection");
 
-        let collection3 = store.collection("data_2024-v1.0").await.unwrap();
+        let collection3 = store
+            .collection_with_config(
+                "data_2024-v1.0",
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
         assert!(collection3.path.exists());
         assert_eq!(collection3.name(), "data_2024-v1.0");
     }
@@ -59,10 +88,18 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_multiple_calls() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
-        let coll1 = store.collection("users").await.unwrap();
-        let coll2 = store.collection("users").await.unwrap();
+        let coll1 = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
+        let coll2 = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         assert_eq!(coll1.name(), coll2.name());
         assert_eq!(coll1.path, coll2.path);
@@ -71,9 +108,13 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_empty_name() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
-        let result = store.collection("").await;
+        let result = store
+            .collection_with_config("", Some(CollectionWalConfigOverrides::default()))
+            .await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -84,10 +125,17 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_path_separator() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Forward slash
-        let result = store.collection("path/traversal").await;
+        let result = store
+            .collection_with_config(
+                "path/traversal",
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -95,7 +143,12 @@ mod tests {
         ));
 
         // Backslash
-        let result = store.collection("path\\traversal").await;
+        let result = store
+            .collection_with_config(
+                "path\\traversal",
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -106,9 +159,13 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_hidden_name() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
-        let result = store.collection(".hidden").await;
+        let result = store
+            .collection_with_config(".hidden", Some(CollectionWalConfigOverrides::default()))
+            .await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -119,11 +176,15 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_windows_reserved_names() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         let reserved_names = vec!["CON", "PRN", "AUX", "NUL", "COM1", "LPT1"];
         for name in reserved_names {
-            let result = store.collection(name).await;
+            let result = store
+                .collection_with_config(name, Some(CollectionWalConfigOverrides::default()))
+                .await;
             assert!(result.is_err(), "Expected '{}' to be invalid", name);
             assert!(matches!(
                 result.unwrap_err(),
@@ -131,7 +192,12 @@ mod tests {
             ));
 
             // Test lowercase version
-            let result = store.collection(&name.to_lowercase()).await;
+            let result = store
+                .collection_with_config(
+                    &name.to_lowercase(),
+                    Some(CollectionWalConfigOverrides::default()),
+                )
+                .await;
             assert!(
                 result.is_err(),
                 "Expected '{}' to be invalid",
@@ -147,10 +213,14 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_control_characters() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Test null byte
-        let result = store.collection("test\0name").await;
+        let result = store
+            .collection_with_config("test\0name", Some(CollectionWalConfigOverrides::default()))
+            .await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -158,7 +228,12 @@ mod tests {
         ));
 
         // Test other control characters
-        let result = store.collection("test\x01name").await;
+        let result = store
+            .collection_with_config(
+                "test\x01name",
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -169,12 +244,16 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_special_characters() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         let invalid_chars = vec!["<", ">", ":", "\"", "|", "?", "*"];
         for ch in invalid_chars {
             let name = format!("test{}name", ch);
-            let result = store.collection(&name).await;
+            let result = store
+                .collection_with_config(&name, Some(CollectionWalConfigOverrides::default()))
+                .await;
             assert!(result.is_err(), "Expected name with '{}' to be invalid", ch);
             assert!(matches!(
                 result.unwrap_err(),
@@ -186,10 +265,14 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_invalid_trailing_dot_or_space() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Trailing dot
-        let result = store.collection("test.").await;
+        let result = store
+            .collection_with_config("test.", Some(CollectionWalConfigOverrides::default()))
+            .await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -197,7 +280,9 @@ mod tests {
         ));
 
         // Trailing space
-        let result = store.collection("test ").await;
+        let result = store
+            .collection_with_config("test ", Some(CollectionWalConfigOverrides::default()))
+            .await;
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -208,28 +293,43 @@ mod tests {
     #[tokio::test]
     async fn test_store_collection_valid_edge_cases() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Single character
-        let collection = store.collection("a").await.unwrap();
+        let collection = store
+            .collection_with_config("a", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         assert_eq!(collection.name(), "a");
 
         // Numbers only
-        let collection = store.collection("123").await.unwrap();
+        let collection = store
+            .collection_with_config("123", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         assert_eq!(collection.name(), "123");
 
         // Max length typical name
         let long_name = "a".repeat(255);
-        let collection = store.collection(&long_name).await.unwrap();
+        let collection = store
+            .collection_with_config(&long_name, Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         assert_eq!(collection.name(), long_name);
     }
 
     #[tokio::test]
     async fn test_store_new_with_passphrase() {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), Some("test_passphrase"))
-            .await
-            .unwrap();
+        let store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
         // Should have created signing key
         assert!(store.signing_key.is_some());
     }
@@ -238,15 +338,23 @@ mod tests {
     async fn test_store_new_with_passphrase_load_existing() {
         let temp_dir = tempdir().unwrap();
         // Create first store with passphrase
-        let store1 = Store::new(temp_dir.path(), Some("test_passphrase"))
-            .await
-            .unwrap();
+        let store1 = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
         let key1 = store1.signing_key.as_ref().unwrap().clone();
 
         // Create second store with same passphrase, should load existing key
-        let store2 = Store::new(temp_dir.path(), Some("test_passphrase"))
-            .await
-            .unwrap();
+        let store2 = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
         let key2 = store2.signing_key.as_ref().unwrap().clone();
 
         // Should be the same key
@@ -257,13 +365,22 @@ mod tests {
     async fn test_store_new_with_corrupted_keys() {
         let temp_dir = tempdir().unwrap();
         // First create a store with passphrase to generate keys
-        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
-            .await
-            .unwrap();
+        let _store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
 
         // Now corrupt the .keys collection by inserting a document with missing fields
-        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
-        let keys_coll = store2.collection(".keys").await.unwrap();
+        let store2 = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+        let keys_coll = store2
+            .collection_with_config(".keys", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         // Insert corrupted document
         let corrupted_data = serde_json::json!({
             "salt": "invalid_salt",
@@ -275,7 +392,12 @@ mod tests {
             .unwrap();
 
         // Now try to create a new store with passphrase, should fail due to corruption
-        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -283,13 +405,22 @@ mod tests {
     async fn test_store_new_with_invalid_salt_hex() {
         let temp_dir = tempdir().unwrap();
         // First create a store with passphrase to generate keys
-        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
-            .await
-            .unwrap();
+        let _store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
 
         // Corrupt the salt to invalid hex
-        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
-        let keys_coll = store2.collection(".keys").await.unwrap();
+        let store2 = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+        let keys_coll = store2
+            .collection_with_config(".keys", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         let doc = keys_coll
             .get_with_verification("signing_key", &crate::VerificationOptions::disabled())
             .await
@@ -300,7 +431,12 @@ mod tests {
         keys_coll.insert("signing_key", data).await.unwrap();
 
         // Try to load
-        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -308,13 +444,22 @@ mod tests {
     async fn test_store_new_with_invalid_encrypted_length() {
         let temp_dir = tempdir().unwrap();
         // First create a store with passphrase to generate keys
-        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
-            .await
-            .unwrap();
+        let _store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
 
         // Corrupt the encrypted to short
-        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
-        let keys_coll = store2.collection(".keys").await.unwrap();
+        let store2 = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+        let keys_coll = store2
+            .collection_with_config(".keys", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         let doc = keys_coll
             .get_with_verification("signing_key", &crate::VerificationOptions::disabled())
             .await
@@ -325,7 +470,12 @@ mod tests {
         keys_coll.insert("signing_key", data).await.unwrap();
 
         // Try to load
-        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -333,13 +483,22 @@ mod tests {
     async fn test_store_new_with_corrupted_keys_missing_salt() {
         let temp_dir = tempdir().unwrap();
         // First create a store with passphrase to generate keys
-        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
-            .await
-            .unwrap();
+        let _store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
 
         // Now corrupt the .keys collection by inserting a document with missing salt
-        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
-        let keys_coll = store2.collection(".keys").await.unwrap();
+        let store2 = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+        let keys_coll = store2
+            .collection_with_config(".keys", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         // Insert corrupted document
         let corrupted_data = serde_json::json!({
             "encrypted": "some_encrypted_data"
@@ -351,7 +510,12 @@ mod tests {
             .unwrap();
 
         // Now try to create a new store with passphrase, should fail due to missing salt
-        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -359,13 +523,22 @@ mod tests {
     async fn test_store_new_with_corrupted_keys_invalid_salt_hex() {
         let temp_dir = tempdir().unwrap();
         // First create a store with passphrase to generate keys
-        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
-            .await
-            .unwrap();
+        let _store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
 
         // Now corrupt the .keys collection by inserting a document with invalid salt hex
-        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
-        let keys_coll = store2.collection(".keys").await.unwrap();
+        let store2 = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+        let keys_coll = store2
+            .collection_with_config(".keys", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         // Insert corrupted document
         let corrupted_data = serde_json::json!({
             "encrypted": "some_encrypted_data",
@@ -377,7 +550,12 @@ mod tests {
             .unwrap();
 
         // Now try to create a new store with passphrase, should fail due to invalid salt hex
-        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -386,13 +564,22 @@ mod tests {
         // Test line 154-161: invalid key length error
         let temp_dir = tempdir().unwrap();
         // First create a store with passphrase to generate keys
-        let _store = Store::new(temp_dir.path(), Some("test_passphrase"))
-            .await
-            .unwrap();
+        let _store = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
 
         // Now corrupt the .keys collection by modifying the encrypted data to have wrong length
-        let store2 = Store::new(temp_dir.path(), None).await.unwrap();
-        let keys_coll = store2.collection(".keys").await.unwrap();
+        let store2 = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
+        let keys_coll = store2
+            .collection_with_config(".keys", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // Get the existing document to extract the salt
         let existing_doc = keys_coll
@@ -422,7 +609,12 @@ mod tests {
             .unwrap();
 
         // Now try to create a new store with passphrase, should fail due to invalid key length
-        let result = Store::new(temp_dir.path(), Some("test_passphrase")).await;
+        let result = Store::new_with_config(
+            temp_dir.path(),
+            Some("test_passphrase"),
+            StoreWalConfig::default(),
+        )
+        .await;
         assert!(result.is_err());
     }
 
@@ -436,7 +628,7 @@ mod tests {
         assert!(!tokio::fs::metadata(&new_path).await.is_ok());
 
         // Create store, should create the directory
-        let result = Store::new(&new_path, None).await;
+        let result = Store::new_with_config(&new_path, None, StoreWalConfig::default()).await;
         assert!(result.is_ok());
 
         // Verify directory was created
@@ -447,7 +639,9 @@ mod tests {
     async fn test_delete_collection_non_existent() {
         // Test lines 304-306: Deleting non-existent collection
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Delete collection that doesn't exist should succeed
         let result = store.delete_collection("non_existent").await;
@@ -458,10 +652,15 @@ mod tests {
     async fn test_delete_collection_success() {
         // Test lines 310-312, 315-316: Successful collection deletion
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Create a collection
-        let _collection = store.collection("test_delete").await.unwrap();
+        let _collection = store
+            .collection_with_config("test_delete", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // Verify it exists
         let collections = store.list_collections().await.unwrap();
@@ -480,7 +679,9 @@ mod tests {
         // Test lines 352-354: list_collections creates data directory if needed
         let temp_dir = tempdir().unwrap();
         let new_path = temp_dir.path().join("new_store");
-        let store = Store::new(&new_path, None).await.unwrap();
+        let store = Store::new_with_config(&new_path, None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Data dir should be created when listing
         let collections = store.list_collections().await.unwrap();
@@ -495,12 +696,23 @@ mod tests {
     async fn test_list_collections_with_entries() {
         // Test lines 363-366, 368-371, 376-377: Reading directory entries
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path(), None).await.unwrap();
+        let store = Store::new_with_config(temp_dir.path(), None, StoreWalConfig::default())
+            .await
+            .unwrap();
 
         // Create multiple collections
-        let _c1 = store.collection("collection1").await.unwrap();
-        let _c2 = store.collection("collection2").await.unwrap();
-        let _c3 = store.collection("collection3").await.unwrap();
+        let _c1 = store
+            .collection_with_config("collection1", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
+        let _c2 = store
+            .collection_with_config("collection2", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
+        let _c3 = store
+            .collection_with_config("collection3", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // List and verify
         let collections = store.list_collections().await.unwrap();

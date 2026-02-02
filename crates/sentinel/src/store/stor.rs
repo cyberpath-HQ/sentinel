@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use tokio::{fs as tokio_fs, sync::mpsc};
 use tracing::{debug, error, trace};
 
-use crate::{events::StoreEvent, Result, SentinelError, StoreMetadata, KEYS_COLLECTION, STORE_METADATA_FILE};
+use crate::{events::StoreEvent, CollectionWalConfigOverrides, Result, SentinelError, StoreMetadata, KEYS_COLLECTION, STORE_METADATA_FILE};
 use super::{events::start_event_processor, operations::collection_with_config};
 
 /// The top-level manager for document collections in Cyberpath Sentinel.
@@ -35,7 +35,12 @@ use super::{events::start_event_processor, operations::collection_with_config};
 ///     Store::new("/var/lib/sentinel/db", Some("my_passphrase")).await?;
 ///
 /// // Access a collection
-/// let users = store.collection("users").await?;
+/// let users = store
+///     .collection_with_config(
+///         "users",
+///         Some(CollectionWalConfigOverrides::default()),
+///     )
+///     .await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -150,17 +155,37 @@ impl Store {
 
         // Load or create store metadata
         let metadata_path = root_path.join(STORE_METADATA_FILE);
-        let store_metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
-            debug!("Loading existing store metadata");
-            let content = tokio_fs::read_to_string(&metadata_path).await?;
-            serde_json::from_str(&content)?
-        }
-        else {
-            debug!("Creating new store metadata");
-            let metadata = StoreMetadata::new();
-            let content = serde_json::to_string_pretty(&metadata)?;
-            tokio_fs::write(&metadata_path, content).await?;
-            metadata
+        let lock_manager = Arc::new(crate::locking::FileLockManager::new());
+        let store_metadata = {
+            // Acquire exclusive lock for metadata file to prevent concurrent access
+            let _lock = lock_manager
+                .acquire_lock(
+                    &metadata_path,
+                    crate::LockStrategy::Exclusive,
+                    None, // Use default timeout
+                )
+                .await?;
+            
+            // Try to read existing metadata first
+            let mut store_metadata = None;
+            if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
+                if let Ok(content) = tokio_fs::read_to_string(&metadata_path).await {
+                    if let Ok(metadata) = serde_json::from_str(&content) {
+                        store_metadata = Some(metadata);
+                    }
+                }
+            }
+            
+            // If we couldn't read valid metadata, create new
+            if store_metadata.is_none() {
+                debug!("Creating new store metadata");
+                let metadata = StoreMetadata::new();
+                let content = serde_json::to_string_pretty(&metadata)?;
+                tokio_fs::write(&metadata_path, &content).await?;
+                store_metadata = Some(metadata);
+            }
+            
+            store_metadata.unwrap()
         };
 
         let now = chrono::Utc::now();
@@ -322,25 +347,42 @@ impl Store {
 
         // Load or create store metadata with custom WAL config
         let metadata_path = root_path.join(STORE_METADATA_FILE);
-        let store_metadata = if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
-            debug!("Loading existing store metadata");
-            let mut metadata: StoreMetadata = {
-                let content = tokio_fs::read_to_string(&metadata_path).await?;
-                serde_json::from_str(&content)?
-            };
-            // Update WAL config if store already exists
-            metadata.wal_config = wal_config;
-            let content = serde_json::to_string_pretty(&metadata)?;
-            tokio_fs::write(&metadata_path, content).await?;
-            metadata
-        }
-        else {
-            debug!("Creating new store metadata with custom WAL config");
-            let mut metadata = StoreMetadata::new();
-            metadata.wal_config = wal_config;
-            let content = serde_json::to_string_pretty(&metadata)?;
-            tokio_fs::write(&metadata_path, content).await?;
-            metadata
+        let lock_manager = Arc::new(crate::locking::FileLockManager::new());
+        let store_metadata = {
+            // Acquire exclusive lock for metadata file to prevent concurrent access
+            let _lock = lock_manager
+                .acquire_lock(
+                    &metadata_path,
+                    crate::LockStrategy::Exclusive,
+                    None, // Use default timeout
+                )
+                .await?;
+            
+            // Try to read existing metadata first
+            let mut store_metadata = None;
+            if tokio_fs::try_exists(&metadata_path).await.unwrap_or(false) {
+                if let Ok(content) = tokio_fs::read_to_string(&metadata_path).await {
+                    if let Ok(mut metadata) = serde_json::from_str::<StoreMetadata>(&content) {
+                        // Update WAL config if store already exists
+                        metadata.wal_config = wal_config.clone();
+                        let content = serde_json::to_string_pretty(&metadata)?;
+                        tokio_fs::write(&metadata_path, &content).await?;
+                        store_metadata = Some(metadata);
+                    }
+                }
+            }
+            
+            // If we couldn't read valid metadata, create new
+            if store_metadata.is_none() {
+                debug!("Creating new store metadata with custom WAL config");
+                let mut metadata = StoreMetadata::new();
+                metadata.wal_config = wal_config.clone();
+                let content = serde_json::to_string_pretty(&metadata)?;
+                tokio_fs::write(&metadata_path, &content).await?;
+                store_metadata = Some(metadata);
+            }
+            
+            store_metadata.unwrap()
         };
 
         let now = chrono::Utc::now();
@@ -351,7 +393,7 @@ impl Store {
         let mut store = Self {
             root_path,
             signing_key: None,
-            lock_manager: Arc::new(crate::locking::FileLockManager::new()),
+            lock_manager,
             created_at: now,
             last_accessed_at: std::sync::RwLock::new(now),
             total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(
