@@ -46,10 +46,11 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection, QueryBuilder, Operator, SortOrder};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
     /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert test data
@@ -97,10 +98,11 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection, QueryBuilder, Operator, SortOrder, VerificationOptions, VerificationMode};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
     /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert test data

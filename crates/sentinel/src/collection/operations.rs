@@ -1,7 +1,7 @@
 use serde_json::Value;
 use tokio::fs as tokio_fs;
 use tracing::{debug, error, trace, warn};
-use sentinel_wal::{EntryType, LogEntry};
+use sentinel_wal::{CollectionWalConfigOverrides, EntryType, LogEntry, StoreWalConfig};
 
 use crate::{Document, Result, SentinelError};
 use super::coll::Collection;
@@ -33,6 +33,7 @@ impl Collection {
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
@@ -164,6 +165,7 @@ impl Collection {
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
@@ -227,6 +229,7 @@ impl Collection {
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
@@ -281,6 +284,7 @@ impl Collection {
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
@@ -376,6 +380,7 @@ impl Collection {
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
@@ -513,6 +518,7 @@ impl Collection {
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
@@ -755,6 +761,7 @@ impl Collection {
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new_with_config("/tmp/sentinel", None, StoreWalConfig::default()).await?;
@@ -818,6 +825,7 @@ impl Collection {
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
     /// use serde_json::json;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
     /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
@@ -984,6 +992,7 @@ impl Collection {
     ///
     /// ```rust
     /// use serde_json::json;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use sentinel_dbms::Collection;
     ///
     /// let existing = json!({"name": "Alice", "age": 30});
@@ -1090,9 +1099,10 @@ impl Collection {
     ///
     /// ```rust,no_run
     /// use sentinel_dbms::Store;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
     /// let collection = store.collection("users").await?;
     ///
     /// // Perform some operations
@@ -1117,8 +1127,9 @@ impl Collection {
 mod tests {
     use tempfile::tempdir;
     use serde_json::json;
-    use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
+    use sentinel_wal::{CollectionWalConfigOverrides, EntryType, LogEntry, StoreWalConfig};
 
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     use crate::{Collection, Store};
 
     // ============ Document ID Validation Tests ============

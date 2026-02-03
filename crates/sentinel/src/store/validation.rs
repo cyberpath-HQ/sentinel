@@ -25,9 +25,11 @@ use crate::{
 /// # Examples
 /// ```no_run
 /// # use sentinel_dbms::{Store, SentinelError};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
+/// #     /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
 /// # use std::path::Path;
 /// # async fn example() -> Result<(), SentinelError> {
-/// let store = Store::new(Path::new("/tmp/test"), None).await?;
+/// let store = Store::new_with_config(Path::new("/tmp/test"), None, StoreWalConfig::default()).await?;
 ///
 /// // Valid names
 /// assert!(store

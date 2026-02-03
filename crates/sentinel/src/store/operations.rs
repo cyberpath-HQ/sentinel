@@ -10,6 +10,7 @@ use crate::{
     CollectionMetadata,
     CollectionWalConfigOverrides,
     Result,
+    StoreWalConfig,
     COLLECTION_METADATA_FILE,
     DATA_DIR,
     WAL_DIR,
@@ -170,10 +171,11 @@ impl Store {
     ///
     /// ```no_run
     /// use sentinel_dbms::Store;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let store = Store::new("/var/lib/sentinel", None).await?;
+    /// let store = Store::new_with_config("/var/lib/sentinel", None, StoreWalConfig::default()).await?;
     ///
     /// // Access a users collection
     /// let users = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
@@ -237,18 +239,18 @@ impl Store {
     ///
     /// ```no_run
     /// use sentinel_dbms::Store;
-    /// use sentinel_wal::CollectionWalConfigOverrides;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let store = Store::new("/var/lib/sentinel", None).await?;
+    /// let store = Store::new_with_config("/var/lib/sentinel", None, StoreWalConfig::default()).await?;
     /// let wal_overrides = CollectionWalConfigOverrides {
     ///     write_mode: Some(sentinel_wal::WalFailureMode::Warn),
     ///     ..Default::default()
     /// };
     ///
     /// // Access a users collection with WAL overrides
-    /// let users = store.collection_with_config("users", Some(wal_overrides, Some(CollectionWalConfigOverrides::default()))).await?;
+    /// let users = store.collection_with_config("users", Some(wal_overrides)).await?;
     ///
     /// // Insert a document into the collection
     /// users.insert("user-123", json!({
@@ -284,9 +286,15 @@ impl Store {
     ///
     /// ```rust
     /// use sentinel_dbms::Store;
+    /// use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config(
+    ///     "/path/to/data",
+    ///     None,
+    ///     StoreWalConfig::default(),
+    /// )
+    /// .await?;
     ///
     /// // Create a collection
     /// let collection = store
@@ -358,9 +366,15 @@ impl Store {
     ///
     /// ```rust
     /// use sentinel_dbms::Store;
+    /// use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config(
+    ///     "/path/to/data",
+    ///     None,
+    ///     StoreWalConfig::default(),
+    /// )
+    /// .await?;
     ///
     /// // Create some collections
     /// store

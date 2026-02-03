@@ -7,15 +7,7 @@ use chrono::{DateTime, Utc};
 use tokio::{fs as tokio_fs, sync::mpsc};
 use tracing::{debug, error, trace};
 
-use crate::{
-    events::StoreEvent,
-    CollectionWalConfigOverrides,
-    Result,
-    SentinelError,
-    StoreMetadata,
-    KEYS_COLLECTION,
-    STORE_METADATA_FILE,
-};
+use crate::{events::StoreEvent, Result, SentinelError, StoreMetadata, KEYS_COLLECTION, STORE_METADATA_FILE};
 use super::{events::start_event_processor, operations::collection_with_config};
 
 /// The top-level manager for document collections in Cyberpath Sentinel.
@@ -36,11 +28,16 @@ use super::{events::start_event_processor, operations::collection_with_config};
 ///
 /// ```no_run
 /// use sentinel_dbms::Store;
+/// use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create a new store at the specified path
-/// let store =
-///     Store::new("/var/lib/sentinel/db", Some("my_passphrase")).await?;
+/// let store = Store::new_with_config(
+///     "/var/lib/sentinel/db",
+///     Some("my_passphrase"),
+///     StoreWalConfig::default(),
+/// )
+/// .await?;
 ///
 /// // Access a collection
 /// let users = store
@@ -117,6 +114,7 @@ impl Store {
     ///
     /// ```no_run
     /// use sentinel_dbms::Store;
+    /// use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// // Create a store with a string path
@@ -318,7 +316,7 @@ impl Store {
     ///
     /// ```no_run
     /// use sentinel_dbms::Store;
-    /// use sentinel_wal::StoreWalConfig;
+    /// use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let wal_config = StoreWalConfig::default();

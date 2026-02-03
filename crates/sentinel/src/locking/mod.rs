@@ -32,17 +32,19 @@
 //! ### Basic Exclusive Locking
 //!
 //! ```rust,no_run
+//! use std::sync::Arc;
+//!
 //! use sentinel_dbms::locking::{FileLockManager, LockStrategy};
 //!
 //! # async fn example() -> sentinel_dbms::Result<()> {
-//! let manager = FileLockManager::new();
+//! let manager = Arc::new(FileLockManager::new());
 //!
 //! // Acquire exclusive lock for writing
 //! let guard = manager
 //!     .acquire_lock(
 //!         &std::path::PathBuf::from("data/users/user-123.json"),
 //!         LockStrategy::Exclusive,
-//!         std::time::Duration::from_secs(30),
+//!         Some(std::time::Duration::from_secs(10)),
 //!     )
 //!     .await?;
 //!
@@ -56,14 +58,15 @@
 //!
 //! ```rust,no_run
 //! # use sentinel_dbms::locking::{FileLockManager, LockStrategy};
+//! # use std::sync::Arc;
 //! # async fn example() -> sentinel_dbms::Result<()> {
-//! # let manager = FileLockManager::new();
+//! let manager = Arc::new(FileLockManager::new());
 //! // Multiple readers can hold shared locks simultaneously
 //! let guard1 = manager
 //!     .acquire_lock(
 //!         &std::path::PathBuf::from("data/users/user-123.json"),
 //!         LockStrategy::Shared,
-//!         std::time::Duration::from_secs(10),
+//!         Some(std::time::Duration::from_secs(10)),
 //!     )
 //!     .await?;
 //!
@@ -71,7 +74,7 @@
 //!     .acquire_lock(
 //!         &std::path::PathBuf::from("data/users/user-123.json"),
 //!         LockStrategy::Shared,
-//!         std::time::Duration::from_secs(10),
+//!         Some(std::time::Duration::from_secs(10)),
 //!     )
 //!     .await?;
 //!

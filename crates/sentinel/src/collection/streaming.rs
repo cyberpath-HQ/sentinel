@@ -28,11 +28,12 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     /// use futures::TryStreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
     /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some documents
@@ -74,11 +75,12 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     /// use futures::stream::StreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
     /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some test data
@@ -130,11 +132,12 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection, VerificationOptions};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     /// use futures::stream::StreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
     /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some test data
@@ -272,10 +275,11 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Collection, Store};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use futures::stream::StreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
     /// let collection = store
     ///     .collection_with_config(
     ///         "users",
@@ -313,10 +317,11 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Collection, Store, VerificationOptions};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use futures::stream::StreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
     /// let collection = store
     ///     .collection_with_config(
     ///         "users",
