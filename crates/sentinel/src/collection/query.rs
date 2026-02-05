@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_stream::stream;
 use futures::{StreamExt as _, TryStreamExt as _};
 use serde_json::Value;
@@ -44,11 +46,12 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection, QueryBuilder, Operator, SortOrder};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert test data
     /// collection.insert("user-1", json!({"name": "Alice", "age": 25, "city": "NYC"})).await?;
@@ -95,11 +98,12 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection, QueryBuilder, Operator, SortOrder, VerificationOptions, VerificationMode};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert test data
     /// collection.insert("user-1", json!({"name": "Alice", "age": 25, "city": "NYC"})).await?;
@@ -277,17 +281,19 @@ impl Collection {
 
                         let collection_ref = Self {
                             path: collection_path.clone(),
-                                                created_at: chrono::Utc::now(),
-                                                updated_at: std::sync::RwLock::new(chrono::Utc::now()),
-                                                last_checkpoint_at: std::sync::RwLock::new(None),
-                                                total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                                                total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
                             signing_key: signing_key.clone(),
-                                                stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
-                                                wal_manager: None,
-                                                wal_config: sentinel_wal::CollectionWalConfig::default(),
-                                                event_sender: None,
-                                                event_task: None,
+                            wal_manager: None,
+                            wal_config: sentinel_wal::CollectionWalConfig::default(),
+                            stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
+                            lock_manager: Arc::new(crate::locking::FileLockManager::new()), // Temporary manager for verification
+                            created_at: chrono::Utc::now(),
+                            updated_at: std::sync::RwLock::new(chrono::Utc::now()),
+                            last_read_at: std::sync::RwLock::new(chrono::Utc::now()),
+                            last_checkpoint_at: std::sync::RwLock::new(None),
+                            total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                            total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                            event_sender: None,
+                            event_task: None,
                             recovery_mode: std::sync::atomic::AtomicBool::new(false),
                         };
 

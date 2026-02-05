@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use serde_json::{self, json};
-    use tempfile;
-    use tokio::fs;
+    use serde_json::json;
     use futures::TryStreamExt;
+    use sentinel_wal::CollectionWalConfigOverrides;
 
     use crate::{Collection, Document, SentinelError, Store};
 
@@ -16,7 +15,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         (collection, temp_dir)
     }
 
@@ -29,7 +31,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         (collection, temp_dir)
     }
 
@@ -327,7 +332,7 @@ mod tests {
 
         collection.bulk_insert(documents).await.unwrap();
 
-        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        let docs: Vec<Document> = collection.all().try_collect().await.unwrap();
         assert_eq!(docs.len(), 3);
 
         let ids: Vec<String> = collection.list().try_collect().await.unwrap();
@@ -647,7 +652,7 @@ mod tests {
     async fn test_all_empty_collection() {
         let (collection, _temp_dir) = setup_collection().await;
 
-        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        let docs: Vec<Document> = collection.all().try_collect().await.unwrap();
         assert!(docs.is_empty());
     }
 
@@ -663,7 +668,7 @@ mod tests {
                 .unwrap();
         }
 
-        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        let docs: Vec<Document> = collection.all().try_collect().await.unwrap();
         assert_eq!(docs.len(), 5);
 
         let ids: std::collections::HashSet<_> = docs.iter().map(|d| d.id().to_string()).collect();
@@ -764,7 +769,7 @@ mod tests {
         let result = collection.bulk_insert(vec![]).await;
         assert!(result.is_ok());
 
-        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        let docs: Vec<Document> = collection.all().try_collect().await.unwrap();
         assert!(docs.is_empty());
     }
 
@@ -791,7 +796,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify all documents were inserted
-        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        let docs: Vec<Document> = collection.all().try_collect().await.unwrap();
         assert_eq!(docs.len(), 100);
     }
 
@@ -809,7 +814,7 @@ mod tests {
         assert!(result.is_err());
 
         // First two should not be inserted (transaction safety not implemented yet)
-        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        let docs: Vec<Document> = collection.all().try_collect().await.unwrap();
         assert!(docs.len() <= 2);
     }
 
@@ -824,7 +829,7 @@ mod tests {
 
         let query = crate::QueryBuilder::new().build();
         let result = collection.query(query).await.unwrap();
-        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        let docs: Vec<Document> = result.documents.try_collect().await.unwrap();
         assert_eq!(docs.len(), 10);
     }
 
@@ -839,7 +844,7 @@ mod tests {
 
         let query = crate::QueryBuilder::new().limit(5).build();
         let result = collection.query(query).await.unwrap();
-        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        let docs: Vec<Document> = result.documents.try_collect().await.unwrap();
         assert_eq!(docs.len(), 5);
     }
 
@@ -854,7 +859,7 @@ mod tests {
 
         let query = crate::QueryBuilder::new().offset(5).build();
         let result = collection.query(query).await.unwrap();
-        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        let docs: Vec<Document> = result.documents.try_collect().await.unwrap();
         assert_eq!(docs.len(), 5);
     }
 
@@ -869,7 +874,7 @@ mod tests {
 
         let query = crate::QueryBuilder::new().offset(10).limit(5).build();
         let result = collection.query(query).await.unwrap();
-        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        let docs: Vec<Document> = result.documents.try_collect().await.unwrap();
         assert_eq!(docs.len(), 5);
     }
 
@@ -886,7 +891,7 @@ mod tests {
             .sort("id", crate::SortOrder::Ascending)
             .build();
         let result = collection.query(query).await.unwrap();
-        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        let docs: Vec<Document> = result.documents.try_collect().await.unwrap();
 
         assert_eq!(docs.len(), 5);
         for (i, doc) in docs.iter().enumerate() {
@@ -907,7 +912,7 @@ mod tests {
             .sort("id", crate::SortOrder::Descending)
             .build();
         let result = collection.query(query).await.unwrap();
-        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        let docs: Vec<Document> = result.documents.try_collect().await.unwrap();
 
         assert_eq!(docs.len(), 5);
         for (i, doc) in docs.iter().enumerate() {
@@ -929,7 +934,7 @@ mod tests {
             .projection(vec!["id", "name"])
             .build();
         let result = collection.query(query).await.unwrap();
-        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        let docs: Vec<Document> = result.documents.try_collect().await.unwrap();
 
         assert_eq!(docs.len(), 3);
         for doc in &docs {
@@ -958,7 +963,7 @@ mod tests {
             .query_with_verification(query, &options)
             .await
             .unwrap();
-        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        let docs: Vec<Document> = result.documents.try_collect().await.unwrap();
         assert_eq!(docs.len(), 5);
     }
 
@@ -1005,7 +1010,7 @@ mod tests {
             .build();
 
         let result = collection.query(query).await.unwrap();
-        let docs: Vec<_> = result.documents.try_collect().await.unwrap();
+        let docs: Vec<Document> = result.documents.try_collect().await.unwrap();
 
         assert_eq!(docs.len(), 1);
         // Diana is 28, Bob is 30 but in LA (filtered out by city=NYC)
@@ -1234,7 +1239,10 @@ mod tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         let data = json!({ "name": "test" });
         let result = collection.insert("unsigned-doc", data).await;
@@ -1287,7 +1295,7 @@ mod tests {
         collection.delete("doc-1").await.unwrap();
         collection.delete("doc-3").await.unwrap();
 
-        let docs: Vec<_> = collection.all().try_collect().await.unwrap();
+        let docs: Vec<Document> = collection.all().try_collect().await.unwrap();
         assert_eq!(docs.len(), 3);
 
         let ids: std::collections::HashSet<_> = docs.iter().map(|d| d.id().to_string()).collect();
@@ -1634,7 +1642,10 @@ mod tests {
         .await
         .unwrap();
         let collection = store
-            .collection_with_config("test_collection", None)
+            .collection_with_config(
+                "test_collection",
+                Some(CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -1667,7 +1678,10 @@ mod tests {
         .await
         .unwrap();
         let collection = store
-            .collection_with_config("test_collection", None)
+            .collection_with_config(
+                "test_collection",
+                Some(CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -1705,7 +1719,10 @@ mod tests {
         .await
         .unwrap();
         let collection = store
-            .collection_with_config("test_collection", None)
+            .collection_with_config(
+                "test_collection",
+                Some(CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -1731,6 +1748,7 @@ mod persistence_tests {
     use tokio::fs;
     use futures::TryStreamExt;
     use serde_json::json;
+    use sentinel_wal::CollectionWalConfigOverrides;
 
     use super::*;
     use crate::{Collection, CollectionMetadata, Document, Store};
@@ -1744,7 +1762,10 @@ mod persistence_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         (collection, temp_dir)
     }
 
@@ -1757,7 +1778,10 @@ mod persistence_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         (collection, temp_dir)
     }
 
@@ -1776,7 +1800,10 @@ mod persistence_tests {
             .await
             .unwrap();
             let collection = store
-                .collection_with_config("test_collection", None)
+                .collection_with_config(
+                    "test_collection",
+                    Some(CollectionWalConfigOverrides::default()),
+                )
                 .await
                 .unwrap();
 
@@ -1805,6 +1832,9 @@ mod persistence_tests {
 
             // Allow event processor to update counters
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+            // Checkpoint WAL to ensure all operations are processed
+            collection.checkpoint().await.unwrap();
 
             // Flush pending metadata changes (async event processor uses debouncing)
             collection.flush_metadata().await.unwrap();
@@ -1835,7 +1865,10 @@ mod persistence_tests {
             .await
             .unwrap();
             let collection = store
-                .collection_with_config("test_collection", None)
+                .collection_with_config(
+                    "test_collection",
+                    Some(CollectionWalConfigOverrides::default()),
+                )
                 .await
                 .unwrap();
 
@@ -1878,7 +1911,10 @@ mod persistence_tests {
                 .await
                 .unwrap();
             let collection = store
-                .collection_with_config("test_collection", None)
+                .collection_with_config(
+                    "test_collection",
+                    Some(CollectionWalConfigOverrides::default()),
+                )
                 .await
                 .unwrap();
 
@@ -2096,8 +2132,9 @@ mod store_tests {
     use tempfile::tempdir;
     use futures::TryStreamExt;
     use serde_json::json;
+    use sentinel_wal::CollectionWalConfigOverrides;
 
-    use crate::Store;
+    use crate::{Document, Store};
 
     #[tokio::test]
     async fn test_store_new() {
@@ -2163,12 +2200,18 @@ mod store_tests {
         .unwrap();
 
         // Create multiple collections
-        let _ = store.collection_with_config("users", None).await.unwrap();
         let _ = store
-            .collection_with_config("products", None)
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
-        let _ = store.collection_with_config("orders", None).await.unwrap();
+        let _ = store
+            .collection_with_config("products", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
+        let _ = store
+            .collection_with_config("orders", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         let collections = store.list_collections().await.unwrap();
         assert_eq!(collections.len(), 3);
@@ -2206,7 +2249,10 @@ mod store_tests {
 
         // Create a collection
         let collection = store
-            .collection_with_config("temp_collection", None)
+            .collection_with_config(
+                "temp_collection",
+                Some(CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
         collection
@@ -2239,9 +2285,12 @@ mod store_tests {
         .unwrap();
 
         // Create multiple collections and add data to each
-        let users = store.collection_with_config("users", None).await.unwrap();
+        let users = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         let products = store
-            .collection_with_config("products", None)
+            .collection_with_config("products", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
 
@@ -2272,7 +2321,10 @@ mod store_tests {
             let store = Store::new_with_config(&path, None, sentinel_wal::StoreWalConfig::default())
                 .await
                 .unwrap();
-            let collection = store.collection_with_config("users", None).await.unwrap();
+            let collection = store
+                .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+                .await
+                .unwrap();
             collection
                 .insert("user1", json!({"name": "Alice"}))
                 .await
@@ -2284,7 +2336,10 @@ mod store_tests {
             let store = Store::new_with_config(&path, None, sentinel_wal::StoreWalConfig::default())
                 .await
                 .unwrap();
-            let collection = store.collection_with_config("users", None).await.unwrap();
+            let collection = store
+                .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+                .await
+                .unwrap();
             let doc = collection.get("user1").await.unwrap();
             assert!(doc.is_some());
             assert_eq!(doc.unwrap().data()["name"], "Alice");
@@ -2328,7 +2383,10 @@ mod store_tests {
         let before_access = chrono::Utc::now();
 
         // Access a collection to update last_accessed_at
-        let _ = store.collection_with_config("test", None).await.unwrap();
+        let _ = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         let last_accessed = store.last_accessed_at();
         assert!(last_accessed >= before_access);
@@ -2344,7 +2402,10 @@ mod store_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("docs", None).await.unwrap();
+        let collection = store
+            .collection_with_config("docs", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection.insert("doc1", json!({"data": 1})).await.unwrap();
         collection.insert("doc2", json!({"data": 2})).await.unwrap();
@@ -2365,7 +2426,10 @@ mod store_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("docs", None).await.unwrap();
+        let collection = store
+            .collection_with_config("docs", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection
             .insert("doc1", json!({"data": "large content here"}))
@@ -2389,9 +2453,18 @@ mod store_tests {
         .await
         .unwrap();
 
-        let _ = store.collection_with_config("col1", None).await.unwrap();
-        let _ = store.collection_with_config("col2", None).await.unwrap();
-        let _ = store.collection_with_config("col3", None).await.unwrap();
+        let _ = store
+            .collection_with_config("col1", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
+        let _ = store
+            .collection_with_config("col2", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
+        let _ = store
+            .collection_with_config("col3", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // Poll for the expected count with timeout instead of fixed sleep
         let mut count = store.collection_count();
@@ -2432,7 +2505,7 @@ mod store_tests {
         .unwrap();
 
         let collection = store
-            .collection_with_config("configured", None)
+            .collection_with_config("configured", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
 
@@ -2456,7 +2529,7 @@ mod store_tests {
         .unwrap();
 
         let collection = store
-            .collection_with_config("to_delete", None)
+            .collection_with_config("to_delete", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
         for i in 0 .. 5 {
@@ -2490,11 +2563,17 @@ mod store_tests {
         .unwrap();
 
         // Create first collection
-        let col1 = store.collection_with_config("first", None).await.unwrap();
+        let col1 = store
+            .collection_with_config("first", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         col1.insert("data1", json!({"value": 1})).await.unwrap();
 
         // Create second collection
-        let col2 = store.collection_with_config("second", None).await.unwrap();
+        let col2 = store
+            .collection_with_config("second", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         col2.insert("data2", json!({"value": 2})).await.unwrap();
 
         // List all
@@ -2511,7 +2590,10 @@ mod store_tests {
         assert_eq!(collections[0], "second");
 
         // Create third
-        let col3 = store.collection_with_config("third", None).await.unwrap();
+        let col3 = store
+            .collection_with_config("third", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         col3.insert("data3", json!({"value": 3})).await.unwrap();
 
         // Verify we have second and third
@@ -2528,8 +2610,9 @@ mod collection_streaming_tests {
     use tempfile::tempdir;
     use futures::TryStreamExt;
     use serde_json::json;
+    use sentinel_wal::CollectionWalConfigOverrides;
 
-    use crate::Store;
+    use crate::{Document, Store};
 
     #[tokio::test]
     async fn test_collection_list_documents() {
@@ -2541,13 +2624,16 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("docs", None).await.unwrap();
+        let collection = store
+            .collection_with_config("docs", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection.insert("doc1", json!({"data": 1})).await.unwrap();
         collection.insert("doc2", json!({"data": 2})).await.unwrap();
         collection.insert("doc3", json!({"data": 3})).await.unwrap();
 
-        let docs: Vec<_> = collection.list().try_collect().await.unwrap();
+        let docs: Vec<String> = collection.list().try_collect().await.unwrap();
         assert_eq!(docs.len(), 3);
         assert!(docs.contains(&"doc1".to_string()));
         assert!(docs.contains(&"doc2".to_string()));
@@ -2564,9 +2650,12 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("empty", None).await.unwrap();
+        let collection = store
+            .collection_with_config("empty", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
-        let docs: Vec<_> = collection.list().try_collect().await.unwrap();
+        let docs: Vec<String> = collection.list().try_collect().await.unwrap();
         assert!(docs.is_empty());
     }
 
@@ -2580,7 +2669,10 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("users", None).await.unwrap();
+        let collection = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection
             .insert("user1", json!({"name": "Alice", "age": 25}))
@@ -2625,7 +2717,10 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("users", None).await.unwrap();
+        let collection = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection
             .insert("user1", json!({"name": "Alice", "age": 25}))
@@ -2660,7 +2755,10 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("docs", None).await.unwrap();
+        let collection = store
+            .collection_with_config("docs", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection
             .insert("doc1", json!({"value": 1}))
@@ -2694,7 +2792,7 @@ mod collection_streaming_tests {
         .await
         .unwrap();
         let collection = store
-            .collection_with_config("empty_coll", None)
+            .collection_with_config("empty_coll", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
 
@@ -2712,7 +2810,10 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // Insert a valid document
         collection
@@ -2743,7 +2844,10 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // Insert a valid document
         collection
@@ -2774,7 +2878,10 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // Insert a valid document
         collection
@@ -2819,7 +2926,10 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // Insert a valid document
         collection
@@ -2865,7 +2975,10 @@ mod collection_streaming_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("docs", None).await.unwrap();
+        let collection = store
+            .collection_with_config("docs", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection
             .insert("doc1", json!({"value": 10}))
@@ -2899,6 +3012,7 @@ mod collection_streaming_tests {
 mod collection_error_tests {
     use tempfile::tempdir;
     use serde_json::json;
+    use sentinel_wal::CollectionWalConfigOverrides;
 
     use crate::{Collection, Store};
 
@@ -2911,7 +3025,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("test", None).await.unwrap();
+        let collection = store
+            .collection_with_config("test", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
         (collection, temp_dir)
     }
 
@@ -2925,7 +3042,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("users", None).await.unwrap();
+        let collection = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         let doc = collection.get("nonexistent").await.unwrap();
         assert!(doc.is_none());
@@ -2941,7 +3061,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("users", None).await.unwrap();
+        let collection = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         let result = collection.delete("nonexistent").await;
         // Depending on implementation, this might succeed or fail
@@ -2959,7 +3082,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("users", None).await.unwrap();
+        let collection = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection
             .insert("user1", json!({"name": "Alice", "age": 25}))
@@ -2985,7 +3111,7 @@ mod collection_error_tests {
         .await
         .unwrap();
         let collection = store
-            .collection_with_config("empty_count", None)
+            .collection_with_config("empty_count", Some(CollectionWalConfigOverrides::default()))
             .await
             .unwrap();
 
@@ -3003,7 +3129,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("users", None).await.unwrap();
+        let collection = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection
             .insert("user1", json!({"name": "Alice"}))
@@ -3027,7 +3156,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("docs", None).await.unwrap();
+        let collection = store
+            .collection_with_config("docs", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection
             .insert("doc1", json!({"data": "value"}))
@@ -3053,7 +3185,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("users", None).await.unwrap();
+        let collection = store
+            .collection_with_config("users", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         collection
             .insert("user1", json!({"name": "Alice"}))
@@ -3075,7 +3210,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("docs", None).await.unwrap();
+        let collection = store
+            .collection_with_config("docs", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         let large_data = json!({
             "content": "x".repeat(10000),
@@ -3105,7 +3243,10 @@ mod collection_error_tests {
         )
         .await
         .unwrap();
-        let collection = store.collection_with_config("docs", None).await.unwrap();
+        let collection = store
+            .collection_with_config("docs", Some(CollectionWalConfigOverrides::default()))
+            .await
+            .unwrap();
 
         // IDs with dashes and underscores should work
         collection

@@ -580,10 +580,10 @@ mod tests {
 
 #### 2.2 File Locking
 
-- [ ] Exclusive locks for writes
-- [ ] Shared locks for reads
-- [ ] Lock timeout handling
-- [ ] Deadlock detection
+- [x] Exclusive locks for writes
+- [x] Shared locks for reads
+- [x] Lock timeout handling
+- [x] Deadlock detection
 
 #### 2.3 Transactions
 

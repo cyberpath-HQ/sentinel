@@ -125,7 +125,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -154,7 +157,10 @@ mod tests {
 
         // Verify documents were inserted
         let collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
         let doc1_opt = collection.get("doc1").await.unwrap();
@@ -185,7 +191,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -223,7 +232,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -261,7 +273,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -294,7 +309,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -335,7 +353,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -373,7 +394,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -411,7 +435,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -449,7 +476,10 @@ mod tests {
 
         // Create collection
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 

@@ -19,7 +19,7 @@ tokio = { version = "1.49.0", features = ["full"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["arbitrary_precision"] }
 async-trait = "0.1.89"
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 chrono = { version = "0.4.43", features = ["serde"] }
 sentinel-crypto = { version = "2.1.1", path = "../sentinel-crypto" }
 sentinel-wal = { version = "2.0.1", path = "../sentinel-wal" }
@@ -29,6 +29,8 @@ tokio-stream = "0.1.18"
 futures = "0.3.31"
 async-stream = "0.3.6"
 cuid2 = "0.1.4"
+fs2 = "0.4.3"
+dashmap = "5.5"
 
 [dev-dependencies]
 tempfile = "3.24.0"
@@ -58,4 +60,8 @@ harness = false
 
 [[bench]]
 name = "memory_benches"
+harness = false
+
+[[bench]]
+name = "locking_benches"
 harness = false

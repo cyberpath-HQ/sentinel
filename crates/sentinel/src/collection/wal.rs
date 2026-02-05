@@ -1,4 +1,4 @@
-use sentinel_wal::WalDocumentOps;
+use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig, WalDocumentOps};
 
 use super::coll::Collection;
 
@@ -69,18 +69,34 @@ mod tests {
     /// Helper to create a test store with a collection
     async fn create_test_store_with_collection() -> (tempfile::TempDir, Store, String) {
         let temp_dir = tempdir().unwrap();
-        let store = Store::new(temp_dir.path().to_path_buf(), None)
+        let store = Store::new_with_config(
+            temp_dir.path().to_path_buf(),
+            None,
+            StoreWalConfig::default(),
+        )
+        .await
+        .unwrap();
+        let collection_name = "test_collection".to_string();
+        let _ = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
-        let collection_name = "test_collection".to_string();
-        let _ = store.collection(&collection_name).await.unwrap();
         (temp_dir, store, collection_name)
     }
 
     #[tokio::test]
     async fn test_wal_document_ops_get_document() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         // Test getting a non-existent document
         let result = collection.get("nonexistent").await.unwrap();
@@ -100,7 +116,13 @@ mod tests {
     #[tokio::test]
     async fn test_wal_document_ops_apply_operation_insert() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         let doc_id = "test-insert-doc";
         let doc_data = serde_json::json!({"operation": "insert", "value": 100});
@@ -124,7 +146,13 @@ mod tests {
     #[tokio::test]
     async fn test_wal_document_ops_apply_operation_insert_missing_data() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         // Apply insert operation without data - should fail
         let result = collection
@@ -139,7 +167,13 @@ mod tests {
     #[tokio::test]
     async fn test_wal_document_ops_apply_operation_update() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         // First insert a document
         let doc_id = "test-update-doc";
@@ -169,7 +203,13 @@ mod tests {
     #[tokio::test]
     async fn test_wal_document_ops_apply_operation_update_missing_data() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         // Apply update operation without data - should fail
         let result = collection
@@ -184,7 +224,13 @@ mod tests {
     #[tokio::test]
     async fn test_wal_document_ops_apply_operation_delete() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         // First insert a document
         let doc_id = "test-delete-doc";
@@ -207,7 +253,13 @@ mod tests {
     #[tokio::test]
     async fn test_wal_document_ops_apply_operation_delete_nonexistent() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         // Delete a non-existent document - should still succeed (idempotent)
         let result = collection
@@ -220,7 +272,13 @@ mod tests {
     #[tokio::test]
     async fn test_wal_document_ops_apply_operation_begin() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         // Begin operation should succeed but do nothing (idempotent)
         let result = collection
@@ -233,7 +291,13 @@ mod tests {
     #[tokio::test]
     async fn test_wal_document_ops_apply_operation_commit() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         // Commit operation should succeed but do nothing (idempotent)
         let result = collection
@@ -246,7 +310,13 @@ mod tests {
     #[tokio::test]
     async fn test_wal_document_ops_apply_operation_rollback() {
         let (_temp_dir, store, collection_name) = create_test_store_with_collection().await;
-        let collection = store.collection(&collection_name).await.unwrap();
+        let collection = store
+            .collection_with_config(
+                &collection_name,
+                Some(CollectionWalConfigOverrides::default()),
+            )
+            .await
+            .unwrap();
 
         // Rollback operation should succeed but do nothing (idempotent)
         let result = collection

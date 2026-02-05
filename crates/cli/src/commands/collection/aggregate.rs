@@ -1,5 +1,5 @@
 use clap::Args;
-use sentinel_dbms::{Aggregation, Filter};
+use sentinel_dbms::{Aggregation, CollectionWalConfigOverrides, Filter};
 use serde_json::Value;
 
 /// Arguments for collection aggregate command.
@@ -228,7 +228,10 @@ mod tests {
             .await
             .unwrap();
         let _collection = store
-            .collection_with_config(&collection_name, None)
+            .collection_with_config(
+                &collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -255,7 +258,10 @@ mod tests {
             .await
             .unwrap();
         let collection = store
-            .collection_with_config(&collection_name, None)
+            .collection_with_config(
+                &collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -292,7 +298,10 @@ mod tests {
             .await
             .unwrap();
         let collection = store
-            .collection_with_config(&collection_name, None)
+            .collection_with_config(
+                &collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -329,7 +338,10 @@ mod tests {
             .await
             .unwrap();
         let collection = store
-            .collection_with_config(&collection_name, None)
+            .collection_with_config(
+                &collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -366,7 +378,10 @@ mod tests {
             .await
             .unwrap();
         let collection = store
-            .collection_with_config(&collection_name, None)
+            .collection_with_config(
+                &collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -403,7 +418,10 @@ mod tests {
             .await
             .unwrap();
         let collection = store
-            .collection_with_config(&collection_name, None)
+            .collection_with_config(
+                &collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -440,7 +458,10 @@ mod tests {
             .await
             .unwrap();
         let collection = store
-            .collection_with_config(&collection_name, None)
+            .collection_with_config(
+                &collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -487,7 +508,10 @@ mod tests {
             .await
             .unwrap();
         let _collection = store
-            .collection_with_config(&collection_name, None)
+            .collection_with_config(
+                &collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 

@@ -2,6 +2,7 @@ use tracing::{trace, warn};
 
 use crate::{
     validation::{is_reserved_name, is_valid_name_chars},
+    CollectionWalConfigOverrides,
     Result,
     SentinelError,
 };
@@ -24,21 +25,71 @@ use crate::{
 /// # Examples
 /// ```no_run
 /// # use sentinel_dbms::{Store, SentinelError};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
+/// #     /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
 /// # use std::path::Path;
 /// # async fn example() -> Result<(), SentinelError> {
-/// let store = Store::new(Path::new("/tmp/test"), None).await?;
+/// let store = Store::new_with_config(Path::new("/tmp/test"), None, StoreWalConfig::default()).await?;
 ///
 /// // Valid names
-/// assert!(store.collection("users").await.is_ok());
-/// assert!(store.collection("user_data").await.is_ok());
-/// assert!(store.collection("data-2024").await.is_ok());
-/// assert!(store.collection("test_collection_123").await.is_ok());
+/// assert!(store
+///     .collection_with_config(
+///         "users",
+///         Some(CollectionWalConfigOverrides::default())
+///     )
+///     .await
+///     .is_ok());
+/// assert!(store
+///     .collection_with_config(
+///         "user_data",
+///         Some(CollectionWalConfigOverrides::default())
+///     )
+///     .await
+///     .is_ok());
+/// assert!(store
+///     .collection_with_config(
+///         "data-2024",
+///         Some(CollectionWalConfigOverrides::default())
+///     )
+///     .await
+///     .is_ok());
+/// assert!(store
+///     .collection_with_config(
+///         "test_collection_123",
+///         Some(CollectionWalConfigOverrides::default())
+///     )
+///     .await
+///     .is_ok());
 ///
 /// // Invalid names
-/// assert!(store.collection("").await.is_err());
-/// assert!(store.collection(".hidden").await.is_err());
-/// assert!(store.collection("path/traversal").await.is_err());
-/// assert!(store.collection("CON").await.is_err());
+/// assert!(store
+///     .collection_with_config(
+///         "",
+///         Some(CollectionWalConfigOverrides::default())
+///     )
+///     .await
+///     .is_err());
+/// assert!(store
+///     .collection_with_config(
+///         ".hidden",
+///         Some(CollectionWalConfigOverrides::default())
+///     )
+///     .await
+///     .is_err());
+/// assert!(store
+///     .collection_with_config(
+///         "path/traversal",
+///         Some(CollectionWalConfigOverrides::default())
+///     )
+///     .await
+///     .is_err());
+/// assert!(store
+///     .collection_with_config(
+///         "CON",
+///         Some(CollectionWalConfigOverrides::default())
+///     )
+///     .await
+///     .is_err());
 /// # Ok(())
 /// # }
 /// ```

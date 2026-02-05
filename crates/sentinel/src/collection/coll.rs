@@ -85,10 +85,14 @@ pub struct Collection {
     pub(crate) stored_wal_config:  sentinel_wal::CollectionWalConfig,
     /// Effective WAL configuration (stored + any temporary overrides).
     pub(crate) wal_config:         sentinel_wal::CollectionWalConfig,
+    /// The file lock manager for concurrency control.
+    pub(crate) lock_manager:       Arc<crate::locking::FileLockManager>,
     /// When the collection was created.
     pub(crate) created_at:         chrono::DateTime<chrono::Utc>,
     /// When the collection was last updated.
     pub(crate) updated_at:         std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
+    /// When the collection was last read from.
+    pub(crate) last_read_at:       std::sync::RwLock<chrono::DateTime<chrono::Utc>>,
     /// When the collection was last checkpointed.
     pub(crate) last_checkpoint_at: std::sync::RwLock<Option<chrono::DateTime<chrono::Utc>>>,
     /// Total number of documents in the collection.
@@ -116,6 +120,9 @@ impl Collection {
 
     /// Returns the last update timestamp of the collection.
     pub fn updated_at(&self) -> chrono::DateTime<chrono::Utc> { *self.updated_at.read().unwrap() }
+
+    /// Returns the last read timestamp of the collection.
+    pub fn last_read_at(&self) -> chrono::DateTime<chrono::Utc> { *self.last_read_at.read().unwrap() }
 
     /// Returns the last checkpoint timestamp of the collection, if any.
     pub fn last_checkpoint_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -349,9 +356,7 @@ impl Collection {
                                 size_bytes,
                             }) => {
                                 tracing::debug!("Processing document inserted event: {} (size: {})", collection, size_bytes);
-                                // Update atomic counters asynchronously
-                                total_documents.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                total_size_bytes.fetch_add(size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                // Counters are updated synchronously in operations, just mark for periodic save
                                 changed = true;
                             },
                             Some(crate::events::StoreEvent::DocumentUpdated {
@@ -361,9 +366,7 @@ impl Collection {
                             }) => {
                                 tracing::debug!("Processing document updated event: {} (old: {}, new: {})",
                                     collection, old_size_bytes, new_size_bytes);
-                                // Update atomic counters asynchronously
-                                total_size_bytes.fetch_sub(old_size_bytes, std::sync::atomic::Ordering::Relaxed);
-                                total_size_bytes.fetch_add(new_size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                // Counters are updated synchronously in operations, just mark for periodic save
                                 changed = true;
                             },
                             Some(crate::events::StoreEvent::DocumentDeleted {
@@ -371,9 +374,7 @@ impl Collection {
                                 size_bytes,
                             }) => {
                                 tracing::debug!("Processing document deleted event: {} (size: {})", collection, size_bytes);
-                                // Update atomic counters asynchronously
-                                total_documents.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                                total_size_bytes.fetch_sub(size_bytes, std::sync::atomic::Ordering::Relaxed);
+                                // Counters are updated synchronously in operations, just mark for periodic save
                                 changed = true;
                             },
                             None => {
@@ -457,6 +458,13 @@ impl Collection {
     ///
     /// * `event` - The event to emit to the store.
     pub fn emit_event(&self, event: crate::events::StoreEvent) {
+        // Don't emit events during recovery to avoid double counting
+        if self
+            .recovery_mode
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return;
+        }
         if let Some(sender) = self.event_sender.as_ref() &&
             let Err(e) = sender.send(event)
         {

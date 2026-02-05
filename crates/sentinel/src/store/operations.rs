@@ -8,7 +8,9 @@ use crate::{
     events::StoreEvent,
     Collection,
     CollectionMetadata,
+    CollectionWalConfigOverrides,
     Result,
+    StoreWalConfig,
     COLLECTION_METADATA_FILE,
     DATA_DIR,
     WAL_DIR,
@@ -125,8 +127,10 @@ pub async fn collection_with_config(
         wal_manager,
         wal_config: collection_wal_config,
         stored_wal_config,
+        lock_manager: Arc::clone(&store.lock_manager),
         created_at: now,
         updated_at: std::sync::RwLock::new(now),
+        last_read_at: std::sync::RwLock::new(now),
         last_checkpoint_at: std::sync::RwLock::new(None),
         total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.document_count)),
         total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(metadata.total_size_bytes)),
@@ -167,13 +171,14 @@ impl Store {
     ///
     /// ```no_run
     /// use sentinel_dbms::Store;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let store = Store::new("/var/lib/sentinel", None).await?;
+    /// let store = Store::new_with_config("/var/lib/sentinel", None, StoreWalConfig::default()).await?;
     ///
     /// // Access a users collection
-    /// let users = store.collection("users").await?;
+    /// let users = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert a document into the collection
     /// users.insert("user-123", json!({
@@ -182,8 +187,8 @@ impl Store {
     /// })).await?;
     ///
     /// // Access multiple collections
-    /// let audit_logs = store.collection("audit_logs").await?;
-    /// let certificates = store.collection("certificates").await?;
+    /// let audit_logs = store.collection_with_config("audit_logs", Some(CollectionWalConfigOverrides::default())).await?;
+    /// let certificates = store.collection_with_config("certificates", Some(CollectionWalConfigOverrides::default())).await?;
     /// # Ok(())
     /// # }
     /// ```
@@ -234,11 +239,11 @@ impl Store {
     ///
     /// ```no_run
     /// use sentinel_dbms::Store;
-    /// use sentinel_wal::CollectionWalConfigOverrides;
+    /// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let store = Store::new("/var/lib/sentinel", None).await?;
+    /// let store = Store::new_with_config("/var/lib/sentinel", None, StoreWalConfig::default()).await?;
     /// let wal_overrides = CollectionWalConfigOverrides {
     ///     write_mode: Some(sentinel_wal::WalFailureMode::Warn),
     ///     ..Default::default()
@@ -281,12 +286,23 @@ impl Store {
     ///
     /// ```rust
     /// use sentinel_dbms::Store;
+    /// use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config(
+    ///     "/path/to/data",
+    ///     None,
+    ///     StoreWalConfig::default(),
+    /// )
+    /// .await?;
     ///
     /// // Create a collection
-    /// let collection = store.collection("temp_collection").await?;
+    /// let collection = store
+    ///     .collection_with_config(
+    ///         "temp_collection",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
     ///
     /// // ... use collection ...
     ///
@@ -350,13 +366,29 @@ impl Store {
     ///
     /// ```rust
     /// use sentinel_dbms::Store;
+    /// use sentinel_wal::{CollectionWalConfigOverrides, StoreWalConfig};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let store = Store::new("/path/to/data", None).await?;
+    /// let store = Store::new_with_config(
+    ///     "/path/to/data",
+    ///     None,
+    ///     StoreWalConfig::default(),
+    /// )
+    /// .await?;
     ///
     /// // Create some collections
-    /// store.collection("users").await?;
-    /// store.collection("products").await?;
+    /// store
+    ///     .collection_with_config(
+    ///         "users",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
+    /// store
+    ///     .collection_with_config(
+    ///         "products",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
     ///
     /// // List all collections
     /// let collections = store.list_collections().await?;

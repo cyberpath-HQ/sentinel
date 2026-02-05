@@ -9,7 +9,13 @@ use tempfile::tempdir;
 async fn setup_collection() -> (Collection, tempfile::TempDir) {
     let temp_dir = tempdir().unwrap();
     let store = Store::new(temp_dir.path(), None).await.unwrap();
-    let collection = store.collection("bench_collection").await.unwrap();
+    let collection = store
+        .collection_with_config(
+            "bench_collection",
+            Some(CollectionWalConfigOverrides::default()),
+        )
+        .await
+        .unwrap();
     (collection, temp_dir)
 }
 

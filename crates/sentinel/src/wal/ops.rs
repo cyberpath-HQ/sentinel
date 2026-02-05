@@ -1,88 +1,90 @@
-//! Core WAL operations and trait definitions.
-//!
-//! This module provides Write-Ahead Logging (WAL) operations for both Store and Collection
-//! entities. WAL ensures data durability and consistency by logging operations before
-//! they are applied to the main data store.
-//!
-//! # Architecture
-//!
-//! The WAL system is organized into two layers:
-//! - **Low-level operations** in the `sentinel-wal` crate handle raw WAL file management
-//! - **High-level operations** in this module provide trait-based interfaces for Store and
-//!   Collection
-//!
-//! # Key Concepts
-//!
-//! - **Checkpoint**: Flushes accumulated WAL entries to the main data store and truncates the log
-//! - **Recovery**: Replays WAL entries to restore data consistency after a crash
-//! - **Verification**: Validates WAL integrity and consistency with the main data store
-//! - **Streaming**: Provides real-time access to WAL entries for monitoring and replication
-//!
-//! # Examples
-//!
-//! ## Basic WAL Operations on a Collection
-//!
-//! ```rust,no_run
-//! # use sentinel_dbms::{Store, Collection};
-//! # use futures::StreamExt;
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! # let store = Store::new("/tmp/store", None).await?;
-//! # let collection = store.collection_with_config("users", None).await?;
-//! use sentinel_dbms::wal::ops::CollectionWalOps;
-//!
-//! // Insert some data
-//! collection.insert("user-123", serde_json::json!({"name": "Alice"})).await?;
-//!
-//! // Checkpoint the WAL to persist changes
-//! collection.checkpoint_wal().await?;
-//!
-//! // Get WAL statistics
-//! let size = collection.wal_size().await?;
-//! let count = collection.wal_entries_count().await?;
-//! println!("WAL size: {} bytes, entries: {}", size, count);
-//!
-//! // Stream WAL entries for monitoring
-//! let mut stream = collection.stream_wal_entries().await?;
-//! while let Some(entry) = stream.next().await {
-//!     let entry = entry?;
-//!     println!("WAL entry: {:?}", entry);
-//! }
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ## Store-level WAL Operations
-//!
-//! ```rust,no_run
-//! # use sentinel_dbms::Store;
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! # let store = Store::new("/tmp/store", None).await?;
-//! use sentinel_dbms::wal::ops::StoreWalOps;
-//!
-//! // Checkpoint all collections
-//! store.checkpoint_all_collections().await?;
-//!
-//! // Verify all collections against their WALs
-//! let issues = store.verify_all_collections().await?;
-//! for (collection_name, collection_issues) in issues {
-//!     println!(
-//!         "Collection {} has {} issues",
-//!         collection_name,
-//!         collection_issues.len()
-//!     );
-//! }
-//!
-//! // Recover all collections from WAL
-//! let recovery_stats = store.recover_all_collections().await?;
-//! for (collection_name, operations) in recovery_stats {
-//!     println!(
-//!         "Recovered {} operations for {}",
-//!         operations, collection_name
-//!     );
-//! }
-//! # Ok(())
-//! # }
-//! ```
+/// Core WAL operations and trait definitions.
+///
+/// This module provides Write-Ahead Logging (WAL) operations for both Store and Collection
+/// entities. WAL ensures data durability and consistency by logging operations before
+/// they are applied to the main data store.
+///
+/// # Architecture
+///
+/// The WAL system is organized into two layers:
+/// - **Low-level operations** in the `sentinel-wal` crate handle raw WAL file management
+/// - **High-level operations** in this module provide trait-based interfaces for Store and
+///   Collection
+///
+/// # Key Concepts
+///
+/// - **Checkpoint**: Flushes accumulated WAL entries to the main data store and truncates the log
+/// - **Recovery**: Replays WAL entries to restore data consistency after a crash
+/// - **Verification**: Validates WAL integrity and consistency with the main data store
+/// - **Streaming**: Provides real-time access to WAL entries for monitoring and replication
+///
+/// # Examples
+///
+/// ## Basic WAL Operations on a Collection
+///
+/// ```rust,no_run
+/// # use sentinel_dbms::{Store, Collection};
+/// # use futures::StreamExt;
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # let store = Store::new("/tmp/store", None).await?;
+/// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
+/// use sentinel_dbms::wal::ops::CollectionWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
+///
+/// // Insert some data
+/// collection.insert("user-123", serde_json::json!({"name": "Alice"})).await?;
+///
+/// // Checkpoint the WAL to persist changes
+/// collection.checkpoint_wal().await?;
+///
+/// // Get WAL statistics
+/// let size = collection.wal_size().await?;
+/// let count = collection.wal_entries_count().await?;
+/// println!("WAL size: {} bytes, entries: {}", size, count);
+///
+/// // Stream WAL entries for monitoring
+/// let mut stream = collection.stream_wal_entries().await?;
+/// while let Some(entry) = stream.next().await {
+///     let entry = entry?;
+///     println!("WAL entry: {:?}", entry);
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## Store-level WAL Operations
+///
+/// ```rust,no_run
+/// # use sentinel_dbms::Store;
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// # let store = Store::new("/tmp/store", None).await?;
+/// use sentinel_dbms::wal::ops::StoreWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
+///
+/// // Checkpoint all collections
+/// store.checkpoint_all_collections().await?;
+///
+/// // Verify all collections against their WALs
+/// let issues = store.verify_all_collections().await?;
+/// for (collection_name, collection_issues) in issues {
+///     println!(
+///         "Collection {} has {} issues",
+///         collection_name,
+///         collection_issues.len()
+///     );
+/// }
+///
+/// // Recover all collections from WAL
+/// let recovery_stats = store.recover_all_collections().await?;
+/// for (collection_name, operations) in recovery_stats {
+///     println!(
+///         "Recovered {} operations for {}",
+///         operations, collection_name
+///     );
+/// }
+/// # Ok(())
+/// # }
+/// ```
 
 use std::{collections::HashMap, pin::Pin};
 
@@ -98,7 +100,7 @@ use sentinel_wal::{
     WalVerificationResult,
 };
 
-use crate::{store::operations::collection_with_config, Collection, Store};
+use crate::{store::operations::collection_with_config, Collection, CollectionWalConfigOverrides, Store};
 
 /// Extension trait for Store to add WAL operations.
 ///
@@ -129,6 +131,7 @@ pub trait StoreWalOps {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
     /// use sentinel_dbms::wal::ops::StoreWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// store.checkpoint_all_collections().await?;
     /// println!("All collections checkpointed successfully");
@@ -155,6 +158,7 @@ pub trait StoreWalOps {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
     /// use sentinel_dbms::wal::ops::StoreWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use futures::StreamExt;
     ///
     /// let mut stream = store.stream_all_wal_entries().await?;
@@ -187,6 +191,7 @@ pub trait StoreWalOps {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
     /// use sentinel_dbms::wal::ops::StoreWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// let issues = store.verify_all_collections().await?;
     /// if issues.is_empty() {
@@ -226,6 +231,7 @@ pub trait StoreWalOps {
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
     /// use sentinel_dbms::wal::ops::StoreWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// let recovery_stats = store.recover_all_collections().await?;
     /// let total_operations: usize = recovery_stats.values().sum();
@@ -265,8 +271,9 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// // Perform operations
     /// collection.insert("user-123", serde_json::json!({"name": "Alice"})).await?;
@@ -295,8 +302,9 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use futures::StreamExt;
     ///
     /// let mut stream = collection.stream_wal_entries().await?;
@@ -327,8 +335,9 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// let result = collection.verify_against_wal().await?;
     /// println!(
@@ -362,8 +371,9 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// let result = collection.recover_from_wal().await?;
     /// println!("Recovery completed:");
@@ -397,8 +407,9 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// let size_bytes = collection.wal_size().await?;
     /// let size_mb = size_bytes as f64 / (1024.0 * 1024.0);
@@ -429,8 +440,9 @@ pub trait CollectionWalOps {
     /// # use sentinel_dbms::{Store, Collection};
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// # let store = Store::new("/tmp/store", None).await?;
-    /// # let collection = store.collection_with_config("users", None).await?;
+    /// # let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     /// use sentinel_dbms::wal::ops::CollectionWalOps;
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     ///
     /// let count = collection.wal_entries_count().await?;
     /// println!("WAL contains {} entries", count);

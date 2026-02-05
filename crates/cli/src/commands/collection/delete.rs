@@ -98,7 +98,10 @@ mod tests {
             .unwrap();
 
         let collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -120,7 +123,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Verify document is deleted
+        // Verify document is deleted by attempting to retrieve it
         let doc = collection.get(doc_id).await.unwrap();
         assert!(doc.is_none());
     }
@@ -138,7 +141,10 @@ mod tests {
             .unwrap();
 
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 
@@ -172,7 +178,10 @@ mod tests {
             .unwrap();
 
         let _collection = store
-            .collection_with_config(collection_name, None)
+            .collection_with_config(
+                collection_name,
+                Some(sentinel_dbms::CollectionWalConfigOverrides::default()),
+            )
             .await
             .unwrap();
 

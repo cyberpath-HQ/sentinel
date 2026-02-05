@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_stream::stream;
 use tokio::fs as tokio_fs;
 use tokio_stream::Stream;
@@ -26,12 +28,13 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     /// use futures::TryStreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some documents
     /// collection.insert("user-123", json!({"name": "Alice"})).await?;
@@ -72,12 +75,13 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     /// use futures::stream::StreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some test data
     /// collection.insert("user-1", json!({"name": "Alice", "age": 25})).await?;
@@ -128,12 +132,13 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Store, Collection, VerificationOptions};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use serde_json::json;
     /// use futures::stream::StreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store.collection_with_config("users", Some(CollectionWalConfigOverrides::default())).await?;
     ///
     /// // Insert some test data
     /// collection.insert("user-1", json!({"name": "Alice", "age": 25})).await?;
@@ -205,41 +210,43 @@ impl Collection {
                                 Ok(content) => {
                                     match serde_json::from_str::<Document>(&content) {
                                         Ok(mut doc) => {
-                                            doc.id = id.to_owned();
+                                             doc.id = id.to_owned();
 
-                                            let collection_ref = Self {
-                                                path: collection_path.clone(),
-                                                created_at: chrono::Utc::now(),
-                                                updated_at: std::sync::RwLock::new(chrono::Utc::now()),
-                                                last_checkpoint_at: std::sync::RwLock::new(None),
-                                                total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                                                total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                                                signing_key: signing_key.clone(),
-                                                wal_manager: None,
-                                                stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
-                                                wal_config: sentinel_wal::CollectionWalConfig::default(),
-                                                event_sender: None,
-                                                event_task: None,
-                                                recovery_mode: std::sync::atomic::AtomicBool::new(false),
-                                            };
+                                             let collection_ref = Self {
+                                                 path: collection_path.clone(),
+                                                 signing_key: signing_key.clone(),
+                                                 wal_manager: None,
+                                                 wal_config: sentinel_wal::CollectionWalConfig::default(),
+                                                 stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
+                                                 lock_manager: Arc::new(crate::locking::FileLockManager::new()), // Temporary manager for verification
+                                                 created_at: chrono::Utc::now(),
+                                                 updated_at: std::sync::RwLock::new(chrono::Utc::now()),
+                                                 last_read_at: std::sync::RwLock::new(chrono::Utc::now()),
+                                                 last_checkpoint_at: std::sync::RwLock::new(None),
+                                                 total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                                                 total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                                                 event_sender: None,
+                                                 event_task: None,
+                                                 recovery_mode: std::sync::atomic::AtomicBool::new(false),
+                                             };
 
-                                            if let Err(e) = collection_ref.verify_document(&doc, &options).await {
-                                                if matches!(e, SentinelError::HashVerificationFailed { .. } | SentinelError::SignatureVerificationFailed { .. }) {
-                                                    if options.hash_verification_mode == crate::VerificationMode::Strict
-                                                        || options.signature_verification_mode == crate::VerificationMode::Strict
-                                                    {
-                                                        yield Err(e);
-                                                        continue;
-                                                    }
-                                                } else {
-                                                    yield Err(e);
-                                                    continue;
-                                                }
-                                            }
+                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
+                                                 if matches!(e, SentinelError::HashVerificationFailed { .. } | SentinelError::SignatureVerificationFailed { .. }) {
+                                                     if options.hash_verification_mode == crate::VerificationMode::Strict
+                                                         || options.signature_verification_mode == crate::VerificationMode::Strict
+                                                     {
+                                                         yield Err(e);
+                                                         continue;
+                                                     }
+                                                 } else {
+                                                     yield Err(e);
+                                                     continue;
+                                                 }
+                                             }
 
-                                            if predicate(&doc) {
-                                                yield Ok(doc);
-                                            }
+                                             if predicate(&doc) {
+                                                 yield Ok(doc);
+                                             }
                                         }
                                         Err(e) => yield Err(e.into()),
                                     }
@@ -268,11 +275,17 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Collection, Store};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use futures::stream::StreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store
+    ///     .collection_with_config(
+    ///         "users",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
     ///
     /// // Stream all documents
     /// let mut all_docs = collection.all();
@@ -304,11 +317,17 @@ impl Collection {
     ///
     /// ```rust
     /// use sentinel_dbms::{Collection, Store, VerificationOptions};
+/// use sentinel_wal::{StoreWalConfig, CollectionWalConfigOverrides};
     /// use futures::stream::StreamExt;
     ///
     /// # async fn example() -> sentinel_dbms::Result<()> {
-    /// let store = Store::new("/path/to/data", None).await?;
-    /// let collection = store.collection("users").await?;
+    /// let store = Store::new_with_config("/path/to/data", None, StoreWalConfig::default()).await?;
+    /// let collection = store
+    ///     .collection_with_config(
+    ///         "users",
+    ///         Some(CollectionWalConfigOverrides::default()),
+    ///     )
+    ///     .await?;
     ///
     /// // Stream all documents with warnings instead of errors
     /// let options = VerificationOptions::warn();
@@ -361,39 +380,41 @@ impl Collection {
                                 Ok(content) => {
                                     match serde_json::from_str::<Document>(&content) {
                                         Ok(mut doc) => {
-                                            doc.id = id.to_owned();
+                                             doc.id = id.to_owned();
 
-                                            let collection_ref = Self {
-                                                path: collection_path.clone(),
-                                                created_at: chrono::Utc::now(),
-                                                updated_at: std::sync::RwLock::new(chrono::Utc::now()),
-                                                last_checkpoint_at: std::sync::RwLock::new(None),
-                                                total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                                                total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                                                signing_key: signing_key.clone(),
-                                                wal_manager: None,
-                                                stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
-                                                wal_config: sentinel_wal::CollectionWalConfig::default(),
-                                                event_sender: None,
-                                                event_task: None,
-                                                recovery_mode: std::sync::atomic::AtomicBool::new(false),
-                                            };
+                                             let collection_ref = Self {
+                                                 path: collection_path.clone(),
+                                                 signing_key: signing_key.clone(),
+                                                 wal_manager: None,
+                                                 wal_config: sentinel_wal::CollectionWalConfig::default(),
+                                                 stored_wal_config: sentinel_wal::CollectionWalConfig::default(),
+                                                 lock_manager: Arc::new(crate::locking::FileLockManager::new()), // Temporary manager for verification
+                                                 created_at: chrono::Utc::now(),
+                                                 updated_at: std::sync::RwLock::new(chrono::Utc::now()),
+                                                 last_read_at: std::sync::RwLock::new(chrono::Utc::now()),
+                                                 last_checkpoint_at: std::sync::RwLock::new(None),
+                                                 total_documents: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                                                 total_size_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                                                 event_sender: None,
+                                                 event_task: None,
+                                                 recovery_mode: std::sync::atomic::AtomicBool::new(false),
+                                             };
 
-                                            if let Err(e) = collection_ref.verify_document(&doc, &options).await {
-                                                if matches!(e, SentinelError::HashVerificationFailed { .. } | SentinelError::SignatureVerificationFailed { .. }) {
-                                                    if options.hash_verification_mode == crate::VerificationMode::Strict
-                                                        || options.signature_verification_mode == crate::VerificationMode::Strict
-                                                    {
-                                                        yield Err(e);
-                                                        continue;
-                                                    }
-                                                } else {
-                                                    yield Err(e);
-                                                    continue;
-                                                }
-                                            }
+                                             if let Err(e) = collection_ref.verify_document(&doc, &options).await {
+                                                 if matches!(e, SentinelError::HashVerificationFailed { .. } | SentinelError::SignatureVerificationFailed { .. }) {
+                                                     if options.hash_verification_mode == crate::VerificationMode::Strict
+                                                         || options.signature_verification_mode == crate::VerificationMode::Strict
+                                                     {
+                                                         yield Err(e);
+                                                         continue;
+                                                     }
+                                                 } else {
+                                                     yield Err(e);
+                                                     continue;
+                                                 }
+                                             }
 
-                                            yield Ok(doc);
+                                             yield Ok(doc);
                                         }
                                         Err(e) => yield Err(e.into()),
                                     }
